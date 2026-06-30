@@ -1,0 +1,7 @@
+{
+  "name": "Remix: Sentinel Biometrik Tizimi",
+  "description": "Korporativ darajadagi yuzni aniqlash va davomatni nazorat qilish tizimi. Xavfsiz foydalanuvchi boshqaruvi, real vaqt rejimli davomat jurnallari va Gemini AI yordamida anomaliyalarni aniqlash xususiyatlariga ega.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,112 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sentinel Biometrics Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Load face-api.js for InsightFace architecture simulation in browser -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              // Map Tailwind classes to CSS Variables
+              app: {
+                primary: 'var(--color-bg-app)',
+                panel: 'var(--color-bg-panel)',
+                surface: 'var(--color-bg-surface)',
+                overlay: 'var(--color-bg-overlay)',
+              },
+              text: {
+                primary: 'var(--color-text-primary)',
+                secondary: 'var(--color-text-secondary)',
+                muted: 'var(--color-text-muted)',
+                inverted: 'var(--color-text-inverted)',
+              },
+              border: {
+                DEFAULT: 'var(--color-border-normal)',
+                focus: 'var(--color-border-focus)',
+              },
+              brand: {
+                primary: 'var(--color-brand-primary)',
+                secondary: 'var(--color-brand-secondary)',
+              },
+              status: {
+                safe: {
+                    bg: 'var(--color-status-safe-bg)',
+                    text: 'var(--color-status-safe-text)',
+                },
+                warning: {
+                    bg: 'var(--color-status-warning-bg)',
+                    text: 'var(--color-status-warning-text)',
+                },
+                critical: {
+                    bg: 'var(--color-status-critical-bg)',
+                    text: 'var(--color-status-critical-text)',
+                },
+                unknown: {
+                    bg: 'var(--color-status-unknown-bg)',
+                    text: 'var(--color-status-unknown-text)',
+                }
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body { 
+        font-family: 'Inter', sans-serif; 
+        background-color: var(--color-bg-app); 
+        color: var(--color-text-primary); 
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--color-border-normal); 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--color-text-muted); 
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "date-fns": "https://esm.sh/date-fns@^4.1.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0?external=react",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "recharts": "https://esm.sh/recharts@2.12.7?external=react,react-dom",
+    "three": "https://esm.sh/three@0.160.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.16?external=react,react-dom,three",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@9.99.0?external=react,react-dom,three,@react-three/fiber",
+    "date-fns/": "https://esm.sh/date-fns@^4.1.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

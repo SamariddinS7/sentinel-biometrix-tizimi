@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and enrollment data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string" },
+        "department": { "type": "string" },
+        "enrolledDate": { "type": "string" },
+        "hasEmbedding": { "type": "boolean" },
+        "lastActive": { "type": "string" },
+        "avatarUrl": { "type": "string" }
+      },
+      "required": ["id", "fullName", "role"]
+    },
+    "Camera": {
+      "title": "Camera",
+      "description": "Camera configuration and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "type": { "type": "string" },
+        "streamUrl": { "type": "string" },
+        "status": { "type": "string" },
+        "fps": { "type": "number" },
+        "resolution": { "type": "string" },
+        "lastActive": { "type": "string" },
+        "focalLength": { "type": "number" },
+        "sensorWidth": { "type": "number" },
+        "sensorHeight": { "type": "number" }
+      },
+      "required": ["id", "name", "type"]
+    },
+    "AttendanceLog": {
+      "title": "AttendanceLog",
+      "description": "Attendance record for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "department": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "checkIn": { "type": "string" },
+        "checkOut": { "type": "string" },
+        "status": { "type": "string" },
+        "confidenceScore": { "type": "number" },
+        "livenessVerified": { "type": "boolean" },
+        "nodeId": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/cameras/{cameraId}": {
+      "schema": "Camera",
+      "description": "Camera devices"
+    },
+    "/attendanceLogs/{logId}": {
+      "schema": "AttendanceLog",
+      "description": "Attendance logs"
+    }
+  }
+}
