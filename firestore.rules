@@ -1,33 +1,118 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny all
+    // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
-    
-    // Users collection: Allow client-side CRUD
+
+    function isSignedIn() {
+      return true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper functions for entity validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'fullName', 'role'])
+        && data.keys().size() <= 8
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 128
+        && data.role is string && data.role.size() >= 1 && data.role.size() <= 64
+        && (!('department' in data) || (data.department is string && data.department.size() <= 128))
+        && (!('enrolledDate' in data) || (data.enrolledDate is string && data.enrolledDate.size() <= 64))
+        && (!('hasEmbedding' in data) || data.hasEmbedding is bool)
+        && (!('lastActive' in data) || (data.lastActive is string && data.lastActive.size() <= 64))
+        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 512));
+    }
+
+    function isValidCamera(data) {
+      return data.keys().hasAll(['id', 'name', 'type'])
+        && data.keys().size() <= 12
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.type is string && data.type.size() >= 1 && data.type.size() <= 64
+        && (!('location' in data) || (data.location is string && data.location.size() <= 128))
+        && (!('streamUrl' in data) || (data.streamUrl is string && data.streamUrl.size() <= 512))
+        && (!('status' in data) || (data.status is string && data.status.size() <= 64))
+        && (!('fps' in data) || (data.fps is number && data.fps >= 0 && data.fps <= 120))
+        && (!('resolution' in data) || (data.resolution is string && data.resolution.size() <= 64))
+        && (!('lastActive' in data) || (data.lastActive is string && data.lastActive.size() <= 64))
+        && (!('focalLength' in data) || (data.focalLength is number && data.focalLength >= 0))
+        && (!('sensorWidth' in data) || (data.sensorWidth is number && data.sensorWidth >= 0))
+        && (!('sensorHeight' in data) || (data.sensorHeight is number && data.sensorHeight >= 0));
+    }
+
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['id', 'userId', 'userName', 'status'])
+        && data.keys().size() <= 12
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128
+        && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 128
+        && data.status is string && data.status.size() >= 1 && data.status.size() <= 64
+        && (!('userAvatar' in data) || (data.userAvatar is string && data.userAvatar.size() <= 512))
+        && (!('department' in data) || (data.department is string && data.department.size() <= 128))
+        && (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 64))
+        && (!('checkIn' in data) || (data.checkIn is string && data.checkIn.size() <= 64))
+        && (!('checkOut' in data) || (data.checkOut is string && data.checkOut.size() <= 64))
+        && (!('confidenceScore' in data) || (data.confidenceScore is number && data.confidenceScore >= 0 && data.confidenceScore <= 1))
+        && (!('livenessVerified' in data) || data.livenessVerified is bool)
+        && (!('nodeId' in data) || (data.nodeId is string && data.nodeId.size() <= 128));
+    }
+
+    // Rules for each collection
     match /users/{userId} {
-      allow read, write: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() 
+        && isValidId(userId)
+        && incoming().id == userId
+        && isValidUser(incoming());
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && incoming().id == userId
+        && isValidUser(incoming())
+        // Immutable id field
+        && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(userId);
     }
-    match /users/{userId}/{document=**} {
-      allow read, write: if true;
-    }
-    
-    // AttendanceLogs collection: Allow client-side logging
-    match /attendanceLogs/{logId} {
-      allow read, write: if true;
-    }
-    match /attendanceLogs/{logId}/{document=**} {
-      allow read, write: if true;
-    }
-    
-    // Cameras collection: Allow client-side camera management
+
     match /cameras/{cameraId} {
-      allow read, write: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(cameraId)
+        && incoming().id == cameraId
+        && isValidCamera(incoming());
+      allow update: if isSignedIn()
+        && isValidId(cameraId)
+        && incoming().id == cameraId
+        && isValidCamera(incoming())
+        // Immutable id field
+        && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(cameraId);
     }
-    match /cameras/{cameraId}/{document=**} {
-      allow read, write: if true;
+
+    match /attendanceLogs/{logId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      // Attendance logs are terminal: create only, no update or delete allowed
+      allow create: if isSignedIn()
+        && isValidId(logId)
+        && incoming().id == logId
+        && isValidAttendanceLog(incoming());
+      allow update, delete: if false;
     }
   }
 }
+

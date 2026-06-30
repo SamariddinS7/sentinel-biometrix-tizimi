@@ -1,6 +1,6 @@
 
 import os
-import pickle
+import json
 import numpy as np
 from cryptography.fernet import Fernet
 import logging
@@ -62,8 +62,9 @@ class BiometricEncryptor:
             return None
 
         try:
-            # 1. Serialize
-            data = pickle.dumps(embedding)
+            # 1. Serialize using JSON for security (No Pickle RCE vulnerability)
+            embedding_list = embedding.tolist() if isinstance(embedding, np.ndarray) else list(embedding)
+            data = json.dumps(embedding_list).encode('utf-8')
             # 2. Encrypt
             encrypted_data = cls._get_cipher().encrypt(data)
             return encrypted_data
@@ -83,8 +84,9 @@ class BiometricEncryptor:
         try:
             # 1. Decrypt
             decrypted_data = cls._get_cipher().decrypt(encrypted_data)
-            # 2. Deserialize
-            embedding = pickle.loads(decrypted_data)
+            # 2. Deserialize securely from JSON
+            embedding_list = json.loads(decrypted_data.decode('utf-8'))
+            embedding = np.array(embedding_list, dtype=np.float32)
             return embedding
         except Exception as e:
             logger.critical(f"Decryption Failure: {e}")

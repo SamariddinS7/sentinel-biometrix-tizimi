@@ -51,28 +51,52 @@ class AuthService {
     return this.currentUser;
   }
 
-  // Simulate Login
-  login(email: string): Promise<User> {
-    return new Promise((resolve) => {
-      // In a real app, verify credentials here
-      this.currentUser = {
-        ...this.currentUser!,
-        email: email,
-        lastActive: 'Just now'
-      };
-      this.persistUser();
-      this.logAction('AUTH', 'User Logged In', 'SUCCESS');
-      resolve(this.currentUser);
-    });
+  getToken(): string | null {
+    return localStorage.getItem('sentinel_token');
   }
 
-  // Simulate Logout
+  // Real JWT Login via backend
+  async login(email: string): Promise<User> {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+      if (!response.ok) {
+        throw new Error('Kirish muvaffaqiyatsiz tugadi');
+      }
+      const data = await response.json();
+      localStorage.setItem('sentinel_token', data.token);
+      this.currentUser = {
+        id: data.user.id,
+        fullName: data.user.fullName,
+        email: data.user.email,
+        role: data.user.role as any,
+        department: data.user.department,
+        enrolledDate: '2026-01-15',
+        hasEmbedding: true,
+        lastActive: 'Just now',
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.user.fullName)}&background=0ea5e9&color=fff&size=128`,
+        permissions: data.user.role === 'ADMIN' ? ['ALL_ACCESS', 'MANAGE_USERS', 'VIEW_LOGS', 'SYSTEM_CONFIG'] : ['VIEW_LOGS']
+      };
+      this.persistUser();
+      this.logAction('AUTH', 'User Logged In (JWT Secure)', 'SUCCESS');
+      return this.currentUser;
+    } catch (e: any) {
+      this.logAction('AUTH', `Login Failure: ${e.message}`, 'FAILURE');
+      throw e;
+    }
+  }
+
+  // Real Logout
   logout() {
     this.logAction('AUTH', 'User Logged Out', 'SUCCESS');
-    // We don't nullify currentUser completely to keep demo state, 
-    // but in prod we would remove storage key.
-    // this.currentUser = null; 
-    // localStorage.removeItem(STORAGE_KEY_USER);
+    this.currentUser = null;
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem('sentinel_token');
   }
 
   updateProfile(updates: Partial<User>): User {

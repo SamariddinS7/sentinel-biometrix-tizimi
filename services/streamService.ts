@@ -51,7 +51,7 @@ export class StreamService {
             this.activeLoop = false;
         };
 
-        this.socket.onerror = (err) => console.error('Stream Error', err);
+        this.socket.onerror = (err) => console.warn('Stream Error', err);
     }
 
     /**

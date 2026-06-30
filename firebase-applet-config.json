@@ -1,10 +1,10 @@
 {
-  "projectId": "remixed-project-id",
-  "appId": "remixed-app-id",
-  "apiKey": "remixed-api-key",
-  "authDomain": "remixed-auth-domain",
-  "firestoreDatabaseId": "remixed-firestore-database-id",
-  "storageBucket": "remixed-storage-bucket",
-  "messagingSenderId": "remixed-messaging-sender-id",
-  "measurementId": "remixed-measurement-id"
+  "projectId": "coherent-backup-w2cdj",
+  "appId": "1:834029048038:web:8d9d144c747063a434eb27",
+  "apiKey": "AIzaSyBHwGktdCTO1OZGzRqOLL-27O-I9EuKuE8",
+  "authDomain": "coherent-backup-w2cdj.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-remixsentinelbio-2ea56860-28ac-4a54-843a-3c57d2b15ece",
+  "storageBucket": "coherent-backup-w2cdj.firebasestorage.app",
+  "messagingSenderId": "834029048038",
+  "measurementId": ""
 }

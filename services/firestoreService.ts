@@ -1,7 +1,7 @@
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, setLogLevel } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getFirestore, setLogLevel, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Silence Firebase's internal logging to prevent offline warning logs from triggering error flags
@@ -15,6 +15,43 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
+// Sign in anonymously on boot to establish a secure authenticated session for the security rules
+let authPromise: Promise<any> | null = null;
+
+export function ensureAuthenticated(): Promise<any> {
+  if (auth.currentUser) {
+    return Promise.resolve(auth.currentUser);
+  }
+  if (!authPromise) {
+    authPromise = signInAnonymously(auth)
+      .then((userCredential) => {
+        console.log("Firebase Auth signed in anonymously successfully.");
+        testConnection();
+        return userCredential.user;
+      })
+      .catch((err) => {
+        console.warn("Failed to sign in anonymously with Firebase Auth:", err);
+        authPromise = null; // allow retry
+        throw err;
+      });
+  }
+  return authPromise;
+}
+
+// Boot up anonymous auth on startup
+ensureAuthenticated();
+
+// Validate connection to Firestore as per critical skill constraints
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
+  }
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -23,6 +60,7 @@ export enum OperationType {
   GET = 'get',
   WRITE = 'write',
 }
+
 
 // LocalStorage caching helpers for offline fallback
 export function getLocalCache<T>(key: string, defaultValue: T[]): T[] {
