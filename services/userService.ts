@@ -1,6 +1,6 @@
 import { User } from '../types';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType, ensureAuthenticated } from './firestoreService';
+import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType } from './firestoreService';
 import { mockUsers } from './mockData';
 
 const CACHE_KEY = 'sentinel_users_cache';
@@ -23,7 +23,6 @@ function sanitizeUser(user: User): any {
 export const userService = {
     getAllUsers: async (): Promise<User[]> => {
         try {
-            await ensureAuthenticated();
             const querySnapshot = await getDocs(collection(db, 'users'));
             const users = querySnapshot.docs.map(doc => doc.data() as User);
             if (users.length > 0) {
@@ -54,7 +53,6 @@ export const userService = {
 
         // Try syncing with Firestore
         try {
-            await ensureAuthenticated();
             const sanitized = sanitizeUser(user);
             await setDoc(doc(db, 'users', user.id), sanitized);
         } catch (e) {
@@ -75,7 +73,6 @@ export const userService = {
 
         // Try syncing with Firestore
         try {
-            await ensureAuthenticated();
             await deleteDoc(doc(db, 'users', userId));
         } catch (e) {
             console.warn(`Firestore deleteUser for ${userId} failed, deleted locally:`, e);

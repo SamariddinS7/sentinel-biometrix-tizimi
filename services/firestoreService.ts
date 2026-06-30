@@ -15,32 +15,6 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
-// Sign in anonymously on boot to establish a secure authenticated session for the security rules
-let authPromise: Promise<any> | null = null;
-
-export function ensureAuthenticated(): Promise<any> {
-  if (auth.currentUser) {
-    return Promise.resolve(auth.currentUser);
-  }
-  if (!authPromise) {
-    authPromise = signInAnonymously(auth)
-      .then((userCredential) => {
-        console.log("Firebase Auth signed in anonymously successfully.");
-        testConnection();
-        return userCredential.user;
-      })
-      .catch((err) => {
-        console.warn("Failed to sign in anonymously with Firebase Auth:", err);
-        authPromise = null; // allow retry
-        throw err;
-      });
-  }
-  return authPromise;
-}
-
-// Boot up anonymous auth on startup
-ensureAuthenticated();
-
 // Validate connection to Firestore as per critical skill constraints
 async function testConnection() {
   try {
@@ -51,6 +25,9 @@ async function testConnection() {
     }
   }
 }
+
+// Validate connection to Firestore as per critical skill constraints
+testConnection();
 
 export enum OperationType {
   CREATE = 'create',

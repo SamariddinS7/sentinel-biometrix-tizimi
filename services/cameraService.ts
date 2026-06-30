@@ -1,7 +1,7 @@
 
 import { Camera } from '../types';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType, ensureAuthenticated } from './firestoreService';
+import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType } from './firestoreService';
 import { mockCameras } from './mockData';
 
 const CACHE_KEY = 'sentinel_cameras_cache';
@@ -25,7 +25,6 @@ function sanitizeCamera(camera: Camera): any {
 export const cameraService = {
   getAllCameras: async (): Promise<Camera[]> => {
     try {
-      await ensureAuthenticated();
       const querySnapshot = await getDocs(collection(db, 'cameras'));
       const cameras = querySnapshot.docs.map(doc => doc.data() as Camera);
       if (cameras.length > 0) {
@@ -56,7 +55,6 @@ export const cameraService = {
 
     // Try syncing with Firestore
     try {
-      await ensureAuthenticated();
       const sanitized = sanitizeCamera(camera);
       await setDoc(doc(db, 'cameras', camera.id), sanitized);
     } catch (e) {
@@ -77,7 +75,6 @@ export const cameraService = {
 
     // Try syncing with Firestore
     try {
-      await ensureAuthenticated();
       await deleteDoc(doc(db, 'cameras', id));
     } catch (e) {
       console.warn(`Firestore deleteCamera for ${id} failed, deleted locally:`, e);

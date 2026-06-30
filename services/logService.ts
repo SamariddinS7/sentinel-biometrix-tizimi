@@ -8,7 +8,6 @@ const CACHE_KEY = 'sentinel_logs_cache';
 export const logService = {
   getAttendanceLogs: async (): Promise<AttendanceRecord[]> => {
     try {
-      await ensureAuthenticated();
       const q = query(collection(db, 'attendanceLogs'), orderBy('timestamp', 'desc'));
       const querySnapshot = await getDocs(q);
       const logs = querySnapshot.docs.map(doc => doc.data() as AttendanceRecord);
