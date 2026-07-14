@@ -47,7 +47,23 @@ export class InferencePipeline {
     };
   }
 
-  private constructor() {}
+  private constructor() {
+    this.registerCorePlugins();
+  }
+
+  private async registerCorePlugins() {
+    try {
+      const { HazardDetectorPlugin } = await import('./plugins/HazardDetectorPlugin');
+      const hazardPlugin = new HazardDetectorPlugin();
+      await this.modelManager.registerAndLoadPlugin(
+        hazardPlugin,
+        { threshold: 0.5 },
+        { type: 'CPU', index: 0 }
+      );
+    } catch (err) {
+      console.error('[AI InferencePipeline] Failed to register core hazard detector plugin:', err);
+    }
+  }
 
   public static getInstance(): InferencePipeline {
     if (!InferencePipeline.instance) {
@@ -148,20 +164,26 @@ export class InferencePipeline {
     }
     const tracker = this.cameraTrackers.get(cameraId)!;
 
-    // --- STAGE 1: Person Detection (YOLO) ---
-    // Background Subtraction and Blob Tracking on the raw frame buffer to avoid hardcoding or mocks.
+    // --- STAGE 0: Volumetric Fire & Smoke (Hazard) Detection ---
+    // Continuously analyze live video frames using the consolidated hazard engine
+    const hazardPlugin = this.modelManager.getPlugin('core.hazard_detector');
+    if (hazardPlugin && hazardPlugin.state === 'LOADED') {
+      try {
+        await hazardPlugin.infer(frame);
+      } catch (err) {
+        console.error('[AI Pipeline] Error executing continuous hazard detector inference:', err);
+      }
+    }
+
+    // --- STAGE 1: Person Detection (YOLO / RT-DETR) ---
     let detections: DetectionResult[] = [];
     let detectionCompleted = false;
 
-    if (frame.buffer && frame.buffer.length > 0) {
-      detections = this.detectMotionBlobs(frame.buffer, frame.width, frame.height, cameraId);
-    }
-
-    // Attempt to invoke the loaded YOLO plugin if registered
-    const yoloPlugin = this.modelManager.getPlugin('core.object_detector');
-    if (yoloPlugin && yoloPlugin.state === 'LOADED') {
+    // Attempt to invoke the loaded object detection plugin if registered
+    const objectDetectorPlugin = this.modelManager.getPlugin('core.object_detector');
+    if (objectDetectorPlugin && objectDetectorPlugin.state === 'LOADED') {
       try {
-        const payload = await yoloPlugin.infer(frame);
+        const payload = await objectDetectorPlugin.infer(frame);
         if (payload.detections) {
           payload.detections.forEach((det: any) => {
             if (det.classLabel === 'person') {
@@ -174,7 +196,7 @@ export class InferencePipeline {
           });
         }
       } catch (e) {
-        console.error('[AI Pipeline] YOLO detector plugin inference error, falling back to background motion blobs:', e);
+        console.error('[AI Pipeline] Object detector plugin inference error:', e);
       }
     }
 
@@ -191,7 +213,7 @@ export class InferencePipeline {
     const personDetections = detections.filter(det => det.class === TargetObjectClass.PERSON);
 
     // Associating temporal sequences using spatial IoU mapping
-    const trackedObjects: TrackedObject[] = await tracker.update(personDetections, timestampMs);
+    const trackedObjects: TrackedObject[] = await tracker.update(personDetections, timestampMs, undefined, cameraId);
 
     const activeTracksForFrame: any[] = [];
 
@@ -201,8 +223,8 @@ export class InferencePipeline {
 
       // --- STAGE 3: Person Re-Identification (ReID) ---
       // Real crop-based visual feature template representation
-      const bodyCropVector = this.extractReidEmbedding(frame.buffer, obj.boundingBox, frame.width, frame.height);
-      obj.embedding = bodyCropVector;
+      const bodyCropVector = await this.extractReidEmbedding(frame, obj.boundingBox);
+      obj.embedding = bodyCropVector || new Float32Array(512);
 
       // Map to 3D world coordinates for the physical Digital Twin integration
       const point3D = this.projectTo3D(cameraId, obj.boundingBox);
@@ -261,14 +283,17 @@ export class InferencePipeline {
         if (qualityMetrics.isUsable) {
           // --- STAGE 8: Face Embedding (ArcFace) ---
           // Extract high-fidelity, 512-dimensional facial biometric signature vector
-          faceEmbedding = this.extractFaceEmbedding(alignedFace);
+          const extractedFaceEmbedding = await this.extractFaceEmbedding(alignedFace, frame);
+          if (extractedFaceEmbedding) {
+            faceEmbedding = extractedFaceEmbedding;
 
-          // --- STAGE 9: Face Recognition (Biometric Match) ---
-          // Vector comparison query in SecureFaceDatabase
-          const faceMatches = this.faceEngine.getEnrolledDatabase().queryVector(faceEmbedding, 0.75);
-          if (faceMatches.length > 0 && faceMatches[0].similarityScore >= 0.85) {
-            identity = faceMatches[0].identity;
-            recognitionConfidence = faceMatches[0].similarityScore;
+            // --- STAGE 9: Face Recognition (Biometric Match) ---
+            // Vector comparison query in SecureFaceDatabase
+            const faceMatches = this.faceEngine.getEnrolledDatabase().queryVector(faceEmbedding, 0.75);
+            if (faceMatches.length > 0 && faceMatches[0].similarityScore >= 0.85) {
+              identity = faceMatches[0].identity;
+              recognitionConfidence = faceMatches[0].similarityScore;
+            }
           }
         }
       }
@@ -537,39 +562,21 @@ export class InferencePipeline {
   }
 
   /**
-   * Traditional computer vision body visual appearance extractor (ReID).
-   * Generates a normalized color histogram and pixel layout descriptor.
+   * Executes genuine visual appearance extractor (ReID) via ONNX plugin.
    */
-  private extractReidEmbedding(buffer: Uint8Array, box: BoundingBox, width: number, height: number): Float32Array {
-    const embedding = new Float32Array(512);
-    let sum = 0;
-
-    for (let i = 0; i < 512; i++) {
-      const xRatio = box.xMin + (box.xMax - box.xMin) * (i / 512);
-      const yRatio = box.yMin + (box.yMax - box.yMin) * (((i * 17) % 512) / 512);
-      
-      const px = Math.min(width - 1, Math.max(0, Math.floor(xRatio * width)));
-      const py = Math.min(height - 1, Math.max(0, Math.floor(yRatio * height)));
-      const idx = (py * width + px) * 3;
-
-      const r = buffer[idx] || 127;
-      const g = buffer[idx + 1] || 127;
-      const b = buffer[idx + 2] || 127;
-      
-      // Feature formulation
-      embedding[i] = (r * 0.299 + g * 0.587 + b * 0.114) / 255.0;
-      sum += embedding[i] * embedding[i];
+  private async extractReidEmbedding(frame: VideoFrame, box: BoundingBox): Promise<Float32Array | null> {
+    const reidPlugin = this.modelManager.getPlugin('core.reid_osnet');
+    if (reidPlugin && reidPlugin.state === 'LOADED') {
+       try {
+         const result = await reidPlugin.infer(frame);
+         if (result.metadata && result.metadata.embedding) {
+            return new Float32Array(result.metadata.embedding);
+         }
+       } catch(e) {
+         console.error('[AI Pipeline] ReID plugin inference error:', e);
+       }
     }
-
-    // L2 normalization
-    const norm = Math.sqrt(sum);
-    if (norm > 0) {
-      for (let i = 0; i < 512; i++) {
-        embedding[i] /= norm;
-      }
-    }
-
-    return embedding;
+    return null;
   }
 
   /**
@@ -686,30 +693,21 @@ export class InferencePipeline {
   }
 
   /**
-   * Generates a 512-dimension biometric facial signature based on Local Binary Patterns (LBP).
+   * Generates a 512-dimension biometric facial signature using ONNX ArcFace model.
    */
-  private extractFaceEmbedding(alignedFace: Uint8Array): Float32Array {
-    const embedding = new Float32Array(512);
-    let sum = 0;
-
-    for (let i = 0; i < 512; i++) {
-      const idx = Math.floor((i / 512) * alignedFace.length);
-      const val = alignedFace[idx] || 127;
-      
-      // Map pattern value mathematically to unit domain
-      embedding[i] = Math.sin(val * (i + 13)) * 0.5 + 0.5;
-      sum += embedding[i] * embedding[i];
+  private async extractFaceEmbedding(alignedFace: Uint8Array, frame: VideoFrame): Promise<Float32Array | null> {
+    const facePlugin = this.modelManager.getPlugin('core.face_recognizer');
+    if (facePlugin && facePlugin.state === 'LOADED') {
+       try {
+         const result = await facePlugin.infer(frame);
+         if (result.faces && result.faces.length > 0 && result.faces[0].embedding) {
+            return new Float32Array(result.faces[0].embedding);
+         }
+       } catch(e) {
+         console.error('[AI Pipeline] Face recognizer plugin inference error:', e);
+       }
     }
-
-    // Normalizing embedding to sphere boundary of radius = 1.0 (L2 Norm)
-    const norm = Math.sqrt(sum);
-    if (norm > 0) {
-      for (let i = 0; i < 512; i++) {
-        embedding[i] /= norm;
-      }
-    }
-
-    return embedding;
+    return null;
   }
 
   /**

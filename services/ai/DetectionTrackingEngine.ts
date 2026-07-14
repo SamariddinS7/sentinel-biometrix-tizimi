@@ -82,7 +82,9 @@ export interface ITracker {
   update(
     detections: DetectionResult[], 
     timestampMs: number, 
-    frameEmbeddings?: Float32Array[]
+    frameEmbeddings?: Float32Array[],
+    cameraId?: string,
+    skippedFrames?: number
   ): Promise<TrackedObject[]>;
   
   // Session Controls
@@ -285,7 +287,7 @@ export class ByteTrackTracker implements ITracker {
   getId(): string { return 'bytetrack'; }
   getName(): string { return 'ByteTrack Real-Time Association'; }
 
-  async update(detections: DetectionResult[], timestampMs: number, frameEmbeddings?: Float32Array[]): Promise<TrackedObject[]> {
+  async update(detections: DetectionResult[], timestampMs: number, frameEmbeddings?: Float32Array[], cameraId: string = 'stream_primary', skippedFrames: number = 0): Promise<TrackedObject[]> {
     // Spatial Association using Intersection-over-Union (IoU)
     // Resolves occlusions by associating low-score boxes.
     const currentResults: TrackedObject[] = [];
@@ -296,7 +298,15 @@ export class ByteTrackTracker implements ITracker {
       let highestIou = 0.0;
 
       for (const [id, activeTrack] of this.activeTracks.entries()) {
-        const iou = this.calculateIoU(det.boundingBox, activeTrack.boundingBox);
+        // If frames were skipped, predict bounding box using Kalman filter or linear velocity extrapolation
+        const predictedBox = skippedFrames > 0 ? {
+          xMin: activeTrack.boundingBox.xMin + (activeTrack.motionVector.dx * skippedFrames),
+          yMin: activeTrack.boundingBox.yMin + (activeTrack.motionVector.dy * skippedFrames),
+          xMax: activeTrack.boundingBox.xMax + (activeTrack.motionVector.dx * skippedFrames),
+          yMax: activeTrack.boundingBox.yMax + (activeTrack.motionVector.dy * skippedFrames),
+        } : activeTrack.boundingBox;
+
+        const iou = this.calculateIoU(det.boundingBox, predictedBox);
         if (iou > 0.45 && iou > highestIou) {
           highestIou = iou;
           matchedTrackId = id;
@@ -339,7 +349,7 @@ export class ByteTrackTracker implements ITracker {
         this.publishVmsAiEvent(VmsAiEventType.TRACK_STARTED, {
           eventId: `evt_${Date.now()}_${trackId}`,
           timestamp: new Date().toISOString(),
-          cameraId: 'stream_primary',
+          cameraId,
           correlationId: trackId,
           payload: newTrack
         });
@@ -355,7 +365,7 @@ export class ByteTrackTracker implements ITracker {
         this.publishVmsAiEvent(VmsAiEventType.TRACK_ENDED, {
           eventId: `evt_${Date.now()}_${id}`,
           timestamp: new Date().toISOString(),
-          cameraId: 'stream_primary',
+          cameraId,
           correlationId: id,
           payload: { trackId: id, state: TrackState.TRACK_ENDED }
         });
@@ -405,7 +415,7 @@ export class DeepSortTracker implements ITracker {
   getId(): string { return 'deepsort'; }
   getName(): string { return 'DeepSORT (Motion & ReID Kalman)'; }
 
-  async update(detections: DetectionResult[], timestampMs: number, frameEmbeddings?: Float32Array[]): Promise<TrackedObject[]> {
+  async update(detections: DetectionResult[], timestampMs: number, frameEmbeddings?: Float32Array[], cameraId?: string, skippedFrames?: number): Promise<TrackedObject[]> {
     // DeepSORT associates tracks combining motion filters (Kalman) and ReID cosine distance.
     const currentResults: TrackedObject[] = [];
     return currentResults;

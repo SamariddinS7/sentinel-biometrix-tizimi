@@ -68,6 +68,9 @@ export interface ModalityPlugin {
   status: 'ACTIVE' | 'STANDBY' | 'DISABLED';
   runtime: 'TensorRT' | 'ONNXRuntime' | 'OpenVINO' | 'PyTorch';
   latencyMs: number;
+  weight: number; // Base weight for fusion
+  extractFeatures?: (frame: any) => Promise<any>;
+  calculateSimilarity?: (featureA: any, featureB: any) => number;
 }
 
 export interface MultiModalIdentity {
@@ -97,19 +100,28 @@ export class MultiModalIdentityEngine {
   private fusionToMMMap: Map<string, string> = new Map(); // F-XXXXX -> MM-XXXXX
   
   // Registered extensible plugin manager
-  private plugins: ModalityPlugin[] = [
-    { id: 'det_rt_detr', name: 'RT-DETR-L Human Locator', modalityType: 'DETECTION', version: 'v2.1', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 12 },
-    { id: 'track_bot_sort', name: 'BoT-SORT Kalman Tracker', modalityType: 'TRACKING', version: 'v1.4', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 3 },
-    { id: 'reid_osnet', name: 'OSNet-x1_0 Appearance ReID', modalityType: 'REID', version: 'v3.0', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 8 },
-    { id: 'face_arcface', name: 'ArcFace-r100 Biometric Matcher', modalityType: 'FACE', version: 'v4.2', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 15 },
-    { id: 'attr_classifier_26', name: '26-Attribute Clothing Classifier', modalityType: 'APPEARANCE', version: 'v1.0', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 6 },
-    { id: 'pose_rtmpose_m', name: 'RTMPose-M Skeleton Tracker', modalityType: 'POSE', version: 'v1.2', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 9 },
-    { id: 'gait_gaitgl', name: 'GaitGL Walking Signature Extractor', modalityType: 'GAIT', version: 'v2.0', status: 'ACTIVE', runtime: 'PyTorch', latencyMs: 22 },
-    { id: 'mov_markov', name: 'Markov Spatial Transition Engine', modalityType: 'MOVEMENT', version: 'v1.1', status: 'ACTIVE', runtime: 'PyTorch', latencyMs: 1 }
-  ];
+  private plugins: Map<string, ModalityPlugin> = new Map([
+    ['det_rt_detr', { id: 'det_rt_detr', name: 'RT-DETR-L Human Locator', modalityType: 'DETECTION', version: 'v2.1', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 12, weight: 0.0 }],
+    ['track_bot_sort', { id: 'track_bot_sort', name: 'BoT-SORT Kalman Tracker', modalityType: 'TRACKING', version: 'v1.4', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 3, weight: 0.0 }],
+    ['reid_osnet', { id: 'reid_osnet', name: 'OSNet-x1_0 Appearance ReID', modalityType: 'REID', version: 'v3.0', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 8, weight: 0.20 }],
+    ['face_arcface', { id: 'face_arcface', name: 'ArcFace-r100 Biometric Matcher', modalityType: 'FACE', version: 'v4.2', status: 'ACTIVE', runtime: 'TensorRT', latencyMs: 15, weight: 0.30 }],
+    ['attr_classifier_26', { id: 'attr_classifier_26', name: '26-Attribute Custom ViT', modalityType: 'APPEARANCE', version: 'v1.0', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 6, weight: 0.15 }],
+    ['pose_rtmpose_m', { id: 'pose_rtmpose_m', name: 'RTMPose-M Skeleton Tracker', modalityType: 'POSE', version: 'v1.2', status: 'ACTIVE', runtime: 'ONNXRuntime', latencyMs: 9, weight: 0.10 }],
+    ['gait_gaitgl', { id: 'gait_gaitgl', name: 'GaitGL Walking Signature Extractor', modalityType: 'GAIT', version: 'v2.0', status: 'ACTIVE', runtime: 'PyTorch', latencyMs: 22, weight: 0.10 }],
+    ['mov_markov', { id: 'mov_markov', name: 'Markov Spatial Transition Engine', modalityType: 'MOVEMENT', version: 'v1.1', status: 'ACTIVE', runtime: 'PyTorch', latencyMs: 1, weight: 0.15 }]
+  ]);
 
   private constructor() {
     this.syncFromFirestore();
+  }
+
+  public registerPlugin(plugin: ModalityPlugin) {
+    this.plugins.set(plugin.id, plugin);
+    console.log(`[MIIE] Registered plugin: ${plugin.name} (${plugin.modalityType})`);
+  }
+
+  public getPlugins(): ModalityPlugin[] {
+    return Array.from(this.plugins.values());
   }
 
   public static getInstance(): MultiModalIdentityEngine {
@@ -299,28 +311,15 @@ export class MultiModalIdentityEngine {
   }
 
   private generatePoseSkeleton(mmId: string): PoseKeypoint[] {
-    const keypoints = [
-      'Nose', 'Left Eye', 'Right Eye', 'Left Ear', 'Right Ear',
-      'Left Shoulder', 'Right Shoulder', 'Left Elbow', 'Right Elbow',
-      'Left Wrist', 'Right Wrist', 'Left Hip', 'Right Hip',
-      'Left Knee', 'Right Knee', 'Left Ankle', 'Right Ankle'
-    ];
-    return keypoints.map((name, idx) => ({
-      id: idx,
-      name,
-      x: Math.round(30 + Math.random() * 40),
-      y: Math.round(10 + Math.random() * 80),
-      confidence: 0.85 + Math.random() * 0.14
-    }));
+    return [];
   }
 
   private generateGaitSignature(mmId: string): GaitSignature {
-    const hash = mmId.split('-')[1] ? parseInt(mmId.split('-')[1]) : 5000;
     return {
-      strideLengthCm: Math.floor(65 + (hash % 15)),
-      cadenceStepsMin: Math.floor(100 + (hash % 25)),
-      symmetryIndex: parseFloat((0.85 + (hash % 15) / 100).toFixed(2)),
-      signatureVector: Array.from({ length: 128 }, () => Math.random())
+      strideLengthCm: 0,
+      cadenceStepsMin: 0,
+      symmetryIndex: 0,
+      signatureVector: []
     };
   }
 
@@ -350,12 +349,8 @@ export class MultiModalIdentityEngine {
     }]);
   }
 
-  public getPlugins(): ModalityPlugin[] {
-    return this.plugins;
-  }
-
   public togglePlugin(id: string): void {
-    const plugin = this.plugins.find(p => p.id === id);
+    const plugin = this.plugins.get(id);
     if (plugin) {
       plugin.status = plugin.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
     }
@@ -365,7 +360,7 @@ export class MultiModalIdentityEngine {
     const results: Array<{ testName: string; status: 'SUCCESS' | 'FAILURE'; log: string }> = [];
 
     // Test 1: Plugin Latency
-    const activePlugins = this.plugins.filter(p => p.status === 'ACTIVE');
+    const activePlugins = Array.from(this.plugins.values()).filter(p => p.status === 'ACTIVE');
     const maxLatency = Math.max(...activePlugins.map(p => p.latencyMs), 0);
     results.push({
       testName: 'Modality Plugin Ingress Heartbeat',

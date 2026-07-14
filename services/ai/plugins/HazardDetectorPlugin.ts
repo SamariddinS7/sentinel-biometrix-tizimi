@@ -124,16 +124,62 @@ export class HazardDetectorPlugin extends BaseAiPlugin {
       if (isCommissioned) {
         // Operator physically triggered commissioning test conditions
         detectionOccurred = true;
-        calculatedConfidence = 0.92;
-      } else if (this.hasNativeBindings && frame.buffer) {
-        // Native ONNX inference would run here. For structural integrity, we evaluate frame metrics:
-        // Spectral analysis of RGB channel values, dynamic motion gradients
-        // This is robust: we parse frame characteristics. In absence of real fires, confidence remains 0.0.
-        const sumPixels = frame.buffer.reduce((acc, val) => acc + val, 0);
-        if (sumPixels > 100000000 && sub.key === 'fire') {
-          // Extremely bright image or high thermal signature
-          calculatedConfidence = 0.65;
-          detectionOccurred = calculatedConfidence >= this.hazardConfig.threshold;
+        calculatedConfidence = 0.95;
+      } else if (frame.buffer && frame.buffer.length > 0) {
+        const buf = frame.buffer;
+        
+        if (sub.key === 'fire') {
+          // Flame Spectral Cluster Analysis
+          let flamePixelCount = 0;
+          const step = 4; // Sample every 4th pixel for high-performance and low latency
+          let sampledTotal = 0;
+          
+          for (let i = 0; i < buf.length; i += 3 * step) {
+            const r = buf[i];
+            const g = buf[i + 1];
+            const b = buf[i + 2];
+            sampledTotal++;
+            
+            // Flame spectral signature: High Red, moderate Green, low Blue
+            // Hue characteristic: R > G && G > B, and Red must be high (R > 135)
+            if (r > 135 && g > 90 && b < 120 && r > g + 25 && g > b + 15) {
+              flamePixelCount++;
+            }
+          }
+          
+          const flameRatio = flamePixelCount / sampledTotal;
+          if (flameRatio > 0.003) { // Flame cluster occupies at least 0.3% of the scene
+            calculatedConfidence = Math.min(0.99, 0.60 + flameRatio * 15);
+            detectionOccurred = calculatedConfidence >= config.sensitivity;
+          }
+        } else if (sub.key === 'smoke') {
+          // Smoke Plume Desaturation & Diffusion Analysis
+          let smokePixelCount = 0;
+          const step = 4;
+          let sampledTotal = 0;
+          
+          for (let i = 0; i < buf.length; i += 3 * step) {
+            const r = buf[i];
+            const g = buf[i + 1];
+            const b = buf[i + 2];
+            sampledTotal++;
+            
+            // Smoke desaturation check: low variance between channels (desaturated grey)
+            // Brightness must match smoke ranges (e.g. between 85 and 215)
+            const maxVal = Math.max(r, g, b);
+            const minVal = Math.min(r, g, b);
+            const dev = maxVal - minVal;
+            
+            if (dev < 18 && r > 85 && r < 215) {
+              smokePixelCount++;
+            }
+          }
+          
+          const smokeRatio = smokePixelCount / sampledTotal;
+          if (smokeRatio > 0.008) { // Smoke plume occupies at least 0.8% of the scene
+            calculatedConfidence = Math.min(0.95, 0.55 + smokeRatio * 8);
+            detectionOccurred = calculatedConfidence >= config.sensitivity;
+          }
         }
       }
 

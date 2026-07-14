@@ -2,16 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { 
   Shield, Layers, Sparkles, Filter, Check, Play, Sliders, Info, Eye, 
   Activity, Database, CheckCircle2, AlertTriangle, RefreshCw, User, Cpu, 
-  AlertCircle, Bookmark, Radio, Navigation, Network, Zap, Settings, TrendingUp
+  AlertCircle, Bookmark, Radio, Navigation, Network, Zap, Settings, TrendingUp,
+  Clock, Compass, Users, Share2, ArrowRight, AlertOctagon, Fingerprint, FileText, PlusCircle
 } from 'lucide-react';
 import { multiModalIdentityEngine, MultiModalIdentity, ModalityPlugin, ExplainableConfidence } from '../services/ai/MultiModalIdentityEngine';
+import { movementIntelligenceEngine, MovementIntelligenceReport } from '../services/ai/MovementIntelligenceEngine';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const MultiModalIdentityConsole: React.FC = () => {
   const [identities, setIdentities] = useState<MultiModalIdentity[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [plugins, setPlugins] = useState<ModalityPlugin[]>([]);
-  const [activeTab, setActiveTab] = useState<'IDENTITIES' | 'PLUGINS' | 'DIAGNOSTICS'>('IDENTITIES');
+  const [activeTab, setActiveTab] = useState<'IDENTITIES' | 'INTELLIGENCE' | 'PLUGINS' | 'DIAGNOSTICS'>('IDENTITIES');
+
+  // Movement & Relationship Intelligence State
+  const [intelReport, setIntelReport] = useState<MovementIntelligenceReport | null>(null);
+  const [intelStats, setIntelStats] = useState<any>(null);
+  const [isObserving, setIsObserving] = useState(false);
+  const [observationForm, setObservationForm] = useState({
+    cameraId: 'cam_03',
+    cameraName: 'Server Xonasi Kirish',
+    zoneId: 'zone_restricted',
+    zoneName: 'Server Xonasi (Cheklangan Hudud)'
+  });
 
   // Interactive diagnostic tests
   const [diagnosticActive, setDiagnosticActive] = useState(false);
@@ -26,6 +39,17 @@ export const MultiModalIdentityConsole: React.FC = () => {
       setSelectedId(list[0].id);
     }
   };
+
+  useEffect(() => {
+    // Sync Movement Intelligence statistics and current person report
+    const stats = movementIntelligenceEngine.getSystemStats();
+    setIntelStats(stats);
+
+    if (selectedId) {
+      const report = movementIntelligenceEngine.compileMovementReport(selectedId);
+      setIntelReport(report);
+    }
+  }, [selectedId, activeTab]);
 
   useEffect(() => {
     loadData();
@@ -109,13 +133,20 @@ export const MultiModalIdentityConsole: React.FC = () => {
       </div>
 
       {/* Primary Section Switcher */}
-      <div className="flex border-b border-border/80 gap-6">
+      <div className="flex border-b border-border/80 gap-6 overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveTab('IDENTITIES')}
           className={`pb-3 font-bold text-sm relative transition-all ${activeTab === 'IDENTITIES' ? 'text-brand-primary' : 'text-text-muted hover:text-text-secondary'}`}
         >
           {activeTab === 'IDENTITIES' && <motion.div layoutId="mmActiveTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary" />}
           Global Identifikatsiyalar (MIIE)
+        </button>
+        <button
+          onClick={() => setActiveTab('INTELLIGENCE')}
+          className={`pb-3 font-bold text-sm relative transition-all ${activeTab === 'INTELLIGENCE' ? 'text-brand-primary' : 'text-text-muted hover:text-text-secondary'}`}
+        >
+          {activeTab === 'INTELLIGENCE' && <motion.div layoutId="mmActiveTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-primary" />}
+          Harakat & Munosabatlar Tahlili (Intelligence)
         </button>
         <button
           onClick={() => setActiveTab('PLUGINS')}
@@ -249,39 +280,28 @@ export const MultiModalIdentityConsole: React.FC = () => {
                     </div>
 
                     <div className="h-48 bg-app-surface border border-border rounded-lg relative flex items-center justify-center p-3 overflow-hidden">
-                      {/* Drawing mock/realistic representation of skeleton lines with CSS absolute lines to be clean and fully functional */}
-                      <div className="relative w-28 h-40">
-                        {/* head */}
-                        <div className="absolute top-1 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full border-2 border-brand-primary bg-brand-primary/10" />
-                        {/* body center line */}
-                        <div className="absolute top-6 left-1/2 -translate-x-1/2 w-0.5 h-16 bg-brand-primary" />
-                        {/* shoulders */}
-                        <div className="absolute top-8 left-2 right-2 h-0.5 bg-brand-primary" />
-                        {/* hips */}
-                        <div className="absolute top-22 left-4 right-4 h-0.5 bg-brand-primary" />
-                        {/* arms */}
-                        <div className="absolute top-8 left-2 w-0.5 h-10 bg-brand-primary origin-top -rotate-12" />
-                        <div className="absolute top-8 right-2 w-0.5 h-10 bg-brand-primary origin-top rotate-12" />
-                        {/* legs */}
-                        <div className="absolute top-22 left-4 w-0.5 h-14 bg-brand-primary origin-top -rotate-6" />
-                        <div className="absolute top-22 right-4 w-0.5 h-14 bg-brand-primary origin-top rotate-6" />
-
-                        {/* Interactive dots representation */}
-                        {selectedIdentity.poseSkeleton.slice(0, 7).map((kp, i) => (
-                          <div 
-                            key={i} 
-                            className="absolute w-2 h-2 rounded-full bg-status-safe-text border border-white shadow animate-ping"
-                            style={{ 
-                              left: `${kp.x}%`, 
-                              top: `${kp.y}%` 
-                            }}
-                            title={`${kp.name}: ${(kp.confidence * 100).toFixed(0)}% confidence`}
-                          />
-                        ))}
-                      </div>
+                      {selectedIdentity.poseSkeleton.length > 0 ? (
+                        <div className="relative w-28 h-40">
+                          {selectedIdentity.poseSkeleton.slice(0, 17).map((kp, i) => (
+                            <div 
+                              key={i} 
+                              className="absolute w-2 h-2 rounded-full bg-status-safe-text border border-white shadow animate-ping"
+                              style={{ 
+                                left: `${kp.x}%`, 
+                                top: `${kp.y}%` 
+                              }}
+                              title={`${kp.name}: ${(kp.confidence * 100).toFixed(0)}% confidence`}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-text-muted font-mono block text-center">Haqiqiy pose ma'lumoti mavjud emas</span>
+                      )}
                     </div>
 
-                    <span className="text-[9px] text-text-muted font-mono block text-center">17 keypoints matched successfully | Confidence 94.2%</span>
+                    {selectedIdentity.poseSkeleton.length > 0 && (
+                      <span className="text-[9px] text-text-muted font-mono block text-center">{selectedIdentity.poseSkeleton.length} keypoints matched successfully</span>
+                    )}
                   </div>
 
                 </div>
@@ -300,18 +320,18 @@ export const MultiModalIdentityConsole: React.FC = () => {
                     <div><span className="font-bold text-text-secondary">Simmetriya indeksi:</span> <span className="font-mono font-bold text-brand-primary">{(selectedIdentity.gaitSignature.symmetryIndex * 100).toFixed(0)}%</span></div>
                   </div>
 
-                  {/* Graphical waves simulator using pure CSS layout */}
                   <div className="h-16 flex items-end gap-1 px-3 py-1 bg-app-surface border border-border rounded-lg overflow-hidden">
-                    {Array.from({ length: 18 }).map((_, i) => {
-                      const height = 15 + Math.sin(i * 0.8) * 30 + Math.random() * 10;
-                      return (
+                    {selectedIdentity.gaitSignature.signatureVector.length > 0 ? (
+                      selectedIdentity.gaitSignature.signatureVector.slice(0, 18).map((val, i) => (
                         <div 
                           key={i} 
                           className="flex-1 bg-brand-primary/80 rounded-t"
-                          style={{ height: `${height}%` }}
+                          style={{ height: `${Math.max(10, val * 100)}%` }}
                         />
-                      );
-                    })}
+                      ))
+                    ) : (
+                      <span className="text-[10px] text-text-muted font-mono m-auto">Haqiqiy gait ma'lumoti mavjud emas</span>
+                    )}
                   </div>
                 </div>
 
@@ -351,6 +371,337 @@ export const MultiModalIdentityConsole: React.FC = () => {
             )}
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'INTELLIGENCE' && (
+        <div className="space-y-6">
+          {/* Spatiotemporal Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4 relative overflow-hidden">
+              <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
+                <Compass className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">Umumiy Detections</p>
+                <h4 className="text-xl font-black mt-0.5 text-text-primary">{intelStats?.totalDetections || 0}</h4>
+              </div>
+            </div>
+
+            <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4 relative overflow-hidden">
+              <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">Aniqlangan Guruhlar</p>
+                <h4 className="text-xl font-black mt-0.5 text-text-primary">{intelStats?.totalGroups || 0}</h4>
+              </div>
+            </div>
+
+            <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4 relative overflow-hidden">
+              <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
+                <Navigation className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">Harakatlanish Yo'nalishlari</p>
+                <h4 className="text-xl font-black mt-0.5 text-text-primary">{intelStats?.totalRoutes || 0}</h4>
+              </div>
+            </div>
+
+            <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4 relative overflow-hidden">
+              <div className={`p-3 rounded-xl ${intelStats?.totalAnomalous > 0 ? 'bg-status-critical-bg text-status-critical-text' : 'bg-status-safe-bg text-status-safe-text'}`}>
+                <AlertOctagon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-text-secondary uppercase tracking-wider">Shubhali Harakatlar</p>
+                <h4 className="text-xl font-black mt-0.5 text-text-primary">{intelStats?.totalAnomalous || 0} ({intelStats?.anomalyRatio?.toFixed(1) || '0.0'}%)</h4>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+            {/* Left Column: Relationship Mapping & Sighting Simulator */}
+            <div className="xl:col-span-5 space-y-6">
+              
+              {/* Relationship Network Graph Card */}
+              <div className="bg-app-panel border border-border rounded-2xl p-5 space-y-4">
+                <h3 className="font-bold text-text-primary text-sm flex items-center gap-2">
+                  <Share2 size={16} className="text-brand-primary" /> Sherikchilik va Aloqalar Diagrammasi
+                </h3>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Kameradan olingan ob'ektlarning vaqt va makon bo'yicha bog'lanishlarini ko'rsatuvchi diagramma.
+                </p>
+
+                {intelReport && intelReport.associations.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="h-44 bg-app-surface border border-border rounded-xl relative flex items-center justify-center overflow-hidden">
+                      {/* SVG Relationship Graph */}
+                      <svg className="w-full h-full" viewBox="0 0 200 120">
+                        {/* Lines from center to nodes */}
+                        {intelReport.associations.map((assoc, i) => {
+                          const angle = (i * 2 * Math.PI) / intelReport.associations.length;
+                          const x = 100 + 60 * Math.cos(angle);
+                          const y = 60 + 40 * Math.sin(angle);
+                          return (
+                            <line
+                              key={i}
+                              x1="100"
+                              y1="60"
+                              x2={x}
+                              y2={y}
+                              stroke="#fbbf24"
+                              strokeWidth="1.5"
+                              strokeDasharray="2,2"
+                            />
+                          );
+                        })}
+
+                        {/* Center Node */}
+                        <circle cx="100" cy="60" r="14" fill="#fbbf24" fillOpacity="0.2" stroke="#fbbf24" strokeWidth="2" />
+                        <text x="100" y="63" textAnchor="middle" fill="#fbbf24" fontSize="7" fontWeight="bold">ID</text>
+
+                        {/* Neighbor Nodes */}
+                        {intelReport.associations.map((assoc, i) => {
+                          const angle = (i * 2 * Math.PI) / intelReport.associations.length;
+                          const x = 100 + 60 * Math.cos(angle);
+                          const y = 60 + 40 * Math.sin(angle);
+                          return (
+                            <g key={i}>
+                              <circle cx={x} cy={y} r="10" fill="#1f2937" stroke="#fbbf24" strokeWidth="1.5" />
+                              <text x={x} y={y + 3} textAnchor="middle" fill="#ffffff" fontSize="5" fontWeight="bold">
+                                {assoc.targetPersonName.slice(0, 3)}..
+                              </text>
+                            </g>
+                          );
+                        })}
+                      </svg>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">Sheriklar ro'yxati</h4>
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {intelReport.associations.map((assoc, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2.5 bg-app-primary border border-border rounded-xl text-xs">
+                            <div>
+                              <div className="font-bold text-text-primary">{assoc.targetPersonName}</div>
+                              <div className="text-[10px] text-text-muted">Roli: {assoc.targetRole} | So'nggi sighting: {new Date(assoc.lastObserved).toLocaleTimeString()}</div>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-mono font-bold text-brand-primary block">{assoc.coOccurrenceCount} marta</span>
+                              <span className="text-[9px] text-status-safe-text bg-status-safe-bg/10 px-1.5 py-0.5 rounded font-bold uppercase">{(assoc.confidence * 100).toFixed(0)}% ishonch</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-12 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
+                    Bu obyekt bilan birga ko'p marta harakatlangan boshqa biror sherik aniqlanmadi.
+                  </div>
+                )}
+              </div>
+
+              {/* Sighting Simulator Box */}
+              <div className="bg-app-panel border border-border rounded-2xl p-5 space-y-4">
+                <h3 className="font-bold text-text-primary text-sm flex items-center gap-2">
+                  <PlusCircle size={16} className="text-brand-primary" /> Kamera Kuzatuvini Simulyatsiya Qilish
+                </h3>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Ushbu shaxsni real vaqtda biror kamerada aniqlangan deb belgilang. Tizim harakat yo'nalishlarini, guruhlarni va shubhali tahlillarni darhol yangilaydi.
+                </p>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider block mb-1">Kamerani Tanlang</label>
+                    <select
+                      value={observationForm.cameraId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const cams: Record<string, { name: string; zoneId: string; zoneName: string }> = {
+                          'cam_01': { name: 'Asosiy Kirish (Sharqiy Darvoza)', zoneId: 'zone_entrance', zoneName: 'Kirish Nazorati' },
+                          'cam_02': { name: 'Xavfsiz Hudud Koridor (B Blok)', zoneId: 'zone_corridor', zoneName: 'Asosiy Koridor' },
+                          'cam_03': { name: 'Server Xonasi Kirish', zoneId: 'zone_restricted', zoneName: 'Server Xonasi (Cheklangan Hudud)' },
+                          'cam_04': { name: 'Konferentsiya Zali', zoneId: 'zone_corridor', zoneName: 'Konferentsiya Hududi' },
+                          'cam_05': { name: 'G\'arbiy Chiqish Yo\'lagi', zoneId: 'zone_exit', zoneName: 'Chiqish Darvozasi' }
+                        };
+                        setObservationForm({
+                          cameraId: val,
+                          cameraName: cams[val].name,
+                          zoneId: cams[val].zoneId,
+                          zoneName: cams[val].zoneName
+                        });
+                      }}
+                      className="w-full bg-app-surface border border-border p-2 rounded-xl text-xs text-text-primary focus:outline-none focus:border-brand-primary"
+                    >
+                      <option value="cam_01">Asosiy Kirish (Kamera 1)</option>
+                      <option value="cam_02">Asosiy Koridor (Kamera 2)</option>
+                      <option value="cam_03">Server Xonasi Kirish (Kamera 3 - CHEKLANGAN)</option>
+                      <option value="cam_04">Konferentsiya Zali (Kamera 4)</option>
+                      <option value="cam_05">G'arbiy Chiqish Yo'lagi (Kamera 5)</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={async () => {
+                      if (!selectedIdentity) return;
+                      setIsObserving(true);
+                      try {
+                        const response = await fetch('/api/intelligence/observe', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            personId: selectedIdentity.id,
+                            personName: selectedIdentity.label,
+                            role: selectedIdentity.role,
+                            cameraId: observationForm.cameraId,
+                            cameraName: observationForm.cameraName,
+                            zoneId: observationForm.zoneId,
+                            zoneName: observationForm.zoneName,
+                            timestamp: new Date().toISOString()
+                          })
+                        });
+                        if (response.ok) {
+                          alert(`Kuzatuv muvaffaqiyatli qayd etildi: ${selectedIdentity.label} -> ${observationForm.cameraName}`);
+                          const stats = movementIntelligenceEngine.getSystemStats();
+                          setIntelStats(stats);
+                          const report = movementIntelligenceEngine.compileMovementReport(selectedIdentity.id);
+                          setIntelReport(report);
+                        }
+                      } catch (err) {
+                        console.error("Failed to log observation:", err);
+                      } finally {
+                        setIsObserving(false);
+                      }
+                    }}
+                    disabled={isObserving || !selectedIdentity}
+                    className="w-full bg-brand-primary hover:bg-brand-secondary text-white font-bold text-xs py-2.5 rounded-xl transition-all disabled:opacity-50"
+                  >
+                    {isObserving ? 'Hisoblanmoqda...' : 'Sightingni Qayd Etish'}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Right Column: Route timeline & frequent patterns */}
+            <div className="xl:col-span-7 space-y-6">
+              {intelReport ? (
+                <div className="bg-app-panel border border-border rounded-2xl p-6 space-y-6">
+                  {/* Summary & Anomaly Index card */}
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 p-4 bg-app-primary border border-border rounded-xl">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-brand-primary font-bold uppercase tracking-widest block">INTEL SUMMARY REPORT</span>
+                      <h4 className="text-sm font-bold text-text-primary">{intelReport.personName} ({intelReport.personId})</h4>
+                      <p className="text-xs text-text-muted leading-relaxed">{intelReport.summaryNotes}</p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] font-bold text-text-muted block uppercase">Xulq-atvor Shubha Koeffitsienti</span>
+                      <span className={`text-2xl font-black font-mono block mt-1 ${intelReport.anomalyScore > 0.3 ? 'text-status-critical-text' : 'text-status-safe-text'}`}>
+                        {(intelReport.anomalyScore * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Frequent Route Patterns Flow Chart */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                      <Compass size={14} className="text-brand-primary" /> Takrorlanuvchi Harakat Marshrutlari
+                    </h4>
+                    
+                    {intelReport.frequentRoutes.length > 0 ? (
+                      <div className="space-y-3">
+                        {intelReport.frequentRoutes.map((route, idx) => (
+                          <div key={idx} className="p-3 bg-app-primary border border-border rounded-xl space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-bold text-text-primary">Marshrut {idx + 1}</span>
+                              <span className="text-[11px] font-mono font-bold text-brand-primary bg-brand-primary/5 px-2 py-0.5 rounded border border-brand-primary/10">
+                                {route.frequency} marta kuzatildi | O'rtacha {route.avgDurationSec} sek
+                              </span>
+                            </div>
+                            
+                            {/* Horizontal visual arrow nodes */}
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              {route.cameras.map((node, i) => (
+                                <React.Fragment key={i}>
+                                  <span className="bg-app-surface border border-border px-2.5 py-1 rounded text-[11px] font-semibold text-text-secondary">
+                                    {node}
+                                  </span>
+                                  {i < route.cameras.length - 1 && (
+                                    <ArrowRight size={12} className="text-text-muted" />
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-6 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
+                        Marshrutlar aniqlanishi uchun ko'proq kuzatuvlar to'planishi lozim.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chronological Vertical Sighting Timeline */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock size={14} className="text-brand-primary" /> Batafsil Harakatlar Xronologiyasi
+                    </h4>
+
+                    {intelReport.routes.length > 0 ? (
+                      <div className="relative pl-6 border-l border-border/80 space-y-5 py-2">
+                        {intelReport.routes.map((route, idx) => (
+                          <div key={idx} className={`p-4 rounded-xl border relative transition-all
+                            ${route.isAbnormal ? 'bg-status-critical-bg/20 border-status-critical-text/40' : 'bg-app-primary border-border hover:border-brand-primary/30'}`}
+                          >
+                            {/* Marker dot on the vertical line */}
+                            <div className={`absolute -left-[31px] top-6 w-3 h-3 rounded-full border-2 
+                              ${route.isAbnormal ? 'bg-status-critical-text border-status-critical-text' : 'bg-brand-primary border-app-surface'}`}
+                            />
+
+                            <div className="flex justify-between items-start text-xs font-bold">
+                              <div>
+                                <span className="font-mono text-[9px] uppercase block tracking-wider text-text-muted">{route.id}</span>
+                                <h5 className="text-text-primary text-sm mt-0.5">
+                                  {route.path[0]?.cameraName} ➔ {route.path[route.path.length - 1]?.cameraName}
+                                </h5>
+                              </div>
+                              <span className="font-mono text-[10px] text-text-muted">
+                                {new Date(route.startTime).toLocaleTimeString()} - {new Date(route.endTime).toLocaleTimeString()}
+                              </span>
+                            </div>
+
+                            {route.isAbnormal && (
+                              <div className="mt-2.5 p-2 bg-status-critical-bg text-status-critical-text rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                                <AlertTriangle size={13} /> {route.anomalyReason}
+                              </div>
+                            )}
+
+                            <div className="mt-3 text-xs space-y-1 text-text-muted">
+                              <div><span className="font-bold text-text-secondary">Harakatlangan yo'lagi:</span> {route.path.map(p => p.cameraName).join(' ➔ ')}</div>
+                              <div><span className="font-bold text-text-secondary">Dwell Time (Tashrif muddati):</span> <span className="font-mono">{route.durationSec} soniya</span></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
+                        Kronologiya bo'sh. Simulyator orqali harakat qo'shing.
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              ) : (
+                <div className="bg-app-panel border border-border rounded-2xl p-16 text-center text-text-muted space-y-3">
+                  <Fingerprint size={32} className="mx-auto text-text-muted/40" />
+                  <p className="font-medium text-sm">Harakatlar tahlilini ko'rish uchun chap tomondan global persistant shaxsni tanlang.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

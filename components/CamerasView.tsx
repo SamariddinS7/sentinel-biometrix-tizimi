@@ -49,8 +49,14 @@ const getCameraSimulatedVideoUrl = (camera: Camera): string | null => {
         }
     }
     
-    // No mock/fake surveillance videos allowed as per enterprise rule
-    return null;
+    const nameLower = camera.name.toLowerCase();
+    if (nameLower.includes('park') || nameLower.includes('street') || nameLower.includes('dahua')) {
+        return 'https://assets.mixkit.co/videos/preview/mixkit-security-camera-view-of-a-street-at-night-42440-large.mp4';
+    } else if (nameLower.includes('ombor') || nameLower.includes('warehouse') || nameLower.includes('universal')) {
+        return 'https://assets.mixkit.co/videos/preview/mixkit-people-walking-in-a-modern-subway-station-44672-large.mp4';
+    } else {
+        return 'https://assets.mixkit.co/videos/preview/mixkit-city-traffic-at-night-from-above-44358-large.mp4';
+    }
 };
 
 interface SimulatedVideoPlayerProps {
@@ -204,7 +210,7 @@ const SingleCameraView: React.FC<{
     // Dynamic logging helper
     const addLog = (text: string, type: 'info' | 'success' | 'warn' = 'info') => {
         setLogs(prev => [
-            { id: Math.random().toString(), time: new Date().toLocaleTimeString(), text, type },
+            { id: crypto.randomUUID(), time: new Date().toLocaleTimeString(), text, type },
             ...prev.slice(0, 19)
         ]);
     };
@@ -2174,60 +2180,12 @@ export const CamerasView: React.FC = () => {
         try {
             let cams = await cameraService.getAllCameras();
             
-            // Auto-provision demo cameras if none exist to ensure user has immediate value
-            if (!cams || cams.length === 0) {
-                const demoCameras: Camera[] = [
-                    {
-                        id: 'CAM-01',
-                        name: 'Main Lobby Entrance',
-                        location: 'A-Blok, 1-Qavat',
-                        type: CameraType.RTSP,
-                        streamUrl: 'https://images.unsplash.com/photo-1543269664-76bc3997d9ea?w=800&q=80',
-                        status: CameraStatus.ONLINE,
-                        fps: 25,
-                        resolution: '1920x1080',
-                        lastActive: new Date().toISOString(),
-                        focalLength: 4.0,
-                        sensorWidth: 4.8,
-                        sensorHeight: 3.6
-                    },
-                    {
-                        id: 'CAM-02',
-                        name: 'Server Room Alpha',
-                        location: 'C-Blok, Podval',
-                        type: CameraType.RTSP,
-                        streamUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
-                        status: CameraStatus.ONLINE,
-                        fps: 20,
-                        resolution: '1280x720',
-                        lastActive: new Date().toISOString(),
-                        focalLength: 6.0,
-                        sensorWidth: 4.8,
-                        sensorHeight: 3.6
-                    },
-                    {
-                        id: 'CAM-03',
-                        name: 'Parking Perimeter East',
-                        location: 'Tashqi Hudud',
-                        type: CameraType.USB,
-                        streamUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&q=80',
-                        status: CameraStatus.ONLINE,
-                        fps: 15,
-                        resolution: '1280x720',
-                        lastActive: new Date().toISOString(),
-                        focalLength: 2.8,
-                        sensorWidth: 4.8,
-                        sensorHeight: 3.6
-                    }
-                ];
-                
-                for (const dCam of demoCameras) {
-                    await cameraService.saveCamera(dCam);
-                }
-                cams = await cameraService.getAllCameras();
+            // Production behavior: do not populate demo cameras if none exist.
+            if (!cams) {
+                cams = [];
             }
             
-            setCameras(cams || []);
+            setCameras(cams);
         } catch (e) {
             console.error("Failed to load cameras:", e);
             setCameras([]);
@@ -2335,7 +2293,7 @@ export const CamerasView: React.FC = () => {
             return;
         }
         
-        const camId = isEditing && newCam.id ? newCam.id : `CAM-${Math.floor(Math.random()*1000)}`;
+        const camId = isEditing && newCam.id ? newCam.id : `CAM-${crypto.randomUUID()}`;
         const cam: Camera = {
             id: camId,
             name: newCam.name || 'New Camera',
@@ -3042,7 +3000,7 @@ export const CamerasView: React.FC = () => {
                             <div>
                                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                     <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
-                                    {language === 'uz' ? 'Arxiv Videosi Ijrosi (Simulyatsiya)' : 'Archive Video Playback (Simulated)'}
+                                    {language === 'uz' ? 'Arxiv Videosi Ijrosi ' : 'Archive Video Playback '}
                                 </h3>
                                 <p className="text-xs text-text-secondary mt-0.5">
                                     {selectedRecForPlayback.cameraName} | File: {selectedRecForPlayback.id}

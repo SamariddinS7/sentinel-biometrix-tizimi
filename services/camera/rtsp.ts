@@ -285,7 +285,7 @@ export class RtspSession {
                 `User-Agent: Sentinel-VMS-Engine/2.1.0\r\n\r\n`;
                 
     this.socket.write(req);
-    this.sessionId = `vms_sess_${Math.floor(Math.random() * 90000 + 10000)}`;
+    this.sessionId = `vms_sess_${crypto.randomUUID()}`;
     
     setTimeout(() => {
       this.sendPlay();
@@ -359,12 +359,13 @@ export class RtspSession {
     this.packetsReceived = 0;
     this.packetsExpected = 0;
 
-    // Simulate real network socket latency jitter
-    const latency = Math.floor(8 + Math.random() * 12);
+    // Real network socket latency measurement should be taken here.
+    // For now, default to 0 to avoid random synthetic data.
+    const latency = 0;
 
     this.currentStats = {
       fps: this.config.fps || 25,
-      bitrateKbps: kbps > 0 ? kbps : (1500 + Math.random() * 300), // Standard H.264 stream consumption density
+      bitrateKbps: kbps > 0 ? kbps : 0, // No synthetic density
       packetLossPct: lossPct,
       latencyMs: latency,
       resolution: this.config.resolution || '1920x1080',

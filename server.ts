@@ -29,6 +29,7 @@ import { vmsAuditService } from "./services/vmsAuditService";
 import { vmsStorageService } from "./services/vmsStorageService";
 import { vmsHealthService } from "./services/vmsHealthService";
 import { vmsSystemManager } from "./services/vmsSystemManager";
+import { movementIntelligenceEngine } from "./services/ai/MovementIntelligenceEngine";
 
 // Database references
 const usersCollection = collection(db, "users");
@@ -74,6 +75,116 @@ aiInferencePipeline.onFrameProcessed((processedCamId, tracks) => {
   }, 4000);
   cameraTracksTimeouts.set(processedCamId, timeout);
 });
+
+// --- SIMULATED REAL-TIME VIDEO ANALYTICS TRACKS ---
+interface SimulatedTrackState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  userId: string;
+  fullName: string;
+}
+
+const simTrackStates = new Map<string, SimulatedTrackState[]>();
+let cachedEmployees: any[] = [];
+
+async function updateCachedEmployees() {
+  try {
+    const snap = await getDocs(usersCollection);
+    const list: any[] = [];
+    snap.forEach(doc => {
+      const data = doc.data();
+      if (data.role === 'EMPLOYEE' || data.role === 'ADMIN') {
+        list.push({ id: data.id, fullName: data.fullName, role: data.role, department: data.department });
+      }
+    });
+    if (list.length > 0) {
+      cachedEmployees = list;
+    }
+  } catch (e) {
+    console.warn("Failed to fetch employees for simulator:", e);
+  }
+}
+
+// Update cached employees list every 10 seconds
+setInterval(updateCachedEmployees, 10000);
+setTimeout(updateCachedEmployees, 1000);
+
+function updateSimulatedCameraTracks() {
+  const simCams = ["CAM-01", "CAM-02", "CAM-03"];
+  
+  simCams.forEach((camId, camIdx) => {
+    let tracks = simTrackStates.get(camId) || [];
+    
+    // Periodically add or remove a person track if tracks are empty or too many
+    if (tracks.length === 0 && Math.random() < 0.3) {
+      const count = Math.random() < 0.5 ? 1 : 2;
+      for (let i = 0; i < count; i++) {
+        let emp = cachedEmployees[Math.floor(Math.random() * cachedEmployees.length)];
+        const fullName = emp ? emp.fullName : `Mijoz (Visitor ${Math.floor(100 + Math.random() * 900)})`;
+        const userId = emp ? emp.id : `visitor_${Math.floor(1000 + Math.random() * 9000)}`;
+        
+        tracks.push({
+          x: 50 + Math.random() * 400,
+          y: 80 + Math.random() * 200,
+          vx: (Math.random() - 0.5) * 8,
+          vy: (Math.random() - 0.5) * 4,
+          userId,
+          fullName
+        });
+      }
+    }
+    
+    // Update track coordinates and drift them realistically
+    tracks = tracks.map(t => {
+      let nx = t.x + t.vx;
+      let ny = t.y + t.vy;
+      let nvx = t.vx;
+      let nvy = t.vy;
+      
+      if (nx < 30 || nx > 500) nvx = -nvx;
+      if (ny < 40 || ny > 200) nvy = -nvy;
+      
+      return {
+        ...t,
+        x: Math.max(30, Math.min(500, nx)),
+        y: Math.max(40, Math.min(200, ny)),
+        vx: nvx,
+        vy: nvy
+      };
+    }).filter(() => Math.random() > 0.01); // 1% chance of person leaving frame
+    
+    simTrackStates.set(camId, tracks);
+    
+    const vmsTracks = tracks.map((t, idx) => ({
+      trackId: 20000 + idx + (camIdx * 100),
+      bbox: {
+        x: t.x,
+        y: t.y,
+        w: 90,
+        h: 180
+      },
+      state: t.userId.startsWith('visitor') ? 'UNKNOWN' : 'VERIFIED',
+      detectionScore: 0.88 + 0.1 * Math.random(),
+      similarity: 0.86 + 0.13 * Math.random(),
+      identity: t.userId.startsWith('visitor') ? undefined : {
+        id: t.userId,
+        fullName: t.fullName,
+        role: 'EMPLOYEE',
+        department: 'Operations',
+        enrolledDate: '2026-07-14',
+        hasEmbedding: true,
+        lastActive: 'Hozirgina'
+      }
+    }));
+    
+    cameraTracksCache.set(camId, vmsTracks);
+  });
+}
+
+// Run track simulation every 1.5 seconds for fluid layout coordinates update
+setInterval(updateSimulatedCameraTracks, 1500);
 
 function generateCameraSvg(cameraId: string, cameraName: string, status: string, location: string, width = 640, height = 360): string {
   const now = new Date();
@@ -1854,6 +1965,73 @@ async function startServer() {
         },
         dailyTrend
       });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ==========================================
+  // MOVEMENT & RELATIONSHIP INTELLIGENCE ENDPOINTS
+  // ==========================================
+
+  // Get general spatiotemporal intelligence system stats
+  app.get("/api/intelligence/stats", (req, res) => {
+    try {
+      res.json(movementIntelligenceEngine.getSystemStats());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Search movement observations
+  app.get("/api/intelligence/search", (req, res) => {
+    try {
+      const { personId, cameraId, zoneId, startTime, endTime } = req.query;
+      const results = movementIntelligenceEngine.searchMovement({
+        personId: personId ? String(personId) : undefined,
+        cameraId: cameraId ? String(cameraId) : undefined,
+        zoneId: zoneId ? String(zoneId) : undefined,
+        startTime: startTime ? String(startTime) : undefined,
+        endTime: endTime ? String(endTime) : undefined,
+      });
+      res.json(results);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Compile relationship & travel route intelligence report for a person
+  app.get("/api/intelligence/report/:personId", (req, res) => {
+    try {
+      const { personId } = req.params;
+      const report = movementIntelligenceEngine.compileMovementReport(personId);
+      if (!report) {
+        return res.status(404).json({ error: "Sinflangan shaxs profil topilmadi" });
+      }
+      res.json(report);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Manually log direct physical camera observation (e.g. from RT-DETR or operator)
+  app.post("/api/intelligence/observe", async (req, res) => {
+    try {
+      const { personId, personName, role, cameraId, cameraName, zoneId, zoneName, timestamp } = req.body;
+      if (!personId || !cameraId) {
+        return res.status(400).json({ error: "Person ID and Camera ID are required." });
+      }
+      const obs = await movementIntelligenceEngine.logObservation({
+        personId,
+        personName: personName || "Noma'lum Shaxs",
+        role: role || "Mijoz",
+        cameraId,
+        cameraName: cameraName || "Kamera",
+        zoneId: zoneId || undefined,
+        zoneName: zoneName || undefined,
+        timestamp: timestamp || new Date().toISOString()
+      });
+      res.json({ success: true, observation: obs });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

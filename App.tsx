@@ -18,6 +18,8 @@ import { AuditLogsView } from './components/AuditLogsView';
 import { IdentityFusionConsole } from './components/IdentityFusionConsole';
 import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligenceConsole';
 import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
+import { PersonIntelligencePlatform } from './components/PersonIntelligencePlatform';
+import { SOCCommandCenter } from './components/SOCCommandCenter';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
 import { User } from './types';
@@ -25,7 +27,7 @@ import {
   LayoutDashboard, Users, FileText, Settings, Search, Bell, Menu, X, Shield, 
   ChevronDown, Camera, Video, LogOut, User as UserIcon, Lock, HelpCircle, 
   KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, PenTool, Moon, Sun,
-  Activity, Terminal, ShieldAlert, Layers, Eye, Network
+  Activity, Terminal, ShieldAlert, Layers, Eye, Network, Fingerprint
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './services/i18n';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
@@ -134,7 +136,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState(!!authService.getCurrentUser()); 
   
-  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' | 'soc_center'>('dashboard');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
@@ -199,6 +201,8 @@ const AppContent: React.FC = () => {
           case 'system_health': return 'Tizim Salomatligi';
           case 'audit_logs': return 'Xavfsizlik Auditi';
           case 'alarm_center': return 'Tizim Favqulodda Vaziyatlar Markazi';
+          case 'person_intelligence': return 'Shaxslar Intellektual Tizimi';
+          case 'soc_center': return 'SOC Unified Command Center';
           default: return '';
       }
   };
@@ -321,6 +325,12 @@ const AppContent: React.FC = () => {
               onClick={() => { setCurrentView('multi_modal_intel'); setIsSidebarOpen(false); }} 
             />
             <SidebarItem 
+              icon={Fingerprint} 
+              label="Person Intelligence Platform" 
+              active={currentView === 'person_intelligence'} 
+              onClick={() => { setCurrentView('person_intelligence'); setIsSidebarOpen(false); }} 
+            />
+            <SidebarItem 
               icon={Eye} 
               label="Appearance Intelligence" 
               active={currentView === 'appearance_intel'} 
@@ -330,6 +340,12 @@ const AppContent: React.FC = () => {
 
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Monitoring & Audit</p>
+            <SidebarItem 
+              icon={Shield} 
+              label="SOC Command Center" 
+              active={currentView === 'soc_center'} 
+              onClick={() => { setCurrentView('soc_center'); setIsSidebarOpen(false); }} 
+            />
             <SidebarItem 
               icon={ShieldAlert} 
               label="Alarmlar Markazi" 
@@ -507,6 +523,8 @@ const AppContent: React.FC = () => {
                       {currentView === 'identity_fusion' && <IdentityFusionConsole />}
                       {currentView === 'appearance_intel' && <AppearanceIntelligenceConsole />}
                       {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
+                      {currentView === 'person_intelligence' && <PersonIntelligencePlatform />}
+                      {currentView === 'soc_center' && <SOCCommandCenter />}
                   </motion.div>
                 </AnimatePresence>
             </div>

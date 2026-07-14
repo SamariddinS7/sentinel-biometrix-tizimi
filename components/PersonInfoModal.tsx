@@ -18,9 +18,10 @@ export interface PersonDetails {
 interface PersonInfoModalProps {
     person: PersonDetails | null;
     onClose: () => void;
+    onViewIntelligence?: (personId: string) => void;
 }
 
-export const PersonInfoModal: React.FC<PersonInfoModalProps> = ({ person, onClose }) => {
+export const PersonInfoModal: React.FC<PersonInfoModalProps> = ({ person, onClose, onViewIntelligence }) => {
     if (!person) return null;
 
     const isUnknown = person.name === 'UNKNOWN' || person.status === 'UNKNOWN';
@@ -115,12 +116,18 @@ export const PersonInfoModal: React.FC<PersonInfoModalProps> = ({ person, onClos
                         </div>
                     </div>
 
-                    {/* Footer Actions */}
+                     {/* Footer Actions */}
                     <div className="w-full flex gap-3">
-                        <button className="flex-1 py-2.5 rounded-lg bg-app-surface hover:bg-app-surface text-text-secondary text-sm font-bold transition-colors">
+                        <button 
+                            onClick={() => onViewIntelligence && onViewIntelligence(person.id)}
+                            className="flex-1 py-2.5 rounded-lg bg-app-surface hover:bg-app-surface text-text-secondary text-sm font-bold transition-colors"
+                        >
                             View History
                         </button>
-                        <button className="flex-1 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition-colors shadow-lg shadow-cyan-900/20">
+                        <button 
+                            onClick={() => onViewIntelligence && onViewIntelligence(person.id)}
+                            className="flex-1 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition-colors shadow-lg shadow-cyan-900/20"
+                        >
                             View Profile
                         </button>
                     </div>

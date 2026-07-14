@@ -102,7 +102,7 @@ class VmsHealthService {
 
     setTimeout(() => {
       this.services[idx].status = 'ONLINE';
-      this.services[idx].memoryUsageMb = Math.floor(150 + Math.random() * 200);
+      this.services[idx].memoryUsageMb = 0; // Requires actual memory monitoring hook in production
       this.services[idx].restartCount += 1;
     }, 1500);
 

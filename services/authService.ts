@@ -19,22 +19,11 @@ class AuthService {
       if (stored && stored !== "undefined") {
         this.currentUser = JSON.parse(stored);
       } else {
-        // Default Admin for Demo Initialization
-        this.currentUser = {
-          id: 'U-ADMIN-01',
-          fullName: 'Admin User',
-          email: 'admin@sentinel.sys',
-          role: UserRole.ADMIN,
-          department: 'Security Operations',
-          enrolledDate: '2023-01-01',
-          hasEmbedding: true,
-          lastActive: 'Just now',
-          avatarUrl: 'https://ui-avatars.com/api/?name=Admin+User&background=0ea5e9&color=fff&size=128',
-          permissions: ['ALL_ACCESS', 'MANAGE_USERS', 'VIEW_LOGS', 'SYSTEM_CONFIG']
-        };
+        this.currentUser = null;
       }
     } catch (e) {
-      console.error("Failed to load user session", e);
+      console.error("Failed to load user:", e);
+      this.currentUser = null;
     }
   }
 
