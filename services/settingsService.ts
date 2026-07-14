@@ -91,7 +91,8 @@ export const settingsService = {
     try {
         // In production: const res = await fetch(API_BASE); return await res.json();
         const stored = localStorage.getItem('sentinel_config');
-        return stored ? JSON.parse(stored) : DEFAULT_SETTINGS;
+        if (stored && stored !== "undefined") return JSON.parse(stored);
+        return DEFAULT_SETTINGS;
     } catch (e) {
         console.error("Config fetch failed", e);
         return DEFAULT_SETTINGS;

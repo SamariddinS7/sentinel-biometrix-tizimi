@@ -60,10 +60,10 @@ export const HeatmapOverlay: React.FC<HeatmapOverlayProps> = ({ data, mode, visi
             ))}
             
             {/* Legend Overlay - Matches Screenshot (Bottom Right, Dark Box) */}
-            <div className="absolute bottom-4 right-4 bg-slate-950/90 border border-slate-700 p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[140px]">
-                <div className="font-bold text-[10px] uppercase text-slate-400 mb-2 tracking-widest">{mode} Heatmap</div>
+            <div className="absolute bottom-4 right-4 bg-app-primary/90 border border-border p-3 rounded-lg shadow-2xl pointer-events-auto min-w-[140px]">
+                <div className="font-bold text-[10px] uppercase text-text-secondary mb-2 tracking-widest">{mode} Heatmap</div>
                 <div className="h-2 w-full rounded bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 mb-1"></div>
-                <div className="flex justify-between text-[9px] text-slate-500 font-mono">
+                <div className="flex justify-between text-[9px] text-text-primary0 font-mono">
                     <span>Poor</span>
                     <span>Optimal</span>
                 </div>

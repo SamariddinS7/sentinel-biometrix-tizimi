@@ -33,6 +33,7 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
   }, [globalSearchTerm]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [rescanUser, setRescanUser] = useState<User | null>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -73,41 +74,8 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
   const startCamera = async () => {
     try {
       setIsCameraOpen(true);
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      } catch (mediaErr) {
-        console.warn("Real camera failed, falling back to mock stream:", mediaErr);
-        const canvas = document.createElement('canvas');
-        canvas.width = 640;
-        canvas.height = 480;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // @ts-ignore
-          stream = canvas.captureStream(30);
-          streamRef.current = stream; // Set this before the loop starts
-          
-          let frame = 0;
-          const drawMockFeed = () => {
-            ctx.fillStyle = '#1e293b';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#334155';
-            ctx.font = '24px monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('MOCK CAMERA FEED', canvas.width / 2, canvas.height / 2);
-            ctx.fillStyle = '#0ea5e9';
-            ctx.fillRect((frame * 5) % canvas.width, canvas.height / 2 + 30, 50, 10);
-            frame++;
-            if (streamRef.current) {
-              requestAnimationFrame(drawMockFeed);
-            }
-          };
-          drawMockFeed();
-        } else {
-          throw mediaErr;
-        }
-      }
-      
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -238,8 +206,25 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
     resetBiometrics();
   };
 
+  const handleUpdateBiometrics = async () => {
+    if (!rescanUser || !faceDescriptor) return;
+
+    const updatedUser: User = {
+      ...rescanUser,
+      hasEmbedding: true,
+      faceDescriptor: faceDescriptor,
+      avatarUrl: biometricImage || rescanUser.avatarUrl
+    };
+
+    await userService.saveUser(updatedUser);
+    const updatedUsers = await userService.getAllUsers();
+    setUsers(updatedUsers || []);
+    setRescanUser(null);
+    resetBiometrics();
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="h-full overflow-y-auto pr-1 custom-scrollbar pb-10 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-white">Foydalanuvchilarni Boshqarish</h2>
         <div className="flex gap-2">
@@ -255,167 +240,317 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
 
       <div className="flex gap-4 mb-6">
         <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-primary0" />
             <input 
                 type="text" 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Ism, ID yoki bo'lim bo'yicha qidirish..." 
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent placeholder:text-slate-600"
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-app-panel border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent placeholder:text-text-muted"
             />
         </div>
       </div>
 
-      <div className="bg-slate-900 shadow-sm rounded-xl border border-slate-800 overflow-hidden">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-950 border-b border-slate-800">
-            <tr>
-              <th className="px-6 py-4 font-semibold text-slate-400">Shaxs</th>
-              <th className="px-6 py-4 font-semibold text-slate-400">Rol</th>
-              <th className="px-6 py-4 font-semibold text-slate-400">Bo'lim</th>
-              <th className="px-6 py-4 font-semibold text-slate-400">Biometrik Holat</th>
-              <th className="px-6 py-4 font-semibold text-slate-400">Qo'shilgan Sana</th>
-              <th className="px-6 py-4 font-semibold text-slate-400 text-right">Amallar</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {filteredUsers.length > 0 ? filteredUsers.map((user) => (
-              <tr key={user.id} className="hover:bg-slate-800/50 transition-colors group">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <img src={user.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-slate-800 object-cover border border-slate-700" />
-                    <div>
-                      <p className="font-medium text-slate-200">{user.fullName}</p>
-                      <p className="text-xs text-slate-500">{user.id}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border
-                    ${user.role === UserRole.ADMIN ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 
-                      user.role === UserRole.OPERATOR ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'}
-                  `}>
-                    {user.role}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-slate-400">{user.department}</td>
-                <td className="px-6 py-4">
-                  {user.hasEmbedding ? (
-                    <div className="flex items-center gap-1.5 text-emerald-500">
-                      <Fingerprint className="w-4 h-4" />
-                      <span className="text-xs font-medium">Vektor Kodlangan</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-slate-500">
-                      <Fingerprint className="w-4 h-4" />
-                      <span className="text-xs">Kiritilmagan</span>
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-slate-500">{user.enrolledDate}</td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="text-slate-500 hover:text-red-400 p-1.5 hover:bg-red-950/30 rounded" 
-                        title="Shaxsni Unutish (GDPR Erasure)"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <button className="text-slate-500 hover:text-slate-300 p-1.5 hover:bg-slate-800 rounded">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
-                  </div>
-                </td>
-              </tr>
-            )) : (
+      <div className="bg-app-panel shadow-sm rounded-xl border border-border overflow-hidden">
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-sm min-w-[700px]">
+            <thead className="bg-app-primary border-b border-border">
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Search size={24} className="opacity-20" />
-                    <p>Sizning so'rovingiz bo'yicha hech kim topilmadi.</p>
-                  </div>
-                </td>
+                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Shaxs</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Rol</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Bo'lim</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Biometrik Holat</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Qo'shilgan Sana</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary text-right">Amallar</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {filteredUsers.length > 0 ? filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-app-surface/40 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <img src={user.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-app-surface object-cover border border-border shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{user.fullName}</p>
+                        <p className="text-xs text-text-primary0 truncate">{user.id}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border whitespace-nowrap
+                      ${user.role === UserRole.ADMIN ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 
+                        user.role === UserRole.OPERATOR ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-app-surface text-text-secondary border-border'}
+                    `}>
+                      {user.role}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-text-secondary whitespace-nowrap">{user.department}</td>
+                  <td className="px-6 py-4">
+                    {user.hasEmbedding ? (
+                      <div className="flex items-center gap-1.5 text-emerald-500 whitespace-nowrap">
+                        <Fingerprint className="w-4 h-4" />
+                        <span className="text-xs font-medium">Vektor Kodlangan</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-text-primary0 whitespace-nowrap">
+                        <Fingerprint className="w-4 h-4" />
+                        <span className="text-xs">Kiritilmagan</span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-text-primary0 whitespace-nowrap">{user.enrolledDate}</td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="text-text-primary0 hover:text-red-400 p-2 hover:bg-red-950/30 rounded" 
+                          title="Shaxsni Unutish (GDPR Erasure)"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => setRescanUser(user)}
+                          className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded" 
+                          title="Yuzni Qayta Skanerlash"
+                        >
+                          <ScanFace className="w-4 h-4" />
+                        </button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-text-primary0">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Search size={24} className="opacity-20" />
+                      <p>Sizning so'rovingiz bo'yicha hech kim topilmadi.</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl scale-100 animate-in zoom-in-95 duration-200 custom-scrollbar">
-             <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950 sticky top-0 z-10">
-               <div className="flex items-center gap-2">
-                 <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                    <UserIcon size={18} />
+      {rescanUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-app-panel border border-border rounded-xl w-full max-w-xl max-h-[95vh] overflow-y-auto shadow-2xl scale-100 animate-in zoom-in-95 duration-200 flex flex-col custom-scrollbar">
+             <div className="px-4 sm:px-6 py-4 border-b border-border flex justify-between items-center bg-app-primary sticky top-0 z-10 shrink-0">
+               <div className="flex items-center gap-2 min-w-0">
+                 <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
+                    <ScanFace size={18} />
                  </div>
-                 <h3 className="font-bold text-white">Yangi Xodimni Ro'yxatdan O'tkazish</h3>
+                 <h3 className="font-bold text-white truncate">Yuzni Yangilash: {rescanUser.fullName}</h3>
                </div>
-               <button onClick={closeModal} className="text-slate-400 hover:text-white transition-colors">
+               <button onClick={() => { setRescanUser(null); resetBiometrics(); }} className="p-2 text-text-secondary hover:text-white transition-colors shrink-0">
                  <X size={20}/>
                </button>
              </div>
              
-             <form onSubmit={handleRegister} className="p-6 space-y-6">
+             <div className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
+                <div className="bg-app-primary rounded-xl border border-border p-3 sm:p-4 flex flex-col">
+                    <div className="mb-3 flex items-center justify-between">
+                        <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider">Jonli Biometrik Yangilash</label>
+                        {biometricImage && (
+                            <button type="button" onClick={resetBiometrics} className="text-xs text-red-400 hover:text-red-300">Qayta urinish</button>
+                        )}
+                    </div>
+
+                    <div className="flex-1 bg-app-panel rounded-lg border-2 border-dashed border-border relative overflow-hidden flex flex-col items-center justify-center min-h-[250px] sm:min-h-[300px]">
+                        {!biometricImage && !isCameraOpen && (
+                            <div className="text-center p-4">
+                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-app-surface rounded-full flex items-center justify-center mx-auto mb-4 text-cyan-400 animate-pulse">
+                                    <ScanFace size={28} />
+                                </div>
+                                <p className="text-sm text-text-primary mb-4 max-w-[200px] mx-auto">Modelni yangilash uchun kamerani oching.</p>
+                                <button type="button" onClick={startCamera} className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-all mx-auto shadow-lg shadow-cyan-500/20">
+                                    <Camera size={16} /> Skanerlash
+                                </button>
+                            </div>
+                        )}
+
+                        {isCameraOpen && (
+                            <div className="absolute inset-0 bg-black flex flex-col">
+                                <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full object-cover" />
+                                <div className="p-4 bg-black/80 backdrop-blur flex justify-center gap-4">
+                                    <button type="button" onClick={stopCamera} className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-white transition-colors">Bekor qilish</button>
+                                    <button type="button" onClick={capturePhoto} className="px-6 py-2 rounded-lg bg-cyan-500 text-white text-sm font-bold shadow-lg shadow-cyan-500/30">Skanerlash</button>
+                                </div>
+                                {/* Scanning Effect */}
+                                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                                    <div className="w-full h-1 bg-cyan-400/50 absolute top-0 animate-[scan_3s_linear_infinite]"></div>
+                                </div>
+                                <style>{`
+                                    @keyframes scan {
+                                        0% { top: 0; }
+                                        100% { top: 100%; }
+                                    }
+                                `}</style>
+                            </div>
+                        )}
+
+                        {biometricImage && (
+                            <div className="absolute inset-0 w-full h-full">
+                                <img src={biometricImage} alt="Preview" className="w-full h-full object-cover opacity-40" />
+                                
+                                <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
+                                    {(isAnalyzing || modelLoading) ? (
+                                        <div className="flex flex-col items-center gap-4 text-cyan-400 bg-app-primary/90 p-6 sm:p-8 rounded-2xl border border-cyan-500/30 backdrop-blur-xl shadow-2xl">
+                                            <Loader2 size={40} className="animate-spin" />
+                                            <div className="text-center">
+                                                <p className="text-base sm:text-lg font-bold animate-pulse">BIOMETRIK TAHLIL</p>
+                                                <p className="text-[10px] sm:text-xs text-text-secondary mt-1">{modelLoading ? "Vektorlar hisoblanmoqda..." : "Gemini AI tekshirmoqda..."}</p>
+                                            </div>
+                                        </div>
+                                    ) : faceMetadata ? (
+                                        <div className="w-full max-w-sm bg-app-primary/90 backdrop-blur-xl p-4 sm:p-5 rounded-2xl border border-cyan-500/30 space-y-4 shadow-2xl animate-in fade-in zoom-in-95">
+                                            <div className="flex items-center justify-between border-b border-border pb-3">
+                                                <span className="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-2">
+                                                    <CheckCircle2 size={16} /> Muvaffaqiyatli
+                                                </span>
+                                                <span className="text-[9px] sm:text-[10px] text-text-secondary font-mono bg-app-surface px-2 py-0.5 rounded border border-border">
+                                                    99.8% ANIQLIK
+                                                </span>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-app-surface p-2 sm:p-3 rounded-xl border border-border/50">
+                                                    <span className="text-[9px] sm:text-[10px] text-text-primary0 block uppercase tracking-wider">Yosh</span>
+                                                    <span className="text-xs sm:text-sm text-text-primary font-mono font-bold">{faceMetadata.estimatedAge}</span>
+                                                </div>
+                                                <div className="bg-app-surface p-2 sm:p-3 rounded-xl border border-border/50">
+                                                    <span className="text-[9px] sm:text-[10px] text-text-primary0 block uppercase tracking-wider">Ifoda</span>
+                                                    <span className="text-xs sm:text-sm text-text-primary font-bold">{faceMetadata.expression}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+                                                    <span>Jonlilik</span>
+                                                    <span className="text-emerald-400">{(faceMetadata.livenessConfidence * 100).toFixed(1)}%</span>
+                                                </div>
+                                                <div className="h-1.5 w-full bg-app-surface rounded-full overflow-hidden border border-border/30">
+                                                    <div 
+                                                        className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-emerald-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]" 
+                                                        style={{ width: `${faceMetadata.livenessConfidence * 100}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : analysisError ? (
+                                        <div className="bg-red-950/90 backdrop-blur-xl border border-red-500/30 p-4 sm:p-6 rounded-2xl flex flex-col items-center text-center gap-3 text-red-200 shadow-2xl">
+                                            <AlertCircle size={28} className="text-red-500" />
+                                            <div>
+                                                <p className="font-bold text-sm">Skanerlashda xatolik</p>
+                                                <p className="text-[10px] text-red-300/70 mt-1">{analysisError}</p>
+                                            </div>
+                                            <button onClick={resetBiometrics} className="mt-2 px-3 py-1.5 bg-red-900/50 hover:bg-red-800/50 rounded-lg text-[10px] font-bold transition-colors">Qayta urinish</button>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2 shrink-0">
+                    <button 
+                        type="button" 
+                        onClick={() => { setRescanUser(null); resetBiometrics(); }} 
+                        className="px-4 sm:px-5 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-white hover:bg-app-surface transition-colors"
+                    >
+                        Bekor qilish
+                    </button>
+                    <button 
+                        onClick={handleUpdateBiometrics}
+                        disabled={isAnalyzing || modelLoading || !faceDescriptor}
+                        className="px-6 sm:px-8 py-2.5 rounded-lg text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap"
+                    >
+                        {isAnalyzing ? "Tahlil..." : "Yangilash"}
+                    </button>
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-app-panel border border-border rounded-xl w-full max-w-2xl max-h-[95vh] overflow-y-auto shadow-2xl scale-100 animate-in zoom-in-95 duration-200 custom-scrollbar flex flex-col">
+             <div className="px-4 sm:px-6 py-4 border-b border-border flex justify-between items-center bg-app-primary sticky top-0 z-10 shrink-0">
+               <div className="flex items-center gap-2">
+                 <div className="w-8 h-8 rounded bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
+                    <UserIcon size={18} />
+                 </div>
+                 <h3 className="font-bold text-white text-sm sm:text-base">Yangi Xodim Ro'yxatdan O'tkazish</h3>
+               </div>
+               <button onClick={closeModal} className="p-2 text-text-secondary hover:text-white transition-colors shrink-0">
+                 <X size={20}/>
+               </button>
+             </div>
+             
+             <form onSubmit={handleRegister} className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
-                        <div className="col-span-2">
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">To'liq Ism (F.I.Sh) *</label>
+                        <div>
+                            <label className="block text-[10px] sm:text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wider">To'liq Ism (F.I.Sh) *</label>
                             <input 
                                 name="fullName"
                                 value={formData.fullName}
                                 onChange={handleInputChange}
                                 type="text" 
-                                className={`w-full bg-slate-950 border rounded-lg px-4 py-2.5 text-slate-200 focus:ring-1 outline-none transition-all placeholder:text-slate-600 ${formErrors.fullName ? 'border-red-500 focus:ring-red-500' : 'border-slate-800 focus:ring-cyan-500 focus:border-cyan-500'}`}
+                                className={`w-full bg-app-primary border rounded-lg px-4 py-2.5 text-text-primary text-sm focus:ring-1 outline-none transition-all placeholder:text-text-muted ${formErrors.fullName ? 'border-red-500 focus:ring-red-500' : 'border-border focus:ring-cyan-500 focus:border-cyan-500'}`}
                                 placeholder="masalan, Sarvar Komilov"
                             />
                         </div>
                         
-                        <div>
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Xodim ID</label>
-                            <input 
-                                name="id"
-                                value={formData.id}
-                                onChange={handleInputChange}
-                                type="text" 
-                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-slate-200 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder:text-slate-600"
-                                placeholder="Bo'sh bo'lsa avto-yaratiladi"
-                            />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wider">Xodim ID</label>
+                                <input 
+                                    name="id"
+                                    value={formData.id}
+                                    onChange={handleInputChange}
+                                    type="text" 
+                                    className="w-full bg-app-primary border border-border rounded-lg px-3 py-2.5 text-text-primary text-sm focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder:text-text-muted"
+                                    placeholder="Avto-yaratish"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] sm:text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wider">Bo'lim *</label>
+                                <input 
+                                    name="department"
+                                    value={formData.department}
+                                    onChange={handleInputChange}
+                                    type="text" 
+                                    list="departments"
+                                    className={`w-full bg-app-primary border rounded-lg px-3 py-2.5 text-text-primary text-sm focus:ring-1 outline-none transition-all placeholder:text-text-muted ${formErrors.department ? 'border-red-500 focus:ring-red-500' : 'border-border focus:ring-cyan-500 focus:border-cyan-500'}`}
+                                    placeholder="Xavfsizlik"
+                                />
+                                <datalist id="departments">
+                                    <option value="Xavfsizlik" />
+                                    <option value="IT" />
+                                    <option value="HR" />
+                                    <option value="Operatsiyalar" />
+                                </datalist>
+                            </div>
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Bo'lim *</label>
-                            <input 
-                                name="department"
-                                value={formData.department}
-                                onChange={handleInputChange}
-                                type="text" 
-                                list="departments"
-                                className={`w-full bg-slate-950 border rounded-lg px-4 py-2.5 text-slate-200 focus:ring-1 outline-none transition-all placeholder:text-slate-600 ${formErrors.department ? 'border-red-500 focus:ring-red-500' : 'border-slate-800 focus:ring-cyan-500 focus:border-cyan-500'}`}
-                                placeholder="masalan, Xavfsizlik"
-                            />
-                            <datalist id="departments">
-                                <option value="Xavfsizlik" />
-                                <option value="IT" />
-                                <option value="HR" />
-                                <option value="Operatsiyalar" />
-                            </datalist>
-                        </div>
-
-                        <div className="col-span-2">
-                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Tizim Roli</label>
+                            <label className="block text-[10px] sm:text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wider">Tizim Roli</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {[UserRole.EMPLOYEE, UserRole.OPERATOR, UserRole.ADMIN].map(role => (
                                     <button
                                         key={role}
                                         type="button"
                                         onClick={() => setFormData(prev => ({ ...prev, role }))}
-                                        className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+                                        className={`py-2 rounded-lg text-[10px] sm:text-xs font-bold border transition-all truncate px-1 ${
                                             formData.role === role 
                                             ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400' 
-                                            : 'bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-800'
+                                            : 'bg-app-primary border-border text-text-primary0 hover:bg-app-surface'
                                         }`}
                                     >
                                         {role}
@@ -425,31 +560,31 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                         </div>
                     </div>
 
-                    <div className="bg-slate-950 rounded-xl border border-slate-800 p-4 flex flex-col">
+                    <div className="bg-app-primary rounded-xl border border-border p-3 sm:p-4 flex flex-col">
                         <div className="mb-3 flex items-center justify-between">
-                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Yuz Biometriyasi</label>
+                            <label className="block text-[10px] sm:text-xs font-bold text-text-secondary uppercase tracking-wider">Yuz Biometriyasi</label>
                             {biometricImage && (
-                                <button type="button" onClick={resetBiometrics} className="text-xs text-red-400 hover:text-red-300">Bekor qilish</button>
+                                <button type="button" onClick={resetBiometrics} className="text-[10px] text-red-400 hover:text-red-300">Bekor qilish</button>
                             )}
                         </div>
 
-                        <div className="flex-1 bg-slate-900 rounded-lg border-2 border-dashed border-slate-800 relative overflow-hidden flex flex-col items-center justify-center min-h-[250px]">
+                        <div className="flex-1 bg-app-panel rounded-lg border-2 border-dashed border-border relative overflow-hidden flex flex-col items-center justify-center min-h-[200px] sm:min-h-[250px]">
                             
                             {!biometricImage && !isCameraOpen && (
-                                <div className="text-center p-4">
-                                    <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-500">
-                                        <UserIcon size={32} />
+                                <div className="text-center p-3 sm:p-4">
+                                    <div className="w-12 h-12 sm:w-16 sm:h-16 bg-app-surface rounded-full flex items-center justify-center mx-auto mb-3 text-text-primary0">
+                                        <UserIcon size={28} />
                                     </div>
                                     <div className="flex gap-2 justify-center">
-                                        <button type="button" onClick={startCamera} className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 transition-colors">
+                                        <button type="button" onClick={startCamera} className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5 transition-colors">
                                             <Camera size={14} /> Kamera
                                         </button>
-                                        <label className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
-                                            <Upload size={14} /> Yuklash
-                                            <input type="file" className="hidden" accept="image/*" multiple onChange={handleFileUpload} />
+                                        <label className="px-3 py-2 bg-app-surface hover:bg-app-surface text-text-secondary rounded-lg text-[10px] sm:text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors border border-border">
+                                            <Upload size={14} /> Fayl
+                                            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
                                         </label>
                                     </div>
-                                    <p className="mt-3 text-[10px] text-slate-500">Qo'llab-quvvatlanadi: JPG, PNG, MP4 (Maks 10 fayl)</p>
+                                    <p className="mt-3 text-[9px] sm:text-[10px] text-text-primary0 px-2 leading-relaxed">JPG, PNG (Maks 10MB)</p>
                                 </div>
                             )}
 
@@ -457,8 +592,8 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                                 <div className="absolute inset-0 bg-black flex flex-col">
                                     <video ref={videoRef} autoPlay playsInline muted className="flex-1 w-full object-cover" />
                                     <div className="p-3 bg-black flex justify-center gap-3">
-                                        <button type="button" onClick={stopCamera} className="px-4 py-2 rounded text-xs font-medium text-slate-400 hover:text-white">Bekor qilish</button>
-                                        <button type="button" onClick={capturePhoto} className="px-4 py-2 rounded bg-white text-black text-xs font-bold">Rasmga Olish</button>
+                                        <button type="button" onClick={stopCamera} className="px-3 py-1.5 rounded text-[10px] font-medium text-text-secondary hover:text-white">Bekor</button>
+                                        <button type="button" onClick={capturePhoto} className="px-4 py-1.5 rounded bg-white text-black text-[10px] font-bold">Rasmga Olish</button>
                                     </div>
                                 </div>
                             )}
@@ -468,66 +603,49 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                                     <img src={biometricImage} alt="Preview" className="w-full h-full object-cover opacity-60" />
                                     
                                     {/* Analysis Result Overlay */}
-                                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                                    <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
                                         {(isAnalyzing || modelLoading) ? (
-                                            <div className="flex items-center gap-3 text-cyan-400 bg-slate-950/80 p-3 rounded-lg border border-slate-700 backdrop-blur-md">
-                                                <Loader2 size={18} className="animate-spin" />
-                                                <span className="text-sm font-bold animate-pulse">
-                                                    {modelLoading ? "Vektorlar Kodlanmoqda..." : "AI Yuzni Tahlil Qilmoqda..."}
+                                            <div className="flex items-center gap-3 text-cyan-400 bg-app-primary/80 p-2 sm:p-3 rounded-lg border border-border backdrop-blur-md">
+                                                <Loader2 size={16} className="animate-spin shrink-0" />
+                                                <span className="text-[10px] sm:text-xs font-bold animate-pulse">
+                                                    {modelLoading ? "Kodlanmoqda..." : "Tahlil qilinmoqda..."}
                                                 </span>
                                             </div>
                                         ) : faceMetadata ? (
-                                            <div className="w-full bg-slate-950/80 backdrop-blur-md p-3 rounded-lg border border-slate-700 space-y-3 animate-in slide-in-from-bottom-4">
-                                                <div className="flex items-center justify-between border-b border-slate-700 pb-2">
-                                                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                                                        <Sparkles size={12} /> Gemini Tahlili
+                                            <div className="w-full bg-app-primary/80 backdrop-blur-md p-2 sm:p-3 rounded-lg border border-border space-y-2 animate-in slide-in-from-bottom-4">
+                                                <div className="flex items-center justify-between border-b border-border pb-2">
+                                                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                                                        <Sparkles size={10} /> Gemini AI
                                                     </span>
-                                                    <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                                                        <ScanFace size={10} /> VEKTOR KODLANDI
+                                                    <span className="text-[9px] text-text-secondary font-mono flex items-center gap-1 uppercase">
+                                                        Vektor Ok
                                                     </span>
                                                 </div>
                                                 
-                                                <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                                    <div className="bg-slate-800 p-1.5 rounded">
-                                                        <span className="text-slate-500 block">Yosh Taxmini</span>
-                                                        <span className="text-slate-200 font-mono">{faceMetadata.estimatedAge}</span>
+                                                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                                    <div className="bg-app-surface p-1 rounded">
+                                                        <span className="text-text-primary0 block">Yosh</span>
+                                                        <span className="text-text-primary font-mono">{faceMetadata.estimatedAge}</span>
                                                     </div>
-                                                    <div className="bg-slate-800 p-1.5 rounded">
-                                                        <span className="text-slate-500 block">Ifoda</span>
-                                                        <span className="text-slate-200">{faceMetadata.expression}</span>
+                                                    <div className="bg-app-surface p-1 rounded">
+                                                        <span className="text-text-primary0 block">Ifoda</span>
+                                                        <span className="text-text-primary truncate">{faceMetadata.expression}</span>
                                                     </div>
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <div className="flex justify-between text-[10px] text-slate-400">
-                                                        <span>Jonlilik Ishonchi</span>
-                                                        <span className={faceMetadata.livenessConfidence > 0.8 ? "text-emerald-400" : "text-amber-400"}>
-                                                            {(faceMetadata.livenessConfidence * 100).toFixed(0)}%
-                                                        </span>
-                                                    </div>
-                                                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                                    <div className="h-1 w-full bg-app-surface rounded-full overflow-hidden">
                                                         <div 
                                                             className={`h-full rounded-full ${faceMetadata.livenessConfidence > 0.8 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
                                                             style={{ width: `${faceMetadata.livenessConfidence * 100}%` }}
                                                         />
                                                     </div>
                                                 </div>
-
-                                                <div className="flex flex-wrap gap-1">
-                                                    {faceMetadata.wearables !== 'None' && faceMetadata.wearables.split(',').map((w, i) => (
-                                                        <span key={i} className="text-[9px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-500/30">
-                                                            {w.trim()}
-                                                        </span>
-                                                    ))}
-                                                    <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded border border-slate-700">
-                                                        {faceMetadata.features}
-                                                    </span>
-                                                </div>
                                             </div>
                                         ) : analysisError ? (
-                                            <div className="bg-red-950/90 backdrop-blur border border-red-900 p-3 rounded-lg flex items-center gap-2 text-red-200 text-xs animate-in slide-in-from-bottom-2">
-                                                <AlertCircle size={14} className="shrink-0" />
-                                                {analysisError}
+                                            <div className="bg-red-950/90 backdrop-blur border border-red-900 p-2 rounded-lg flex items-center gap-1.5 text-red-200 text-[10px] animate-in slide-in-from-bottom-2">
+                                                <AlertCircle size={12} className="shrink-0" />
+                                                <span className="truncate">{analysisError}</span>
                                             </div>
                                         ) : null}
                                     </div>
@@ -537,18 +655,18 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                     </div>
                 </div>
 
-                <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+                <div className="pt-4 border-t border-border flex justify-end gap-3 shrink-0">
                     <button 
                         type="button" 
                         onClick={closeModal} 
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        className="px-4 py-2 rounded-lg text-sm font-medium text-text-secondary hover:text-white hover:bg-app-surface transition-colors"
                     >
                         Bekor qilish
                     </button>
                     <button 
                         type="submit"
                         disabled={isAnalyzing || modelLoading || (!biometricImage && !formData.fullName)}
-                        className="px-6 py-2 rounded-lg text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-6 py-2 rounded-lg text-sm font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                         Ro'yxatdan O'tkazish
                     </button>

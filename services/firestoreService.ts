@@ -1,6 +1,6 @@
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, setLogLevel, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -14,6 +14,33 @@ try {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
+
+let resolveAuthReady: () => void;
+export const authReadyPromise = new Promise<void>((resolve) => {
+  resolveAuthReady = resolve;
+});
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    console.log("User is signed in:", user.uid);
+    resolveAuthReady();
+  } else {
+    console.log("User is NOT signed in");
+  }
+});
+
+// Sign in anonymously on boot to establish a secure authenticated session for the security rules
+signInAnonymously(auth)
+  .then((userCredential) => {
+    console.log("Firebase Auth signed in anonymously successfully.", userCredential.user.uid);
+    testConnection();
+  })
+  .catch((err) => {
+    // Only warn if not already signed in or if it's a genuine error
+    if (err.code !== 'auth/admin-restricted-operation' && !auth.currentUser) {
+      console.warn("Failed to sign in anonymously with Firebase Auth on boot:", err);
+    }
+  });
 
 // Validate connection to Firestore as per critical skill constraints
 async function testConnection() {
@@ -39,11 +66,18 @@ export enum OperationType {
 }
 
 
+const inMemoryCache: Record<string, string> = {};
+
 // LocalStorage caching helpers for offline fallback
 export function getLocalCache<T>(key: string, defaultValue: T[]): T[] {
   try {
+    if (typeof localStorage === 'undefined') {
+      const cached = inMemoryCache[key];
+      if (cached) return JSON.parse(cached) as T[];
+      return defaultValue;
+    }
     const cached = localStorage.getItem(key);
-    if (cached) {
+    if (cached && cached !== "undefined") {
       return JSON.parse(cached) as T[];
     }
     // Initialize if empty
@@ -57,6 +91,10 @@ export function getLocalCache<T>(key: string, defaultValue: T[]): T[] {
 
 export function setLocalCache<T>(key: string, data: T[]): void {
   try {
+    if (typeof localStorage === 'undefined') {
+      inMemoryCache[key] = JSON.stringify(data);
+      return;
+    }
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
     console.warn(`Failed to write localStorage for key ${key}:`, e);

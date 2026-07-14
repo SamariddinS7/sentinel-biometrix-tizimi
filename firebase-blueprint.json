@@ -55,6 +55,75 @@
         "nodeId": { "type": "string" }
       },
       "required": ["id", "userId", "userName", "status"]
+    },
+    "SecurityAlert": {
+      "title": "SecurityAlert",
+      "description": "Security anomaly alert",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "severity": { "type": "string" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "entityId": { "type": "string" },
+        "zoneId": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "severity", "message", "timestamp", "entityId"]
+    },
+    "FusedIdentity": {
+      "title": "FusedIdentity",
+      "description": "Enterprise fused persistent identity record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string" },
+        "label": { "type": "string" },
+        "userId": { "type": "string" },
+        "role": { "type": "string" },
+        "confidence": { "type": "number" },
+        "firstSeen": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "lastCameraId": { "type": "string" },
+        "upperClothingColor": { "type": "string" },
+        "lowerClothingColor": { "type": "string" },
+        "clothingType": { "type": "string" },
+        "shoes": { "type": "string" },
+        "backpack": { "type": "boolean" },
+        "helmet": { "type": "boolean" },
+        "vest": { "type": "boolean" },
+        "bodySize": { "type": "string" },
+        "bodyShape": { "type": "string" }
+      },
+      "required": ["id", "status", "label"]
+    },
+    "MultiModalIdentity": {
+      "title": "MultiModalIdentity",
+      "description": "Enterprise Multi-Modal Global Identity Profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "type": "string" },
+        "label": { "type": "string" },
+        "userId": { "type": "string" },
+        "role": { "type": "string" },
+        "firstSeen": { "type": "string" },
+        "lastSeen": { "type": "string" },
+        "lastCameraId": { "type": "string" }
+      },
+      "required": ["id", "status", "label"]
+    },
+    "AppearanceProfile": {
+      "title": "AppearanceProfile",
+      "description": "Person Appearance Attribute Profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "lastUpdated": { "type": "string" },
+        "upperClothingColor": { "type": "string" },
+        "lowerClothingColor": { "type": "string" }
+      },
+      "required": ["id", "lastUpdated"]
     }
   },
   "firestore": {
@@ -69,6 +138,22 @@
     "/attendanceLogs/{logId}": {
       "schema": "AttendanceLog",
       "description": "Attendance logs"
+    },
+    "/securityAlerts/{alertId}": {
+      "schema": "SecurityAlert",
+      "description": "Security anomaly alerts"
+    },
+    "/fusedIdentities/{identityId}": {
+      "schema": "FusedIdentity",
+      "description": "Enterprise persistent fused identities"
+    },
+    "/multiModalIdentities/{identityId}": {
+      "schema": "MultiModalIdentity",
+      "description": "Multi-Modal Global Identities"
+    },
+    "/appearanceProfiles/{profileId}": {
+      "schema": "AppearanceProfile",
+      "description": "Appearance profiles extracted by modality"
     }
   }
 }

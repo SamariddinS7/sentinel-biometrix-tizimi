@@ -419,15 +419,26 @@ const PersonEntity: React.FC<{
                     </div>
                 </div>
             </Html>
-            {showHistory && entity.trajectory && entity.trajectory.length > 1 && (
-                 <Line 
-                    points={entity.trajectory.map(p => [p.x, p.y + 0.1, p.z])}
-                    color={entity.isViolating ? "red" : "emerald"}
-                    lineWidth={1}
-                    dashed
-                    opacity={0.5}
-                 />
-            )}
+            {showHistory && entity.trajectory && (() => {
+                const validPoints = entity.trajectory
+                    .map(p => {
+                        const px = typeof p.x === 'number' ? p.x : 0;
+                        const py = typeof p.y === 'number' ? p.y : 0;
+                        const pz = typeof p.z === 'number' ? p.z : 0;
+                        return [px, py + 0.1, pz];
+                    })
+                    .filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]) && !isNaN(pt[2]));
+                if (validPoints.length < 2) return null;
+                return (
+                    <Line 
+                        points={validPoints as any}
+                        color={entity.isViolating ? "red" : "emerald"}
+                        lineWidth={1}
+                        dashed
+                        opacity={0.5}
+                    />
+                );
+            })()}
         </group>
     );
 };
@@ -720,7 +731,7 @@ export const DigitalTwinView: React.FC<DigitalTwinViewProps> = ({
             <PersonInfoModal person={selectedPerson} onClose={() => setSelectedPerson(null)} />
             
             {/* 3D Canvas */}
-            <div className="flex-1 bg-app-primary" onClick={() => handleCameraSelect(null)}>
+            <div className="flex-1 bg-app-primary rounded-lg shadow-lg border border-border overflow-hidden m-4" onClick={() => handleCameraSelect(null)}>
                 <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }}>
                     <color attach="background" args={[colors.sceneBg]} />
                     {/* Dynamic Fog for theme blending */}

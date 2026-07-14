@@ -630,32 +630,21 @@ export const DigitalTwinBuilder: React.FC<{ onSave?: () => void }> = ({ onSave }
                         <meshBasicMaterial />
                     </mesh>
 
-                    {/* Walls */}
-                    {walls.map(wall => (
-                        <mesh key={wall.id} position={[(wall.x1+wall.x2)/2, wall.height/2, (wall.y1+wall.y2)/2]} castShadow receiveShadow>
-                            <boxGeometry args={[
-                                Math.sqrt((wall.x2-wall.x1)**2 + (wall.y2-wall.y1)**2), 
-                                wall.height, 
-                                0.2 
-                            ]} />
-                            <meshStandardMaterial color={mode === 'dark' ? "#94a3b8" : "#64748b"} transparent opacity={0.9} />
-                            <primitive object={new THREE.Object3D()} /> 
-                        </mesh>
-                    ))}
-                    
                     {/* Rendered walls with rotation */}
                     {walls.map(wall => {
                         const length = Math.sqrt((wall.x2-wall.x1)**2 + (wall.y2-wall.y1)**2);
                         const angle = Math.atan2(wall.y2-wall.y1, wall.x2-wall.x1);
+                        const h = wall.height || 0;
+                        if (isNaN(length) || isNaN(angle) || isNaN(h)) return null;
                         return (
                             <mesh 
                                 key={wall.id} 
-                                position={[(wall.x1+wall.x2)/2, wall.height/2, (wall.y1+wall.y2)/2]} 
+                                position={[(wall.x1+wall.x2)/2, h/2, (wall.y1+wall.y2)/2]} 
                                 rotation={[0, -angle, 0]} 
                             >
-                                <boxGeometry args={[length, wall.height, 0.2]} />
+                                <boxGeometry args={[length, h, 0.2]} />
                                 <meshStandardMaterial color={mode === 'dark' ? "#64748b" : "#94a3b8"} />
-                                <Line points={[[-length/2, wall.height/2, 0], [length/2, wall.height/2, 0]]} color="white" />
+                                <Line points={[[-length/2, h/2, 0], [length/2, h/2, 0]]} color="white" />
                             </mesh>
                         );
                     })}
@@ -680,13 +669,23 @@ export const DigitalTwinBuilder: React.FC<{ onSave?: () => void }> = ({ onSave }
                                     <meshBasicMaterial color="#f43f5e" />
                                 </mesh>
                             ))}
-                            {activeZonePoints.length > 1 && (
-                                <Line 
-                                    points={activeZonePoints.map(p => [p.x, 0.2, p.y])} 
-                                    color="#f43f5e" 
-                                    lineWidth={2} 
-                                />
-                            )}
+                            {(() => {
+                                const validPoints = activeZonePoints
+                                    .map(p => {
+                                        const px = typeof p.x === 'number' ? p.x : 0;
+                                        const py = typeof p.y === 'number' ? p.y : 0;
+                                        return [px, 0.2, py];
+                                    })
+                                    .filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]) && !isNaN(pt[2]));
+                                if (validPoints.length < 2) return null;
+                                return (
+                                    <Line 
+                                        points={validPoints as any} 
+                                        color="#f43f5e" 
+                                        lineWidth={2} 
+                                    />
+                                );
+                            })()}
                         </group>
                     )}
 
@@ -743,13 +742,23 @@ export const DigitalTwinBuilder: React.FC<{ onSave?: () => void }> = ({ onSave }
                             <meshBasicMaterial color={colors.statusCriticalText} />
                         </mesh>
                     ))}
-                    {calibPoints.length === 2 && (
-                        <Line points={calibPoints.map(p => [p.x, 0.2, p.y])} color={colors.statusCriticalText} lineWidth={2} dashed />
-                    )}
+                    {(() => {
+                        const validPoints = calibPoints
+                            .map(p => {
+                                const px = typeof p.x === 'number' ? p.x : 0;
+                                const py = typeof p.y === 'number' ? p.y : 0;
+                                return [px, 0.2, py];
+                            })
+                            .filter(pt => pt && !isNaN(pt[0]) && !isNaN(pt[1]) && !isNaN(pt[2]));
+                        if (validPoints.length < 2) return null;
+                        return (
+                            <Line points={validPoints as any} color={colors.statusCriticalText} lineWidth={2} dashed />
+                        );
+                    })()}
                 </Canvas>
 
                 {isAnalyzing && (
-                    <div className="absolute inset-0 bg-slate-950/90 z-50 flex flex-col items-center justify-center p-6 text-center backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="absolute inset-0 bg-app-primary/90 z-50 flex flex-col items-center justify-center p-6 text-center backdrop-blur-md animate-in fade-in duration-300">
                         <div className="relative mb-6">
                             <div className="w-20 h-20 rounded-full border-4 border-t-brand-primary border-r-transparent border-l-transparent border-b-transparent animate-spin" />
                             <Wand2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-brand-primary animate-pulse" size={32} />
@@ -757,13 +766,13 @@ export const DigitalTwinBuilder: React.FC<{ onSave?: () => void }> = ({ onSave }
                         <h3 className="text-xl font-bold text-white mb-2 font-sans tracking-tight">
                             AI Loyihani Tahlil Qilmoqda...
                         </h3>
-                        <p className="text-sm text-slate-400 max-w-md mb-6">
+                        <p className="text-sm text-text-secondary max-w-md mb-6">
                             Tasvirdagi loyiha (blueprint) aniqlashtirilmoqda va 3D/2D formatga o'tkazilmoqda...
                         </p>
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 w-full max-w-lg text-left font-mono text-xs text-brand-primary/90 space-y-2 max-h-48 overflow-y-auto shadow-2xl">
+                        <div className="bg-app-panel border border-border rounded-lg p-4 w-full max-w-lg text-left font-mono text-xs text-brand-primary/90 space-y-2 max-h-48 overflow-y-auto shadow-2xl">
                             {aiLogs.map((log, index) => (
                                 <div key={index} className="flex gap-2">
-                                    <span className="text-slate-500 font-bold">&gt;</span>
+                                    <span className="text-text-primary0 font-bold">&gt;</span>
                                     <span>{log}</span>
                                 </div>
                             ))}

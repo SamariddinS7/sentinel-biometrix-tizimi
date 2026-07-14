@@ -9,7 +9,7 @@ type WSMessage =
 
 export class StreamService {
     private socket: WebSocket | null = null;
-    private url: string = 'ws://localhost:8000/ws/live-stream'; 
+    private url: string = ''; 
     private listeners: ((tracks: TrackedFace[], heatmap?: any, alerts?: any[]) => void)[] = [];
     private isConnected: boolean = false;
     
@@ -22,10 +22,17 @@ export class StreamService {
     private readonly FRAME_INTERVAL = 1000 / 25;
     private readonly BACKPRESSURE_THRESHOLD = 1024 * 100; // 100KB buffered limit
 
+    private getSocketUrl(): string {
+        if (typeof window === 'undefined') return 'ws://localhost:3000/ws/live-stream';
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/ws/live-stream`;
+    }
+
     connect(cameraId: string = 'WEBCAM_CLIENT') {
         if (this.socket) return;
 
-        this.socket = new WebSocket(`${this.url}/${cameraId}`);
+        const dynamicUrl = this.getSocketUrl();
+        this.socket = new WebSocket(`${dynamicUrl}/${cameraId}`);
         this.socket.binaryType = 'arraybuffer';
 
         this.socket.onopen = () => {

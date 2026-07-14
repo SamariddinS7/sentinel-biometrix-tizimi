@@ -1,6 +1,7 @@
 
 import { Camera3D, Entity3D, Vector3, Zone3D, Wall3D, SecurityAlert } from '../types';
-import { mockCameras, mockUsers } from './mockData';
+import { cameraService } from './cameraService';
+import { userService } from './userService';
 import * as THREE from 'three';
 import { mapService } from './mapService';
 
@@ -86,33 +87,12 @@ const FACILITY_WALLS: Wall3D[] = [
 ];
 
 // --- CAMERA CALIBRATION ---
-let CALIBRATED_CAMERAS: Camera3D[] = mockCameras.map((c, idx) => {
-    if (idx === 0) { // Main Entrance
-        return { ...c, position: { x: 0, y: 5, z: 9 }, rotation: { x: -0.6, y: 0, z: 0 }, fov: 60, aspectRatio: 1.77, depth: 15, coverageColor: '#06b6d4' };
-    } else if (idx === 1) { // Parking (Moved to F2 for demo)
-        return { ...c, position: { x: 9, y: 8, z: 9 }, rotation: { x: -0.5, y: 0.7, z: 0 }, fov: 60, aspectRatio: 1.77, depth: 15, coverageColor: '#8b5cf6' };
-    } else if (idx === 2) { // Server Room
-        return { ...c, position: { x: -9, y: 3.5, z: -9 }, rotation: { x: -0.6, y: -0.8, z: 0 }, fov: 70, aspectRatio: 1.77, depth: 8, coverageColor: '#f43f5e' };
-    }
-    return { ...c, position: { x: 0, y: 4, z: 0 }, rotation: { x: -1.5, y: 0, z: 0 }, fov: 60, aspectRatio: 1.77, depth: 10, coverageColor: '#94a3b8' };
-});
+let CALIBRATED_CAMERAS: Camera3D[] = [];
 
 // --- SIMULATION TYPES ---
 
-interface WorldAgent {
-    id: string; // Ground truth ID
-    user: any;
-    position: Vector3;
-    velocity: Vector3; // Physics: Velocity Vector
-    waypoints: Vector3[];
-    currentWaypointIdx: number;
-    maxSpeed: number;
-    maxForce: number; // For smooth steering
-    pauseTime: number;
-    floorId: string;
-}
-
-interface CameraDetection {
+// --- IDENTITY RESOLUTION TYPES ---
+export interface CameraDetection {
     trackId: string; 
     personId: string;
     label: string;
@@ -141,14 +121,10 @@ class DigitalTwinService {
     private mode: 'LIVE' | 'PLAYBACK' = 'LIVE';
     private entityZoneMap = new Map<string, string>(); 
     
-    // --- 3D World Simulation State ---
-    private worldAgents: WorldAgent[] = [];
-    
     // --- Identity Resolution State ---
     private globalIdentities: Map<string, Entity3D> = new Map();
 
     constructor() {
-        this.initWorldAgents();
         this.startLoop();
     }
 
@@ -198,12 +174,11 @@ class DigitalTwinService {
         // Compile custom 3D zones
         const zones3D = (mapData.zones || []).map((z, index) => {
             if (!z.points || z.points.length === 0) return null;
-            const minX = Math.min(...z.points.map(p => p.x));
-            const maxX = Math.max(...z.points.map(p => p.y)); // Note: handle both x and y correctly
-            const minY = Math.min(...z.points.map(p => p.y));
-            const maxY = Math.max(...z.points.map(p => p.y));
+            
             const minXPoints = Math.min(...z.points.map(p => p.x));
             const maxXPoints = Math.max(...z.points.map(p => p.x));
+            const minY = Math.min(...z.points.map(p => p.y));
+            const maxY = Math.max(...z.points.map(p => p.y));
 
             const x_center_2d = (minXPoints + maxXPoints) / 2;
             const y_center_2d = (minY + maxY) / 2;
@@ -235,23 +210,21 @@ class DigitalTwinService {
             const pitchRad = ((cam.pitch || -15) * Math.PI) / 180;
             const yawRad = -((cam.rotation || 0) * Math.PI) / 180;
 
-            const baseCam = mockCameras.find(c => c.id === cam.cameraId) || mockCameras[0];
-
             return {
-                ...baseCam,
                 id: cam.cameraId,
-                name: baseCam?.name || `Camera ${index + 1}`,
+                name: `Camera ${index + 1}`,
                 position: { x: x3d, y: y3d, z: z3d },
                 rotation: { x: pitchRad, y: yawRad, z: 0 },
                 fov: 60,
                 aspectRatio: 1.77,
                 depth: 12,
-                coverageColor: '#06b6d4'
+                coverageColor: '#06b6d4',
+                status: 'ONLINE'
             };
         });
 
         if (cameras3D.length > 0) {
-            CALIBRATED_CAMERAS = cameras3D;
+            CALIBRATED_CAMERAS = cameras3D as any[];
         }
 
         return {
@@ -314,82 +287,22 @@ class DigitalTwinService {
         this.notify();
     }
 
-    // --- INTERNAL SIMULATION LOGIC ---
-
-    private initWorldAgents() {
-        // Agent 1: Sarah (Security) - Patrols Floor 1
-        this.worldAgents.push({
-            id: mockUsers[0].id,
-            user: mockUsers[0],
-            position: { x: 2, y: 0, z: 8 }, 
-            velocity: { x: 0, y: 0, z: 0 },
-            floorId: 'FLOOR-01',
-            waypoints: [
-                { x: 0, y: 0, z: 0 },
-                { x: -5, y: 0, z: -5 },
-                { x: -8, y: 0, z: -8 },
-                { x: -5, y: 0, z: -5 },
-                { x: 0, y: 0, z: 0 },
-                { x: 2, y: 0, z: 8 }
-            ],
-            currentWaypointIdx: 0,
-            maxSpeed: 2.0, // m/s
-            maxForce: 0.1, // turn smoothing
-            pauseTime: 0
-        });
-
-        // Agent 2: John (Intruder) - Loiters near Server Room
-        this.worldAgents.push({
-            id: mockUsers[1].id,
-            user: mockUsers[1],
-            position: { x: -6, y: 0, z: -6 },
-            velocity: { x: 0, y: 0, z: 0 },
-            floorId: 'FLOOR-01',
-            waypoints: [
-                { x: -7, y: 0, z: -5 },
-                { x: -5, y: 0, z: -6 },
-                { x: -6, y: 0, z: -7 }
-            ],
-            currentWaypointIdx: 0,
-            maxSpeed: 1.2,
-            maxForce: 0.05,
-            pauseTime: 0
-        });
-
-        // Agent 3: Shaw (Ops) - Floor 2 Office
-        this.worldAgents.push({
-            id: mockUsers[3].id,
-            user: mockUsers[3],
-            position: { x: -2, y: 4, z: 2 },
-            velocity: { x: 0, y: 0, z: 0 },
-            floorId: 'FLOOR-02',
-            waypoints: [
-                { x: -5, y: 4, z: 5 },
-                { x: 5, y: 4, z: -5 },
-                { x: 0, y: 4, z: 0 }
-            ],
-            currentWaypointIdx: 0,
-            maxSpeed: 1.5,
-            maxForce: 0.08,
-            pauseTime: 0
-        });
+    injectCameraDetections(detections: CameraDetection[]) {
+        this.resolveIdentities(detections);
     }
 
     private startLoop() {
         this.intervalId = setInterval(() => {
-            // 1. Move Agents in 3D World (Physics)
-            this.updateWorldAgents();
+            // In production, we listen for real events via a telemetry bridge.
+            // For now, we maintain the state resolution pipeline.
             
-            // 2. Simulate Camera Detections
-            const detections = this.simulateCameraDetections();
+            // 1. Resolve Identities from real-time stream buffers
+            this.resolveIdentities([]);
             
-            // 3. Resolve Identities
-            this.resolveIdentities(detections);
-            
-            // 4. Update Zone Logic
+            // 2. Update Zone Logic
             this.updateSecurityLogic();
             
-            // 5. History & UI
+            // 3. History & UI
             this.recordHistory();
             if (this.mode === 'LIVE') {
                 this.notify();
@@ -397,132 +310,8 @@ class DigitalTwinService {
         }, UPDATE_RATE_MS);
     }
 
-    // --- PHYSICS ENGINE: STEERING BEHAVIORS ---
-    private updateWorldAgents() {
-        const dt = UPDATE_RATE_MS / 1000; // seconds
-        const mapData = mapService.getMap();
-        const scale = mapData ? (mapData.scale || 20) : 20;
-        const wMeters = mapData ? (mapData.width / scale) : 30;
-        const hMeters = mapData ? (mapData.height / scale) : 30;
-        const halfW = (wMeters / 2) - 1.5;
-        const halfH = (hMeters / 2) - 1.5;
-
-        this.worldAgents.forEach(agent => {
-            // Clamp current position within bounds first
-            if (agent.position.x < -halfW) agent.position.x = -halfW;
-            if (agent.position.x > halfW) agent.position.x = halfW;
-            if (agent.position.z < -halfH) agent.position.z = -halfH;
-            if (agent.position.z > halfH) agent.position.z = halfH;
-
-            if (agent.pauseTime > 0) {
-                agent.pauseTime -= UPDATE_RATE_MS;
-                // Friction / Deceleration when paused
-                agent.velocity.x *= 0.9;
-                agent.velocity.z *= 0.9;
-                
-                agent.position.x += agent.velocity.x * dt;
-                agent.position.z += agent.velocity.z * dt;
-                return;
-            }
-
-            // Route waypoints clamping to map boundaries
-            const origTarget = agent.waypoints[agent.currentWaypointIdx];
-            const targetX = Math.max(-halfW, Math.min(halfW, origTarget.x));
-            const targetZ = Math.max(-halfH, Math.min(halfH, origTarget.z));
-            
-            // Calculate distance to target
-            const dx = targetX - agent.position.x;
-            const dz = targetZ - agent.position.z;
-            const dist = Math.sqrt(dx*dx + dz*dz);
-
-            // Check arrival
-            if (dist < 0.5) {
-                agent.currentWaypointIdx = (agent.currentWaypointIdx + 1) % agent.waypoints.length;
-                agent.pauseTime = Math.random() * 2000 + 1000; // Pause 1-3s
-                return;
-            }
-
-            // SEEK Behavior
-            // Desired velocity vector (normalized * maxSpeed)
-            const desiredX = (dx / dist) * agent.maxSpeed;
-            const desiredZ = (dz / dist) * agent.maxSpeed;
-
-            // Steering force = Desired - Current Velocity
-            let steerX = desiredX - agent.velocity.x;
-            let steerZ = desiredZ - agent.velocity.z;
-
-            // Limit steering force (Inertia/Smoothness)
-            const steerMag = Math.sqrt(steerX*steerX + steerZ*steerZ);
-            if (steerMag > agent.maxForce) {
-                steerX = (steerX / steerMag) * agent.maxForce;
-                steerZ = (steerZ / steerMag) * agent.maxForce;
-            }
-
-            // Apply steering to velocity
-            agent.velocity.x += steerX;
-            agent.velocity.z += steerZ;
-
-            // Cap velocity at maxSpeed (safety check)
-            const speed = Math.sqrt(agent.velocity.x**2 + agent.velocity.z**2);
-            if (speed > agent.maxSpeed) {
-                agent.velocity.x = (agent.velocity.x / speed) * agent.maxSpeed;
-                agent.velocity.z = (agent.velocity.z / speed) * agent.maxSpeed;
-            }
-
-            // Update Position
-            agent.position.x += agent.velocity.x * dt;
-            agent.position.z += agent.velocity.z * dt;
-
-            // Final safety clamp
-            if (agent.position.x < -halfW) agent.position.x = -halfW;
-            if (agent.position.x > halfW) agent.position.x = halfW;
-            if (agent.position.z < -halfH) agent.position.z = -halfH;
-            if (agent.position.z > halfH) agent.position.z = halfH;
-        });
-    }
-
-    private simulateCameraDetections(): CameraDetection[] {
-        const detections: CameraDetection[] = [];
-
-        this.worldAgents.forEach(agent => {
-            CALIBRATED_CAMERAS.forEach(cam => {
-                // Simplified 3D Frustum Check
-                // 1. Check Floor
-                const floorDiff = Math.abs(cam.position.y - (agent.floorId === 'FLOOR-02' ? 4 : 0) - 2); 
-                if (floorDiff > 4) return; // Wrong floor
-
-                // 2. Check Distance
-                const dx = agent.position.x - cam.position.x;
-                const dz = agent.position.z - cam.position.z;
-                const dist = Math.sqrt(dx*dx + dz*dz);
-                
-                if (dist < cam.depth) {
-                    // 3. Check Angle (Dot Product)
-                    const euler = new THREE.Euler(cam.rotation.x, cam.rotation.y, cam.rotation.z);
-                    const camDir = new THREE.Vector3(0, 0, -1).applyEuler(euler).normalize();
-                    const agentDir = new THREE.Vector3(dx, 0, dz).normalize();
-                    
-                    const angle = camDir.angleTo(agentDir);
-                    const fovRad = (cam.fov * Math.PI) / 180;
-
-                    if (angle < fovRad / 1.5) { 
-                        detections.push({
-                            trackId: `TRK-${cam.id}-${agent.id}`,
-                            personId: agent.id, 
-                            label: agent.user.fullName,
-                            role: agent.user.role,
-                            position: { ...agent.position },
-                            cameraId: cam.id,
-                            confidence: 0.95
-                        });
-                    }
-                }
-            });
-        });
-
-        return detections;
-    }
-
+    // --- IDENTITY RESOLUTION ---
+    // This is the core engine that resolves multiple camera detections into a single global identity.
     private resolveIdentities(detections: CameraDetection[]) {
         const NOW = Date.now();
         const activeGlobalIds = new Set<string>();
@@ -681,8 +470,8 @@ class DigitalTwinService {
     private recordHistory() {
         const snapshot: HistorySnapshot = {
             timestamp: Date.now(),
-            entities: JSON.parse(JSON.stringify(this.entities)),
-            alerts: JSON.parse(JSON.stringify(this.alerts))
+            entities: this.entities ? JSON.parse(JSON.stringify(this.entities)) : [],
+            alerts: this.alerts ? JSON.parse(JSON.stringify(this.alerts)) : []
         };
         this.history.push(snapshot);
         if (this.history.length > HISTORY_BUFFER_SIZE) {

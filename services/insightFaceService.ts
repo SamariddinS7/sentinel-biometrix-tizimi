@@ -7,33 +7,91 @@ import { User } from '../types';
  * All biometric operations must now occur on the secure backend.
  */
 
+declare const faceapi: any;
+
 export const insightFaceService = {
-  isLoaded: true, // Always true as we don't load local models anymore
+  isLoaded: false,
   isLoading: false,
 
   loadModels: async () => {
-    console.log("Biometric Engine: Client-side inference disabled. Using Server-Side Pipeline.");
-    return;
+    if (insightFaceService.isLoaded || insightFaceService.isLoading) return;
+    insightFaceService.isLoading = true;
+    try {
+      console.log("Loading face-api.js models for real biometric enrollment...");
+      await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      insightFaceService.isLoaded = true;
+      console.log("Models loaded successfully.");
+    } catch (e) {
+      console.error("Failed to load face-api models:", e);
+    } finally {
+      insightFaceService.isLoading = false;
+    }
   },
 
-  // Stub for multi-face detection - now handled by Backend Stream
   detectAll: async (input: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement | null): Promise<any[]> => {
-      console.warn("Attempted client-side detection. This is now handled by the Backend Stream Pipeline.");
+    if (!input || !insightFaceService.isLoaded) return [];
+    try {
+      return await faceapi.detectAllFaces(input, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
+                          .withFaceLandmarks()
+                          .withFaceDescriptors();
+    } catch (e) {
+      console.error("Face detection error:", e);
       return [];
+    }
   },
 
-  // Stub for descriptor generation - Registration now sends raw image to backend
   getDescriptor: async (input: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement): Promise<Float32Array | null> => {
-    console.warn("Client-side embedding generation is deprecated.");
+    if (!insightFaceService.isLoaded) {
+      await insightFaceService.loadModels();
+    }
     
-    // In a real implementation, this would POST the image to /api/biometrics/enroll
-    // For this architecture fix, we return a mock descriptor to allow the UI 'Register' flow to proceed 
-    // without blocking, assuming the backend will handle the actual enrollment later.
-    return new Float32Array(512).fill(0.1); 
+    try {
+      const detection = await faceapi.detectSingleFace(input, new faceapi.TinyFaceDetectorOptions())
+                                     .withFaceLandmarks()
+                                     .withFaceDescriptor();
+      if (detection) {
+        return detection.descriptor;
+      }
+    } catch (e) {
+      console.error("Error generating face descriptor:", e);
+    }
+    return null;
   },
 
   findBestMatch: (descriptor: Float32Array | number[], users: any[]): { user: any, distance: number } | null => {
-    console.warn("Client-side matching is deprecated. Usage tracked.");
+    if (!users || users.length === 0) return null;
+    
+    let bestUser = null;
+    let minDistance = 0.6; // Threshold for face matching
+
+    for (const user of users) {
+      if (user.faceDescriptor && user.faceDescriptor.length > 0) {
+        const enrolledDesc = new Float32Array(user.faceDescriptor);
+        const queryDesc = new Float32Array(descriptor);
+        
+        // Compute Euclidean distance using faceapi or manual implementation
+        let distance = 0;
+        if (typeof faceapi !== 'undefined' && faceapi.euclideanDistance) {
+          distance = faceapi.euclideanDistance(queryDesc, enrolledDesc);
+        } else {
+          for (let i = 0; i < queryDesc.length; i++) {
+            distance += Math.pow(queryDesc[i] - enrolledDesc[i], 2);
+          }
+          distance = Math.sqrt(distance);
+        }
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestUser = user;
+        }
+      }
+    }
+
+    if (bestUser) {
+      return { user: bestUser, distance: minDistance };
+    }
     return null;
   }
 };

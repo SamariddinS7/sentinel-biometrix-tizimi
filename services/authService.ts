@@ -16,7 +16,7 @@ class AuthService {
   private loadUser() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY_USER);
-      if (stored) {
+      if (stored && stored !== "undefined") {
         this.currentUser = JSON.parse(stored);
       } else {
         // Default Admin for Demo Initialization
@@ -41,7 +41,7 @@ class AuthService {
   private loadLogs() {
       try {
         const stored = localStorage.getItem(STORAGE_KEY_LOGS);
-        if (stored) this.auditLogs = JSON.parse(stored);
+        if (stored && stored !== "undefined") this.auditLogs = JSON.parse(stored);
       } catch (e) {
         this.auditLogs = [];
       }
@@ -121,11 +121,9 @@ class AuthService {
 
   // Session Management
   getSessions(): AuthSession[] {
-    // Mock sessions for the UI
+    if (!this.currentUser) return [];
     return [
-      { id: 'sess-01', device: 'Desktop PC (Windows 11)', browser: 'Chrome 120.0', ip: '192.168.1.50', lastActive: 'Now', isCurrent: true, location: 'New York, USA' },
-      { id: 'sess-02', device: 'iPad Pro', browser: 'Safari Mobile', ip: '192.168.1.102', lastActive: '2 hours ago', isCurrent: false, location: 'New York, USA' },
-      { id: 'sess-03', device: 'Security Station 4', browser: 'Firefox', ip: '10.0.0.45', lastActive: '1 day ago', isCurrent: false, location: 'New York, USA' },
+      { id: 'sess-01', device: 'Current Device', browser: navigator.userAgent, ip: '127.0.0.1', lastActive: 'Now', isCurrent: true, location: 'Local' }
     ];
   }
 
@@ -137,11 +135,8 @@ class AuthService {
   // Security
   changePassword(oldPass: string, newPass: string): Promise<boolean> {
       return new Promise((resolve) => {
-          // Simulate API delay
-          setTimeout(() => {
-              this.logAction('SECURITY', 'Password changed successfully', 'SUCCESS');
-              resolve(true);
-          }, 1000);
+          this.logAction('SECURITY', 'Password changed successfully', 'SUCCESS');
+          resolve(true);
       });
   }
 

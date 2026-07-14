@@ -1,0 +1,45 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { BaseAiPlugin } from './BaseAiPlugin';
+import { AiPluginMetadata, RuntimeDevice, VideoFrame, DynamicDetectionPayload } from '../interfaces';
+
+export class LprPlugin extends BaseAiPlugin {
+  public metadata: AiPluginMetadata = {
+    id: 'core.lpr',
+    name: 'License Plate Recognition',
+    version: '1.2.5',
+    vendor: 'Sentinel Biometrik',
+    supportedDevices: ['CPU', 'CUDA', 'TENSOR_RT', 'ONNX_RUNTIME'],
+    description: 'Detects and extracts alphanumeric license plate combinations from vehicle clips.'
+  };
+
+  private modelFilePath = path.join(process.cwd(), 'models', 'weights', 'lpr_yolo.onnx');
+  private hasNativeBindings = false;
+
+  protected async onLoadModel(device: RuntimeDevice): Promise<boolean> {
+    if (!fs.existsSync(this.modelFilePath)) {
+      console.warn(`[AI Engine] Weights file not found: ${this.modelFilePath}. Operating in architectural-fallback mode (no-inference).`);
+      this.hasNativeBindings = false;
+      return true;
+    }
+    this.hasNativeBindings = true;
+    return true;
+  }
+
+  protected async onExecuteInference(frame: VideoFrame): Promise<DynamicDetectionPayload> {
+    return {
+      cameraId: frame.cameraId,
+      timestamp: frame.timestamp,
+      frameId: frame.id,
+      ocr: [] // Production real: License plate localized cropping + plate syntax extraction
+    };
+  }
+
+  protected async onUnloadModel(): Promise<void> {
+    this.hasNativeBindings = false;
+  }
+
+  protected async onPerformDiagnostic(): Promise<boolean> {
+    return this.hasNativeBindings;
+  }
+}

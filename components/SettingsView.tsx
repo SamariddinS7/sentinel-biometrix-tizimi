@@ -11,17 +11,17 @@ import { useLanguage } from '../services/i18n';
 // --- Reusable UI Components ---
 
 const SectionHeader = ({ title, description }: { title: string, description: string }) => (
-    <div className="mb-6 pb-4 border-b border-slate-800">
+    <div className="mb-6 pb-4 border-b border-border">
         <h3 className="text-lg font-bold text-white">{title}</h3>
-        <p className="text-sm text-slate-500">{description}</p>
+        <p className="text-sm text-text-primary0">{description}</p>
     </div>
 );
 
 const Toggle = ({ label, checked, onChange, help }: any) => (
     <div className="flex items-center justify-between py-3">
         <div className="pr-4">
-            <label className="text-sm font-medium text-slate-300 block">{label}</label>
-            {help && <p className="text-xs text-slate-500 mt-0.5">{help}</p>}
+            <label className="text-sm font-medium text-text-secondary block">{label}</label>
+            {help && <p className="text-xs text-text-primary0 mt-0.5">{help}</p>}
         </div>
         <button 
             onClick={() => onChange(!checked)}
@@ -36,8 +36,8 @@ const Slider = ({ label, value, min, max, step, onChange, unit, help }: any) => 
     <div className="py-3">
         <div className="flex justify-between mb-2">
             <div>
-                <label className="text-sm font-medium text-slate-300">{label}</label>
-                {help && <p className="text-xs text-slate-500">{help}</p>}
+                <label className="text-sm font-medium text-text-secondary">{label}</label>
+                {help && <p className="text-xs text-text-primary0">{help}</p>}
             </div>
             <span className="text-sm font-mono text-cyan-400 bg-cyan-950/30 px-2 rounded border border-cyan-900/50">
                 {value}{unit}
@@ -46,19 +46,19 @@ const Slider = ({ label, value, min, max, step, onChange, unit, help }: any) => 
         <input 
             type="range" min={min} max={max} step={step} value={value}
             onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+            className="w-full h-2 bg-app-surface rounded-lg appearance-none cursor-pointer accent-cyan-500"
         />
     </div>
 );
 
 const Select = ({ label, value, options, onChange, help }: any) => (
     <div className="py-3">
-        <label className="text-sm font-medium text-slate-300 block mb-1">{label}</label>
-        {help && <p className="text-xs text-slate-500 mb-2">{help}</p>}
+        <label className="text-sm font-medium text-text-secondary block mb-1">{label}</label>
+        {help && <p className="text-xs text-text-primary0 mb-2">{help}</p>}
         <select 
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none"
+            className="w-full bg-app-panel border border-border text-text-primary text-sm rounded-lg p-2.5 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none"
         >
             {options.map((opt: any) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -69,14 +69,14 @@ const Select = ({ label, value, options, onChange, help }: any) => (
 
 const Input = ({ label, type = "text", value, onChange, placeholder, help }: any) => (
     <div className="py-3">
-        <label className="text-sm font-medium text-slate-300 block mb-1">{label}</label>
-        {help && <p className="text-xs text-slate-500 mb-2">{help}</p>}
+        <label className="text-sm font-medium text-text-secondary block mb-1">{label}</label>
+        {help && <p className="text-xs text-text-primary0 mb-2">{help}</p>}
         <input 
             type={type}
             value={value}
             onChange={(e) => onChange(type === 'number' ? parseFloat(e.target.value) : e.target.value)}
             placeholder={placeholder}
-            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-lg p-2.5 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none"
+            className="w-full bg-app-panel border border-border text-text-primary text-sm rounded-lg p-2.5 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none"
         />
     </div>
 );
@@ -98,7 +98,9 @@ export const SettingsView: React.FC = () => {
     const loadSettings = async () => {
         const loaded = await settingsService.getSettings();
         setSettings(loaded);
-        setOriginalSettings(JSON.parse(JSON.stringify(loaded)));
+        if (loaded) {
+            setOriginalSettings(JSON.parse(JSON.stringify(loaded)));
+        }
     };
 
     useEffect(() => {
@@ -118,7 +120,9 @@ export const SettingsView: React.FC = () => {
             setLanguage(settings.general.language as any);
         }
         
-        setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+        if (settings) {
+            setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+        }
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
@@ -126,7 +130,9 @@ export const SettingsView: React.FC = () => {
 
     const handleReset = () => {
         if (confirm("Saqlanmagan o'zgarishlar bekor qilinsinmi?")) {
+        if (originalSettings) {
             setSettings(JSON.parse(JSON.stringify(originalSettings)));
+        }
         }
     };
 
@@ -134,11 +140,13 @@ export const SettingsView: React.FC = () => {
         if (confirm("Ishonchingiz komilmi? Bu harakat zavod sozlamalarini tiklaydi va buni bekor qilib bo'lmaydi.")) {
             const defaults = await settingsService.resetDefaults();
             setSettings(defaults);
-            setOriginalSettings(JSON.parse(JSON.stringify(defaults)));
+            if (defaults) {
+                setOriginalSettings(JSON.parse(JSON.stringify(defaults)));
+            }
         }
     };
 
-    if (!settings) return <div className="h-full flex items-center justify-center text-slate-500 gap-2"><Loader2 className="animate-spin"/> Konfiguratsiya Yuklanmoqda...</div>;
+    if (!settings) return <div className="h-full flex items-center justify-center text-text-primary0 gap-2"><Loader2 className="animate-spin"/> Konfiguratsiya Yuklanmoqda...</div>;
 
     const tabs = [
         { id: 'general', label: t('settings.general'), icon: Globe },
@@ -161,40 +169,40 @@ export const SettingsView: React.FC = () => {
     };
 
     return (
-        <div className="flex h-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+        <div className="flex flex-col lg:flex-row h-full bg-app-primary rounded-xl overflow-hidden border border-border">
             {/* Sidebar */}
-            <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-                <div className="p-4 border-b border-slate-800">
+            <div className="w-full lg:w-64 bg-app-panel border-b lg:border-b-0 lg:border-r border-border flex flex-col shrink-0">
+                <div className="p-4 border-b border-border">
                     <h2 className="text-white font-bold flex items-center gap-2">
                         <Settings size={20} className="text-cyan-400" />
                         {t('settings.title')}
                     </h2>
                 </div>
-                <div className="flex-1 overflow-y-auto py-4">
+                <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible lg:overflow-y-auto py-2 lg:py-4 scrollbar-none shrink-0">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
-                            className={`w-full flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors border-l-2 ${
+                            className={`flex lg:w-full items-center gap-2 lg:gap-3 px-4 lg:px-6 py-2.5 lg:py-3 text-xs lg:text-sm font-medium transition-colors border-b-2 lg:border-b-0 lg:border-l-2 whitespace-nowrap ${
                                 activeTab === tab.id 
-                                ? 'bg-slate-800 text-cyan-400 border-cyan-400' 
-                                : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-transparent'
+                                ? 'bg-app-surface text-cyan-400 border-cyan-400' 
+                                : 'text-text-secondary hover:bg-app-surface/50 hover:text-text-primary border-transparent'
                             }`}
                         >
-                            <tab.icon size={18} />
+                            <tab.icon size={16} className="lg:w-[18px] lg:h-[18px]" />
                             {tab.label}
                         </button>
                     ))}
                 </div>
-                <div className="p-4 border-t border-slate-800">
-                    <button onClick={handleRestoreDefaults} className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-rose-400 transition-colors">
+                <div className="p-3 lg:p-4 border-t border-border flex justify-center shrink-0">
+                    <button onClick={handleRestoreDefaults} className="flex items-center justify-center gap-2 text-xs text-text-primary0 hover:text-rose-400 transition-colors">
                         <RotateCcw size={14} /> Standart Sozlamalar
                     </button>
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
+            <div className="flex-1 flex flex-col min-w-0 bg-app-primary relative">
                 <div className="flex-1 overflow-y-auto p-8 custom-scrollbar pb-24">
                     
                     {/* --- GENERAL SETTINGS --- */}
@@ -229,7 +237,7 @@ export const SettingsView: React.FC = () => {
                         <div className="max-w-3xl space-y-2 animate-in fade-in duration-300">
                             <SectionHeader title={t('config.liveness.title')} description={t('config.liveness.desc')} />
                             <Toggle label={t('config.liveness.enable')} checked={settings.liveness.enabled} onChange={(v:any) => update('liveness', 'enabled', v)} />
-                            <div className={`pl-4 border-l-2 border-slate-800 transition-opacity ${!settings.liveness.enabled && 'opacity-50 pointer-events-none'}`}>
+                            <div className={`pl-4 border-l-2 border-border transition-opacity ${!settings.liveness.enabled && 'opacity-50 pointer-events-none'}`}>
                                 <Toggle label={t('config.liveness.eyeBlink')} checked={settings.liveness.checkEyeBlink} onChange={(v:any) => update('liveness', 'checkEyeBlink', v)} help={t('config.liveness.eyeBlinkHelp')} />
                                 <Toggle label={t('config.liveness.headMove')} checked={settings.liveness.checkHeadMove} onChange={(v:any) => update('liveness', 'checkHeadMove', v)} help={t('config.liveness.headMoveHelp')} />
                                 <Slider label={t('config.liveness.threshold')} value={settings.liveness.confidenceThreshold} min={0.5} max={0.99} step={0.01} onChange={(v:any) => update('liveness', 'confidenceThreshold', v)} unit="" />
@@ -269,11 +277,11 @@ export const SettingsView: React.FC = () => {
                         <div className="max-w-3xl space-y-2 animate-in fade-in duration-300">
                             <SectionHeader title="Xavfsizlik va Maxfiylik Siyosati" description="Shifrlash, ma'lumotlarni saqlash va qoidalarni sozlash." />
                             
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-4">
+                            <div className="bg-app-panel border border-border rounded-lg p-4 mb-4">
                                 <h4 className="text-sm font-bold text-emerald-400 flex items-center gap-2 mb-1">
                                     <Lock size={16} /> Tinch Holatda Shifrlash Faol
                                 </h4>
-                                <p className="text-xs text-slate-500">
+                                <p className="text-xs text-text-primary0">
                                     Barcha biometrik vektorlar saqlashdan oldin AES-256 (Fernet) yordamida shifrlanadi. Kalitlar xavfsiz backend tomonidan boshqariladi.
                                 </p>
                             </div>
@@ -325,11 +333,11 @@ export const SettingsView: React.FC = () => {
                         <div className="max-w-3xl space-y-2 animate-in fade-in duration-300">
                             <SectionHeader title="Xavfsizlik Bildirishnomalari va Webhooklar" description="Signallarni qachon va qayerga yuborishni sozlang." />
                             
-                            <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-4">
+                            <div className="bg-app-panel border border-border rounded-lg p-4 mb-4">
                                 <h4 className="text-sm font-bold text-cyan-400 flex items-center gap-2 mb-1">
                                     <Bell size={16} /> Bildirishnoma Kanallari
                                 </h4>
-                                <p className="text-xs text-slate-400">
+                                <p className="text-xs text-text-secondary">
                                     Qaysi kanallar orqali xabarnomalar olishni xohlayotganingizni belgilang.
                                 </p>
                             </div>
@@ -357,7 +365,7 @@ export const SettingsView: React.FC = () => {
                                 />
                             )}
 
-                            <div className="my-6 border-t border-slate-800" />
+                            <div className="my-6 border-t border-border" />
 
                             <SectionHeader title="Hodisa Turlari" description="Qaysi hodisalar uchun ogohlantirish olishni tanlang." />
 
@@ -386,7 +394,7 @@ export const SettingsView: React.FC = () => {
                                 onChange={(v:any) => update('notifications', 'alertOnEarlyLeave', v)} 
                             />
 
-                            <div className="my-6 border-t border-slate-800" />
+                            <div className="my-6 border-t border-border" />
 
                             <SectionHeader title="Webhook Integratsiyasi" description="Xavfsizlik hodisalarini tashqi tizimlarga yuborish." />
                             
@@ -415,7 +423,7 @@ export const SettingsView: React.FC = () => {
                             <Input type="number" label="Jurnalni Saqlash (Kun)" value={settings.logging.retentionDays} onChange={(v:any) => update('logging', 'retentionDays', v)} />
                             <Toggle label="O'zgarmas Audit Izi (Immutable Audit Trail)" checked={settings.logging.auditTrailEnabled} onChange={(v:any) => update('logging', 'auditTrailEnabled', v)} help="Xavfsizlik jurnallarini o'chirishni taqiqlash." />
                             <div className="mt-4">
-                                <button onClick={() => settingsService.exportSettings()} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors">
+                                <button onClick={() => settingsService.exportSettings()} className="flex items-center gap-2 px-4 py-2 bg-app-surface hover:bg-app-surface text-text-secondary rounded-lg text-xs font-bold transition-colors">
                                     <Download size={14} /> Konfiguratsiyani Eksport Qilish (JSON)
                                 </button>
                             </div>
@@ -430,7 +438,7 @@ export const SettingsView: React.FC = () => {
                             <Select label="Oraliq" value={settings.backup.backupInterval} options={[{value:'Daily', label:'Kunlik'}, {value:'Weekly', label:'Haftalik'}]} onChange={(v:any) => update('backup', 'backupInterval', v)} />
                             <Toggle label="Zaxira Fayllarini Shifrlash" checked={settings.backup.encryptBackups} onChange={(v:any) => update('backup', 'encryptBackups', v)} />
                             {settings.backup.lastBackupDate && (
-                                <p className="text-xs text-slate-500 mt-2">Oxirgi Zaxira: {settings.backup.lastBackupDate}</p>
+                                <p className="text-xs text-text-primary0 mt-2">Oxirgi Zaxira: {settings.backup.lastBackupDate}</p>
                             )}
                         </div>
                     )}
@@ -438,10 +446,10 @@ export const SettingsView: React.FC = () => {
 
                 {/* Save Bar */}
                 {isDirty && (
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 shadow-2xl shadow-black rounded-full px-6 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-4 z-50">
-                        <span className="text-sm font-medium text-slate-300">{t('settings.unsaved')}</span>
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-app-panel border border-border shadow-2xl shadow-black rounded-full px-6 py-3 flex items-center gap-4 animate-in slide-in-from-bottom-4 z-50">
+                        <span className="text-sm font-medium text-text-secondary">{t('settings.unsaved')}</span>
                         <div className="h-4 w-px bg-slate-700" />
-                        <button onClick={handleReset} className="text-sm font-medium text-slate-400 hover:text-white transition-colors">
+                        <button onClick={handleReset} className="text-sm font-medium text-text-secondary hover:text-white transition-colors">
                             {t('settings.reset')}
                         </button>
                         <button onClick={handleSave} disabled={saveStatus === 'saving'} className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-1.5 rounded-full text-sm font-bold transition-all disabled:opacity-50">

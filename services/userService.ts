@@ -1,14 +1,13 @@
 import { User } from '../types';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType } from './firestoreService';
-import { mockUsers } from './mockData';
 
 const CACHE_KEY = 'sentinel_users_cache';
 
 function sanitizeUser(user: User): any {
     const allowedKeys = [
         'id', 'fullName', 'role', 'department', 'enrolledDate', 
-        'hasEmbedding', 'lastActive', 'avatarUrl'
+        'hasEmbedding', 'lastActive', 'avatarUrl', 'faceDescriptor'
     ];
     const sanitized: any = {};
     for (const key of allowedKeys) {
@@ -16,6 +15,9 @@ function sanitizeUser(user: User): any {
         if (val !== undefined && val !== null) {
             sanitized[key] = val;
         }
+    }
+    if (sanitized.faceDescriptor && sanitized.faceDescriptor.length !== undefined) {
+        sanitized.faceDescriptor = Array.from(sanitized.faceDescriptor);
     }
     return sanitized;
 }
@@ -28,21 +30,21 @@ export const userService = {
             if (users.length > 0) {
                 setLocalCache(CACHE_KEY, users);
             }
-            return users.length > 0 ? users : getLocalCache(CACHE_KEY, mockUsers);
+            return users;
         } catch (e) {
-            console.warn('Firestore getAllUsers failed, falling back to local cache:', e);
+            console.error('Firestore getAllUsers failed:', e);
             try {
                 handleFirestoreError(e, OperationType.GET, 'users');
             } catch (err) {
-                // Logged successfully to console by handleFirestoreError, ignore for runtime fallback
+                // Logged
             }
-            return getLocalCache(CACHE_KEY, mockUsers);
+            return getLocalCache(CACHE_KEY, []);
         }
     },
 
     saveUser: async (user: User): Promise<void> => {
-        // Save to local cache first
-        const current = getLocalCache<User>(CACHE_KEY, mockUsers);
+        // Update local cache
+        const current = getLocalCache<User>(CACHE_KEY, []);
         const exists = current.findIndex(u => u.id === user.id);
         if (exists >= 0) {
             current[exists] = user;
@@ -51,36 +53,30 @@ export const userService = {
         }
         setLocalCache(CACHE_KEY, current);
 
-        // Try syncing with Firestore
+        // Sync with Firestore
         try {
             const sanitized = sanitizeUser(user);
             await setDoc(doc(db, 'users', user.id), sanitized);
         } catch (e) {
-            console.warn(`Firestore saveUser for ${user.id} failed, saved locally:`, e);
-            try {
-                handleFirestoreError(e, OperationType.WRITE, `users/${user.id}`);
-            } catch (err) {
-                // Logged successfully
-            }
+            console.error(`Firestore saveUser for ${user.id} failed:`, e);
+            handleFirestoreError(e, OperationType.WRITE, `users/${user.id}`);
+            throw e; // Propagate error in production
         }
     },
 
     deleteUser: async (userId: string): Promise<void> => {
-        // Delete from local cache first
-        const current = getLocalCache<User>(CACHE_KEY, mockUsers);
+        // Update local cache
+        const current = getLocalCache<User>(CACHE_KEY, []);
         const updated = current.filter(u => u.id !== userId);
         setLocalCache(CACHE_KEY, updated);
 
-        // Try syncing with Firestore
+        // Sync with Firestore
         try {
             await deleteDoc(doc(db, 'users', userId));
         } catch (e) {
-            console.warn(`Firestore deleteUser for ${userId} failed, deleted locally:`, e);
-            try {
-                handleFirestoreError(e, OperationType.DELETE, `users/${userId}`);
-            } catch (err) {
-                // Logged successfully
-            }
+            console.error(`Firestore deleteUser for ${userId} failed:`, e);
+            handleFirestoreError(e, OperationType.DELETE, `users/${userId}`);
+            throw e;
         }
     }
 };

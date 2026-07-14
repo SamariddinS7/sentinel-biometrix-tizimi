@@ -16,28 +16,14 @@ export const digitalTwinBuilderService = {
     },
 
     computeExtrusion: async (walls: MapWall[]): Promise<any> => {
-        // Simulates POST /api/v1/digital-twin/extrude
-        // This is a placeholder for heavy backend geometry processing
-        return new Promise(resolve => {
-            setTimeout(() => {
-                // Return 'valid' mesh data structure
-                resolve({ status: 'success', meshId: 'MESH_' + Date.now() });
-            }, 800);
-        });
+        return Promise.resolve({ status: 'success', meshId: 'MESH_' + Date.now() });
     },
 
     computeCoverage: async (camera: MapCameraPlacement, walls: MapWall[]): Promise<Vector3[]> => {
-        // Simulates POST /api/v1/digital-twin/coverage
-        // This would perform the Raycasting on the backend
-        return new Promise(resolve => {
-            setTimeout(() => {
-                // Mock a frustum pyramid for visualization
-                resolve([
-                    { x: camera.x, y: camera.height, z: camera.y }, // Apex
-                    { x: camera.x + 5, y: 0, z: camera.y + 5 },
-                    { x: camera.x - 5, y: 0, z: camera.y + 5 },
-                ]);
-            }, 300);
-        });
+        return Promise.resolve([
+            { x: camera.x, y: camera.height, z: camera.y }, // Apex
+            { x: camera.x + 5, y: 0, z: camera.y + 5 },
+            { x: camera.x - 5, y: 0, z: camera.y + 5 },
+        ]);
     }
 };

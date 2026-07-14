@@ -180,7 +180,8 @@ export const mapService = {
     getMap: (): FloorPlan => {
         try {
             const stored = localStorage.getItem(STORAGE_KEY_MAP);
-            return stored ? JSON.parse(stored) : DEFAULT_MAP;
+            if (!stored || stored === "undefined") return DEFAULT_MAP;
+            return JSON.parse(stored);
         } catch (e) {
             return DEFAULT_MAP;
         }
@@ -190,46 +191,8 @@ export const mapService = {
         localStorage.setItem(STORAGE_KEY_MAP, JSON.stringify(map));
     },
 
-    // Simulates fetching live trajectories from backend
+    // Simulates fetching live trajectories from backend. No fake tracks allowed.
     getLiveTracks: (cameras: MapCameraPlacement[]): Promise<ActiveTrack[]> => {
-        return new Promise((resolve) => {
-            if (activeAgents.length === 0) initAgents();
-
-            const time = Date.now() / 1000;
-            const bounds = { w: 800, h: 600 }; // Should match map dimensions
-
-            const tracks: ActiveTrack[] = activeAgents.map(agent => {
-                // Update Physics
-                agent.x += agent.vx;
-                agent.y += agent.vy;
-
-                // Random Perturbation (Natural movement)
-                if (Math.random() > 0.9) {
-                    agent.vx += (Math.random() - 0.5) * 2;
-                    agent.vy += (Math.random() - 0.5) * 2;
-                    // Cap velocity
-                    const speed = Math.sqrt(agent.vx*agent.vx + agent.vy*agent.vy);
-                    if (speed > 4) { agent.vx *= 0.8; agent.vy *= 0.8; }
-                }
-
-                // Bounce off walls
-                if (agent.x < 20 || agent.x > bounds.w - 20) agent.vx *= -1;
-                if (agent.y < 20 || agent.y > bounds.h - 20) agent.vy *= -1;
-
-                // Update Path History
-                agent.path.push({ x: agent.x, y: agent.y, timestamp: time });
-                if (agent.path.length > 50) agent.path.shift(); // Keep last 50 points
-
-                return {
-                    trackId: agent.id,
-                    personName: agent.name,
-                    role: agent.role,
-                    velocity: Math.sqrt(agent.vx*agent.vx + agent.vy*agent.vy),
-                    path: [...agent.path]
-                };
-            });
-
-            resolve(tracks);
-        });
+        return Promise.resolve([]);
     }
 };

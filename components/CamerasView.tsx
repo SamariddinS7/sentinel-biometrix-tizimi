@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     Grid, List, Plus, Trash2, Link as LinkIcon, Activity, Maximize, Minimize,
     MoreVertical, Video, AlertCircle, WifiOff, RefreshCw, Copy, Check, Power, CheckCircle2, MapPin, Share2, Clock, Usb, Globe, Ruler, GripHorizontal, ArrowLeft, Lock, Search, Scan,
-    Cpu, Sliders, History, Upload, X, ShieldAlert, BadgeCheck, Zap, ToggleLeft, ToggleRight, Settings2, SlidersHorizontal, Sparkles, FileText, Play
+    Cpu, Sliders, History, Upload, X, ShieldAlert, BadgeCheck, Zap, ToggleLeft, ToggleRight, Settings2, SlidersHorizontal, Sparkles, FileText, Play,
+    Users, Flame, Calculator, ScanFace
 } from 'lucide-react';
 import { Camera, CameraType, CameraStatus } from '../types';
 import { cameraService } from '../services/cameraService';
@@ -11,29 +12,95 @@ import { useLanguage } from '../services/i18n';
 import { WebcamFeed } from './WebcamFeed';
 import { coverageEngine } from '../services/coverageEngine';
 import { CameraSearchModal } from './CameraSearchModal';
+import { UnifiedCameraOverlay } from './CanvasOverlay';
 import { detectObjectsWithRFDetr, DETRObject } from '../services/geminiService';
+
+declare const faceapi: any;
 
 // --- Sub-components ---
 
-const isCameraInactive = (camera: Camera) => {
-    if (camera.lastActive === 'Never') return true;
-    if (camera.lastActive === 'Now') return false;
+const getYouTubeEmbedUrl = (url: string): string | null => {
+    if (!url) return null;
     
-    // Attempt parse
+    // Support youtube.com/live/VIDEO_ID
+    if (url.includes('/live/')) {
+        const parts = url.split('/live/');
+        if (parts[1]) {
+            const id = parts[1].split('?')[0].split('&')[0];
+            if (id.length === 11) {
+                return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&playlist=${id}&loop=1`;
+            }
+        }
+    }
+    
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2].length === 11) {
+        return `https://www.youtube.com/embed/${match[2]}?autoplay=1&mute=1&playlist=${match[2]}&loop=1`;
+    }
+    return null;
+};
+
+const getCameraSimulatedVideoUrl = (camera: Camera): string | null => {
+    const url = camera.streamUrl;
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+        if (url.match(/\.(mp4|webm|ogg|m3u8)(\?|$)/i)) {
+            return url;
+        }
+    }
+    
+    // No mock/fake surveillance videos allowed as per enterprise rule
+    return null;
+};
+
+interface SimulatedVideoPlayerProps {
+    src: string;
+    fallbackImg: string;
+    className?: string;
+}
+
+const SimulatedVideoPlayer: React.FC<SimulatedVideoPlayerProps> = ({ src, fallbackImg, className }) => {
+    const [failed, setFailed] = useState(false);
+    
+    if (failed) {
+        return (
+            <img 
+                src={fallbackImg}
+                className={className} 
+                alt="feed" 
+                referrerPolicy="no-referrer"
+            />
+        );
+    }
+    
+    return (
+        <video
+            src={src}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onError={() => setFailed(true)}
+            className={className}
+        />
+    );
+};
+
+
+export const isCameraInactive = (camera: Camera) => {
+    if (!camera.lastActive) return false;
     const date = new Date(camera.lastActive);
-    if (isNaN(date.getTime())) return true; // Invalid date = inactive
-    
     const now = new Date();
     return (now.getTime() - date.getTime()) > 5 * 60 * 1000;
 };
-
 
 const SingleCameraView: React.FC<{ 
     camera: Camera, 
     onClose: () => void,
     onStatusToggle: (cam: Camera) => void,
-    onStreamError: (id: string, error: string) => void
-}> = ({ camera, onClose, onStatusToggle, onStreamError }) => {
+    onStreamError: (id: string, error: string) => void,
+    streamMode?: 'mjpeg' | 'direct'
+}> = ({ camera, onClose, onStatusToggle, onStreamError, streamMode = 'mjpeg' }) => {
     const isOnline = camera.status === CameraStatus.ONLINE;
     const [rfDetrEnabled, setRfDetrEnabled] = useState(false);
 
@@ -44,7 +111,12 @@ const SingleCameraView: React.FC<{
     const [iouThreshold, setIouThreshold] = useState(0.5);
 
     // Local Detection State
-    const [detections, setDetections] = useState<DETRObject[]>([
+
+    const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+    const viewfinderRef = useRef<HTMLDivElement>(null);
+    const analysisConfig = { detectPeople: true, recognizeFaces: true, enableCounting: true, showHeatmap: false };
+
+    const [detections, setDetections] = useState<DETRObject[]>([ 
         { id: 1, label: 'Person', confidence: 0.99, top: 20, left: 30, width: 15, height: 55 },
         { id: 2, label: 'Person', confidence: 0.96, top: 25, left: 60, width: 12, height: 50 },
         { id: 3, label: 'Backpack', confidence: 0.88, top: 45, left: 62, width: 8, height: 20 },
@@ -52,7 +124,73 @@ const SingleCameraView: React.FC<{
     ]);
 
     // File Upload / Static Target Testing
-    const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+
+    // Digital Zoom, Fit & Panning States
+    const [zoomScale, setZoomScale] = useState<number>(1.0);
+    const [panX, setPanX] = useState<number>(0); // panning X pixel offset
+    const [panY, setPanY] = useState<number>(0); // panning Y pixel offset
+    const [objectFit, setObjectFit] = useState<'contain' | 'cover'>('contain');
+    const [isDraggingPan, setIsDraggingPan] = useState<boolean>(false);
+    const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (zoomScale <= 1.0) return;
+        setIsDraggingPan(true);
+        dragStartRef.current = { x: e.clientX - panX, y: e.clientY - panY };
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDraggingPan) return;
+        const newX = e.clientX - dragStartRef.current.x;
+        const newY = e.clientY - dragStartRef.current.y;
+        
+        // Dynamic bounds based on current zoom level
+        const maxPanX = (zoomScale - 1) * 200;
+        const maxPanY = (zoomScale - 1) * 150;
+        setPanX(Math.max(-maxPanX, Math.min(maxPanX, newX)));
+        setPanY(Math.max(-maxPanY, Math.min(maxPanY, newY)));
+    };
+
+    const handleMouseUpOrLeave = () => {
+        setIsDraggingPan(false);
+    };
+
+    const handleZoomIn = () => {
+        setZoomScale(prev => {
+            const next = Math.min(4.0, prev + 0.5);
+            addLog(`Digital Zoom increased to ${next.toFixed(1)}x`, "info");
+            return next;
+        });
+    };
+
+    const handleZoomOut = () => {
+        setZoomScale(prev => {
+            const next = Math.max(1.0, prev - 0.5);
+            if (next === 1.0) {
+                setPanX(0);
+                setPanY(0);
+                addLog("Digital Zoom reset to original scale.", "info");
+            } else {
+                addLog(`Digital Zoom decreased to ${next.toFixed(1)}x`, "info");
+            }
+            return next;
+        });
+    };
+
+    const handleResetZoom = () => {
+        setZoomScale(1.0);
+        setPanX(0);
+        setPanY(0);
+        addLog("Digital Zoom and panning reset.", "info");
+    };
+
+    const toggleObjectFit = () => {
+        setObjectFit(prev => {
+            const next = prev === 'contain' ? 'cover' : 'contain';
+            addLog(`Aspect Ratio Fit mode changed to ${next === 'contain' ? 'Contain (Fit)' : 'Cover (Fill)'}`, "info");
+            return next;
+        });
+    };
 
     // Logs & Telemetry
     const [logs, setLogs] = useState<{ id: string; time: string; text: string; type: 'info' | 'success' | 'warn' }[]>([
@@ -70,87 +208,6 @@ const SingleCameraView: React.FC<{
             ...prev.slice(0, 19)
         ]);
     };
-
-    // Live Simulated Tracking Adjustments (Runs if not analyzing and using standard stream)
-    useEffect(() => {
-        if (!rfDetrEnabled || isAnalyzing) return;
-
-        const interval = setInterval(() => {
-            // Latency range changes based on selected model
-            setInferenceTime(prev => {
-                let min = 6, max = 15;
-                if (selectedModel === 'medium') { min = 12; max = 22; }
-                if (selectedModel === 'large') { min = 24; max = 40; }
-                const delta = (Math.random() - 0.5) * 2;
-                return Math.max(min, Math.min(max, Math.round(prev + delta)));
-            });
-
-            setFps(prev => {
-                let min = 45, max = 60;
-                if (selectedModel === 'medium') { min = 38; max = 46; }
-                if (selectedModel === 'large') { min = 20; max = 30; }
-                const delta = (Math.random() - 0.5) * 1.5;
-                return Math.max(min, Math.min(max, Number((prev + delta).toFixed(1))));
-            });
-
-            // Smooth coordinate jittering to represent real tracking loops (only for live view, not uploaded stationary photo)
-            if (!uploadedImage) {
-                setDetections(prev => {
-                    const mapped = prev.map(obj => {
-                        const jitterX = (Math.random() - 0.5) * 1.5;
-                        const jitterY = (Math.random() - 0.5) * 1.5;
-                        const jitterW = (Math.random() - 0.5) * 0.5;
-                        const jitterH = (Math.random() - 0.5) * 0.5;
-
-                        return {
-                            ...obj,
-                            top: Math.max(5, Math.min(80, Math.round(obj.top + jitterY))),
-                            left: Math.max(5, Math.min(80, Math.round(obj.left + jitterX))),
-                            width: Math.max(5, Math.min(45, Math.round(obj.width + jitterW))),
-                            height: Math.max(5, Math.min(75, Math.round(obj.height + jitterH))),
-                            confidence: Number(Math.max(0.5, Math.min(1.0, obj.confidence + (Math.random() - 0.5) * 0.01)).toFixed(2))
-                        };
-                    });
-
-                    // Auto random object entry/exit simulation to look realistic
-                    if (Math.random() > 0.85 && mapped.length < 5) {
-                        const randomItems = [
-                            { label: 'Person', top: 30, left: 10, width: 20, height: 60 },
-                            { label: 'Cup', top: 60, left: 45, width: 5, height: 7 },
-                            { label: 'Chair', top: 55, left: 75, width: 15, height: 35 },
-                            { label: 'Cell Phone', top: 40, left: 35, width: 4, height: 8 },
-                        ];
-                        const chosen = randomItems[Math.floor(Math.random() * randomItems.length)];
-                        const newId = Date.now();
-                        const isDuplicate = mapped.some(m => m.label === chosen.label && Math.abs(m.left - chosen.left) < 15);
-                        if (!isDuplicate) {
-                            mapped.push({
-                                id: newId,
-                                label: chosen.label,
-                                confidence: Number((0.75 + Math.random() * 0.22).toFixed(2)),
-                                top: chosen.top,
-                                left: chosen.left,
-                                width: chosen.width,
-                                height: chosen.height
-                            });
-                            addLog(`RF-DETR registered new target: ${chosen.label} (${Math.round((0.75 + Math.random() * 0.22) * 100)}%)`, 'info');
-                        }
-                    }
-
-                    if (Math.random() > 0.9 && mapped.length > 2) {
-                        const removed = mapped.pop();
-                        if (removed) {
-                            addLog(`Target de-registered/out-of-frame: ${removed.label}`, 'info');
-                        }
-                    }
-
-                    return mapped;
-                });
-            }
-        }, 1200);
-
-        return () => clearInterval(interval);
-    }, [rfDetrEnabled, isAnalyzing, selectedModel, uploadedImage]);
 
     // Capture and analyze live frame via Gemini Object Detection
     const handleCaptureAndDetect = async () => {
@@ -209,15 +266,9 @@ const SingleCameraView: React.FC<{
             }
         } catch (e: any) {
             console.error(e);
-            addLog(`Active computer-vision analysis failed: ${e.message || "Connection refused"}. Triggering local pipeline fallback.`, "warn");
+            addLog(`Active computer-vision analysis failed: ${e.message || "Connection refused"}. Local pipeline disabled.`, "warn");
             
-            // Build visual mocks
-            const mockBoxes: DETRObject[] = [
-                { id: 201, label: 'Person', confidence: 0.95, top: 15, left: 18, width: 28, height: 70 },
-                { id: 202, label: 'Laptop', confidence: 0.91, top: 55, left: 40, width: 14, height: 16 },
-                { id: 203, label: 'Backpack', confidence: 0.82, top: 40, left: 65, width: 10, height: 25 }
-            ];
-            setDetections(mockBoxes);
+            setDetections([]);
         } finally {
             setIsAnalyzing(false);
         }
@@ -281,30 +332,30 @@ const SingleCameraView: React.FC<{
 
     const statusConfig = {
         [CameraStatus.ONLINE]: { bg: 'bg-emerald-500', text: 'text-white', icon: CheckCircle2, label: 'ONLINE', pulse: true },
-        [CameraStatus.OFFLINE]: { bg: 'bg-slate-600', text: 'text-slate-200', icon: WifiOff, label: 'OFFLINE', pulse: false },
+        [CameraStatus.OFFLINE]: { bg: 'bg-slate-600', text: 'text-text-primary', icon: WifiOff, label: 'OFFLINE', pulse: false },
         [CameraStatus.CONNECTING]: { bg: 'bg-amber-500', text: 'text-white', icon: RefreshCw, label: 'CONNECTING', pulse: true, spin: true },
         [CameraStatus.ERROR]: { bg: 'bg-rose-600', text: 'text-white', icon: AlertCircle, label: 'ERROR', pulse: true }
-    }[camera.status] || { bg: 'bg-slate-500', text: 'text-white', icon: Activity, label: 'UNKNOWN', pulse: false };
+    }[camera.status] || { bg: 'bg-app-primary0', text: 'text-white', icon: Activity, label: 'UNKNOWN', pulse: false };
 
     const StatusIcon = statusConfig.icon;
 
     return (
-        <div className="h-full flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="h-full flex flex-col bg-app-panel border border-border rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             {/* Main Header */}
-            <div className="p-4 border-b border-slate-800 bg-slate-950 flex justify-between items-center z-10">
+            <div className="p-4 border-b border-border bg-app-primary flex justify-between items-center z-10">
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={onClose} 
-                        className="p-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-300 hover:text-white transition-colors border border-slate-700"
+                        className="p-2 bg-app-surface hover:bg-app-surface rounded-full text-text-secondary hover:text-white transition-colors border border-border"
                     >
                         <ArrowLeft size={20} />
                     </button>
                     <div>
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                             {camera.name}
-                            <span className="text-xs font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">{camera.id}</span>
+                            <span className="text-xs font-mono text-text-primary0 bg-app-panel px-2 py-0.5 rounded border border-border">{camera.id}</span>
                         </h2>
-                        <p className="text-sm text-slate-400 flex items-center gap-1.5 mt-0.5">
+                        <p className="text-sm text-text-secondary flex items-center gap-1.5 mt-0.5">
                             <MapPin size={12} className="text-cyan-400" /> {camera.location}
                         </p>
                     </div>
@@ -316,7 +367,7 @@ const SingleCameraView: React.FC<{
                             setRfDetrEnabled(!rfDetrEnabled);
                             addLog(`RF-DETR Intelligent Pipeline ${!rfDetrEnabled ? 'ENABLED' : 'DISABLED'}`, 'info');
                         }}
-                        className={`flex items-center gap-2 px-4 py-1.5 rounded-full shadow-lg transition-all border ${rfDetrEnabled ? 'bg-indigo-600 text-white border-indigo-400/30' : 'bg-slate-800 text-slate-400 border-slate-750'}`}
+                        className={`flex items-center gap-2 px-4 py-1.5 rounded-full shadow-lg transition-all border ${rfDetrEnabled ? 'bg-indigo-600 text-white border-indigo-400/30' : 'bg-app-surface text-text-secondary border-border/60'}`}
                     >
                         <Scan size={14} className={rfDetrEnabled ? 'animate-pulse' : ''} />
                         <span className="text-xs font-bold tracking-wider">RF-DETR AI</span>
@@ -332,7 +383,7 @@ const SingleCameraView: React.FC<{
             </div>
 
             {/* Split Workspace View */}
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 bg-slate-950">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 bg-app-primary">
                 
                 {/* LEFT WORKSPACE: Video viewfinder & overlays */}
                 <div className="flex-1 min-h-[400px] lg:min-h-0 relative flex items-center justify-center bg-black overflow-hidden select-none">
@@ -344,110 +395,147 @@ const SingleCameraView: React.FC<{
                         </div>
                     )}
 
-                    {/* Viewfinder renderer */}
-                    {uploadedImage ? (
-                        <div className="w-full h-full relative p-4 flex items-center justify-center">
-                            <img 
-                                src={uploadedImage} 
-                                className="max-w-full max-h-full object-contain rounded-md border border-slate-800 shadow-2xl" 
-                                alt="Target canvas" 
-                            />
-                            <div className="absolute top-4 right-4 z-20 flex gap-2">
+                    {/* Floating Zoom & Aspect Ratio Controls */}
+                    {isOnline && (
+                        <div className="absolute top-4 right-4 z-25 flex items-center gap-1.5 bg-black/75 backdrop-blur-md border border-border/70 p-1.5 rounded-lg shadow-xl font-mono text-xs select-none pointer-events-auto">
+                            <button 
+                                onClick={toggleObjectFit}
+                                className="px-2 py-1 bg-app-panel hover:bg-app-surface border border-border/50 text-text-secondary hover:text-white rounded text-[10px] uppercase font-bold transition-all cursor-pointer"
+                                title="Toggle Fit Mode"
+                            >
+                                {objectFit === 'contain' ? 'Fit' : 'Fill'}
+                            </button>
+                            <div className="w-px h-4 bg-border/50 mx-1"></div>
+                            <button 
+                                onClick={handleZoomOut}
+                                disabled={zoomScale <= 1.0}
+                                className="w-6 h-6 flex items-center justify-center bg-app-panel hover:bg-app-surface disabled:opacity-40 disabled:hover:bg-app-panel border border-border/50 text-text-secondary hover:text-white rounded transition-all font-bold cursor-pointer"
+                                title="Zoom Out"
+                            >
+                                -
+                            </button>
+                            <span className="min-w-[40px] text-center font-bold text-cyan-400 text-[10px]">
+                                {Math.round(zoomScale * 100)}%
+                            </span>
+                            <button 
+                                onClick={handleZoomIn}
+                                disabled={zoomScale >= 4.0}
+                                className="w-6 h-6 flex items-center justify-center bg-app-panel hover:bg-app-surface disabled:opacity-40 disabled:hover:bg-app-panel border border-border/50 text-text-secondary hover:text-white rounded transition-all font-bold cursor-pointer"
+                                title="Zoom In"
+                            >
+                                +
+                            </button>
+                            {zoomScale > 1.0 && (
                                 <button 
-                                    onClick={handleCaptureAndDetect}
-                                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded-md shadow-lg font-medium border border-indigo-500/30 font-mono transition-all"
+                                    onClick={handleResetZoom}
+                                    className="px-1.5 py-1 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-400 rounded text-[9px] uppercase font-bold transition-all cursor-pointer"
+                                    title="Reset Zoom & Pan"
                                 >
-                                    <Sparkles size={12} /> Re-Analyze Image
+                                    Reset
                                 </button>
-                                <button 
-                                    onClick={() => {
-                                        setUploadedImage(null);
-                                        setDetections([
-                                            { id: 1, label: 'Person', confidence: 0.99, top: 20, left: 30, width: 15, height: 55 },
-                                            { id: 2, label: 'Person', confidence: 0.96, top: 25, left: 60, width: 12, height: 50 },
-                                            { id: 3, label: 'Backpack', confidence: 0.88, top: 45, left: 62, width: 8, height: 20 },
-                                            { id: 4, label: 'Laptop', confidence: 0.92, top: 55, left: 25, width: 10, height: 10 },
-                                        ]);
-                                        addLog("Custom snapshot deleted. Returning to live camera stream.", "info");
-                                    }}
-                                    className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-350 text-xs px-3 py-1.5 rounded-md shadow-lg border border-slate-700/50 transition-all"
-                                >
-                                    <X size={12} /> Close Preview
-                                </button>
-                            </div>
+                            )}
                         </div>
-                    ) : (
-                        camera.type === CameraType.USB && isOnline ? (
-                            <WebcamFeed 
-                                className="w-full h-full object-contain" 
-                                onError={(err: any) => onStreamError(camera.id, err.message || "Device access failed")}
-                            />
-                        ) : (
-                            <div className="w-full h-full relative flex items-center justify-center">
-                                {isOnline ? (
-                                    <>
-                                        <img 
-                                            src={camera.id === 'CAM-02' ? "https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=1600&q=80" : "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1600&q=80&grayscale"}
-                                            className="w-full h-full object-cover opacity-80" 
-                                            alt="CCTV stream" 
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-[scan_4s_linear_infinite] pointer-events-none"></div>
-                                    </>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-600 bg-slate-950/80 w-full">
-                                        <StatusIcon size={64} className={`mb-4 ${statusConfig.spin ? 'animate-spin' : ''} opacity-50`} />
-                                        <p className="text-xl font-mono font-bold tracking-widest">{statusConfig.label}</p>
-                                        {camera.errorMsg && <p className="mt-2 text-rose-450 font-mono text-sm max-w-md text-center">{camera.errorMsg}</p>}
-                                    </div>
-                                )}
-                            </div>
-                        )
                     )}
 
-                    {/* RF-DETR Bounding Box Canvas Overlay */}
-                    {isOnline && rfDetrEnabled && (
-                        <div className="absolute inset-0 z-10 pointer-events-none">
-                            {visibleDetections.map((obj) => {
-                                let labelColor = 'border-cyan-500 text-cyan-400 bg-cyan-500/10';
-                                const tag = obj.label.toLowerCase();
-                                if (tag.includes('person')) {
-                                    labelColor = 'border-cyan-500 text-cyan-400 bg-cyan-400/15';
-                                } else if (tag.includes('lap') || tag.includes('computer')) {
-                                    labelColor = 'border-amber-500 text-amber-400 bg-amber-400/15';
-                                } else if (tag.includes('phone')) {
-                                    labelColor = 'border-emerald-500 text-emerald-450 bg-emerald-500/15';
-                                } else if (tag.includes('cup')) {
-                                    labelColor = 'border-teal-500 text-teal-400 bg-teal-400/15';
-                                } else if (tag.includes('backpack')) {
-                                    labelColor = 'border-fuchsia-500 text-fuchsia-400 bg-fuchsia-500/15';
-                                } else if (tag.includes('chair')) {
-                                    labelColor = 'border-blue-500 text-blue-400 bg-blue-500/15';
-                                }
-
-                                return (
-                                    <div 
-                                        key={obj.id}
-                                        className={`absolute border-2 ${labelColor} rounded-sm flex flex-col justify-start transition-all duration-300 ease-out`}
-                                        style={{
-                                            top: `${obj.top}%`,
-                                            left: `${obj.left}%`,
-                                            width: `${obj.width}%`,
-                                            height: `${obj.height}%`
-                                        }}
+                    {/* Viewfinder renderer wrapper */}
+                    <div 
+                        ref={viewfinderRef}
+                        style={{ 
+                            transform: `scale(${zoomScale}) translate(${panX}px, ${panY}px)`, 
+                            transformOrigin: 'center', 
+                            transition: isDraggingPan ? 'none' : 'transform 0.15s ease-out' 
+                        }}
+                        className={`w-full h-full relative flex items-center justify-center overflow-hidden ${zoomScale > 1.0 ? (isDraggingPan ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUpOrLeave}
+                        onMouseLeave={handleMouseUpOrLeave}
+                    >
+                        {uploadedImage ? (
+                            <div className="w-full h-full relative p-4 flex items-center justify-center">
+                                <img 
+                                    src={uploadedImage} 
+                                    className={`max-w-full max-h-full object-${objectFit} rounded-md border border-border shadow-2xl`} 
+                                    alt="Target canvas" 
+                                />
+                                <div className="absolute top-4 right-4 z-20 flex gap-2">
+                                    <button 
+                                        onClick={handleCaptureAndDetect}
+                                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded-md shadow-lg font-medium border border-indigo-500/30 font-mono transition-all"
                                     >
-                                        <div className="bg-slate-950/95 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-br-sm border-r border-b border-inherit select-none pointer-events-none self-start flex items-center gap-1 shadow-md">
-                                            <span>{obj.label}</span>
-                                            <span className="opacity-75 font-mono">({Math.round(obj.confidence * 100)}%)</span>
+                                        <Sparkles size={12} /> Re-Analyze Image
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            setUploadedImage(null);
+                                            setDetections([
+                                                { id: 1, label: 'Person', confidence: 0.99, top: 20, left: 30, width: 15, height: 55 },
+                                                { id: 2, label: 'Person', confidence: 0.96, top: 25, left: 60, width: 12, height: 50 },
+                                                { id: 3, label: 'Backpack', confidence: 0.88, top: 45, left: 62, width: 8, height: 20 },
+                                                { id: 4, label: 'Laptop', confidence: 0.92, top: 55, left: 25, width: 10, height: 10 },
+                                            ]);
+                                            addLog("Custom snapshot deleted. Returning to live camera stream.", "info");
+                                        }}
+                                        className="flex items-center gap-1 bg-app-surface hover:bg-app-surface text-slate-350 text-xs px-3 py-1.5 rounded-md shadow-lg border border-border/50 transition-all"
+                                    >
+                                        <X size={12} /> Close Preview
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            camera.type === CameraType.USB && isOnline ? (
+                                <WebcamFeed 
+                                    className={`w-full h-full object-${objectFit}`} 
+                                    onError={(err: any) => onStreamError(camera.id, err.message || "Device access failed")}
+                                />
+                            ) : (
+                                <div className="w-full h-full relative flex items-center justify-center">
+                                    {isOnline ? (
+                                        getYouTubeEmbedUrl(camera.streamUrl) ? (
+                                            <iframe
+                                                src={getYouTubeEmbedUrl(camera.streamUrl)!}
+                                                className="w-full h-full border-0"
+                                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                allowFullScreen
+                                            />
+                                        ) : (
+                                            <>
+                                                {streamMode === 'mjpeg' ? (
+                                                    <img 
+                                                        src={`/api/cameras/${camera.id}/stream`} 
+                                                        alt={camera.name} 
+                                                        className={`w-full h-full object-${objectFit} opacity-90`} 
+                                                        referrerPolicy="no-referrer"
+                                                    />
+                                                ) : (
+                                                    <SimulatedVideoPlayer 
+                                                        src={getCameraSimulatedVideoUrl(camera)!}
+                                                        fallbackImg={""}
+                                                        className={`w-full h-full object-${objectFit} opacity-80`} 
+                                                    />
+                                                )}
+                                                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent animate-[scan_4s_linear_infinite] pointer-events-none"></div>
+                                            </>
+                                        )
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-text-muted bg-app-primary/80 w-full">
+                                            <StatusIcon size={64} className={`mb-4 ${statusConfig.spin ? 'animate-spin' : ''} opacity-50`} />
+                                            <p className="text-xl font-mono font-bold tracking-widest">{statusConfig.label}</p>
+                                            {camera.errorMsg && <p className="mt-2 text-rose-450 font-mono text-sm max-w-md text-center">{camera.errorMsg}</p>}
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                    )}
+                                </div>
+                            )
+                        )}
+
+                        {isOnline && (
+                            <UnifiedCameraOverlay cameraId={camera.id} mediaRef={viewfinderRef} isActive={isOnline} config={analysisConfig} />
+                        )}
+                    </div>
                     
                     {/* Viewport Telemetry HUD */}
                     <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end pointer-events-none select-none z-10">
-                        <div className="space-y-1 bg-slate-950/70 p-2 rounded-md backdrop-blur border border-slate-800/50">
+                        <div className="space-y-1 bg-app-primary/70 p-2 rounded-md backdrop-blur border border-border/50">
                             <div className="flex gap-2">
                                 <span className="text-cyan-400 text-xs font-mono font-medium">
                                     {camera.resolution} @ {camera.fps}FPS
@@ -456,13 +544,13 @@ const SingleCameraView: React.FC<{
                                     BITRATE: 4.2 MBPS
                                 </span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
+                            <div className="text-[10px] text-text-secondary font-mono">
                                 FOV: {coverageEngine.calculateOpticalFOV({ focalLength: camera.focalLength, sensorWidth: camera.sensorWidth }).toFixed(1)}° 
                                 • LENS: {camera.focalLength}mm
                             </div>
                         </div>
-                        <div className="text-right bg-slate-950/70 p-2 rounded-md backdrop-blur border border-slate-800/50">
-                            <div className="text-sm font-bold text-slate-300 font-mono tracking-wider">SECURE LINK FEED</div>
+                        <div className="text-right bg-app-primary/70 p-2 rounded-md backdrop-blur border border-border/50">
+                            <div className="text-sm font-bold text-text-secondary font-mono tracking-wider">SECURE LINK FEED</div>
                             <div className="text-xs font-thin text-white/50 font-mono mt-0.5">{new Date().toLocaleDateString()}</div>
                         </div>
                     </div>
@@ -470,34 +558,34 @@ const SingleCameraView: React.FC<{
 
                 {/* RIGHT PANEL: RF-DETR control bar */}
                 {rfDetrEnabled && (
-                    <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-900 flex flex-col h-full overflow-y-auto custom-scrollbar">
+                    <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-l border-border bg-app-panel flex flex-col h-full overflow-y-auto custom-scrollbar">
                         {/* Title Segment */}
-                        <div className="p-4 border-b border-slate-800 bg-slate-950 flex flex-col gap-1">
+                        <div className="p-4 border-b border-border bg-app-primary flex flex-col gap-1">
                             <div className="flex items-center gap-2 text-indigo-400">
                                 <Cpu className="w-5 h-5 animate-pulse" />
                                 <span className="text-sm font-bold tracking-wider font-mono">RF-DETR TRANSFORMER CONTROL</span>
                             </div>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-text-secondary">
                                 SOTA Real-Time Object Detection & Instance Segmentation. Powered by Roboflow weights & Gemini Reasoning.
                             </p>
                         </div>
 
                         {/* Telemetry Segment */}
-                        <div className="p-4 border-b border-slate-800 bg-slate-950/50 grid grid-cols-2 gap-3 text-sm font-mono">
-                            <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg flex flex-col">
-                                <span className="text-xs text-slate-400">Inference Speed</span>
+                        <div className="p-4 border-b border-border bg-app-primary/50 grid grid-cols-2 gap-3 text-sm font-mono">
+                            <div className="bg-app-panel border border-border p-2.5 rounded-lg flex flex-col">
+                                <span className="text-xs text-text-secondary">Inference Speed</span>
                                 <span className="text-lg font-bold text-indigo-400 mt-1">{inferenceTime} <span className="text-xs font-normal">ms</span></span>
-                                <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-1.5">
+                                <div className="w-full bg-app-surface h-1 rounded-full overflow-hidden mt-1.5">
                                     <div 
                                         className="bg-indigo-500 h-full transition-all duration-300"
                                         style={{ width: `${Math.min(100, (inferenceTime / 50) * 100)}%` }}
                                     ></div>
                                 </div>
                             </div>
-                            <div className="bg-slate-900 border border-slate-800 p-2.5 rounded-lg flex flex-col">
-                                <span className="text-xs text-slate-400">Target Pipeline</span>
+                            <div className="bg-app-panel border border-border p-2.5 rounded-lg flex flex-col">
+                                <span className="text-xs text-text-secondary">Target Pipeline</span>
                                 <span className="text-lg font-bold text-emerald-400 mt-1">{fps} <span className="text-xs font-normal">FPS</span></span>
-                                <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-1.5">
+                                <div className="w-full bg-app-surface h-1 rounded-full overflow-hidden mt-1.5">
                                     <div 
                                         className="bg-emerald-500 h-full transition-all duration-300" 
                                         style={{ width: `${Math.min(100, (fps / 60) * 100)}%` }}
@@ -507,8 +595,8 @@ const SingleCameraView: React.FC<{
                         </div>
 
                         {/* Interactive AI Tools Section */}
-                        <div className="p-4 border-b border-slate-800 bg-slate-950/20 space-y-3">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono select-none">Active AI Inference Action</h3>
+                        <div className="p-4 border-b border-border bg-app-primary/20 space-y-3">
+                            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest font-mono select-none">Active AI Inference Action</h3>
                             
                             <button
                                 onClick={handleCaptureAndDetect}
@@ -529,33 +617,33 @@ const SingleCameraView: React.FC<{
                             </button>
 
                             {/* Drag and Drop File Testing */}
-                            <div className="relative border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-lg p-3 text-center transition-all bg-slate-950/40 cursor-pointer">
+                            <div className="relative border-2 border-dashed border-border hover:border-indigo-500/50 rounded-lg p-3 text-center transition-all bg-app-primary/40 cursor-pointer">
                                 <input 
                                     type="file" 
                                     accept="image/*"
                                     onChange={handleFileUpload}
                                     className="absolute inset-0 opacity-0 cursor-pointer"
                                 />
-                                <div className="flex flex-col items-center justify-center gap-1.5 text-xs text-slate-400">
-                                    <Upload size={16} className="text-slate-500 animate-bounce" />
+                                <div className="flex flex-col items-center justify-center gap-1.5 text-xs text-text-secondary">
+                                    <Upload size={16} className="text-text-primary0 animate-bounce" />
                                     <span>
                                         <b className="text-indigo-400 hover:underline">Click to upload</b> reference frame
                                     </span>
-                                    <span className="text-[10px] text-slate-500 font-mono">JPG, PNG up to 10MB</span>
+                                    <span className="text-[10px] text-text-primary0 font-mono">JPG, PNG up to 10MB</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Parameters Segment */}
-                        <div className="p-4 border-b border-slate-800 bg-slate-900 space-y-4">
+                        <div className="p-4 border-b border-border bg-app-panel space-y-4">
                             <div className="flex justify-between items-center select-none">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono">DETR Parameter Bounds</h3>
-                                <SlidersHorizontal size={14} className="text-slate-500" />
+                                <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest font-mono">DETR Parameter Bounds</h3>
+                                <SlidersHorizontal size={14} className="text-text-primary0" />
                             </div>
 
                             {/* Model Scale Slider */}
                             <div className="space-y-2">
-                                <label className="text-xs text-slate-400 block font-mono">Model Complexity ({selectedModel.toUpperCase()})</label>
+                                <label className="text-xs text-text-secondary block font-mono">Model Complexity ({selectedModel.toUpperCase()})</label>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['tiny', 'medium', 'large'] as const).map((m) => (
                                         <button
@@ -564,7 +652,7 @@ const SingleCameraView: React.FC<{
                                                 setSelectedModel(m);
                                                 addLog(`Switched network backbone scale to RF-DETR-${m.toUpperCase()}`, 'info');
                                             }}
-                                            className={`py-1 rounded text-[10px] font-bold uppercase transition-all border ${selectedModel === m ? 'bg-indigo-600 text-white border-indigo-400/30 shadow-md shadow-indigo-600/10' : 'bg-slate-800 text-slate-400 border-slate-750 hover:bg-slate-750'}`}
+                                            className={`py-1 rounded text-[10px] font-bold uppercase transition-all border ${selectedModel === m ? 'bg-indigo-600 text-white border-indigo-400/30 shadow-md shadow-indigo-600/10' : 'bg-app-surface text-text-secondary border-border/60 hover:bg-slate-750'}`}
                                         >
                                             {m}
                                         </button>
@@ -575,7 +663,7 @@ const SingleCameraView: React.FC<{
                             {/* Confidence Confidence slider */}
                             <div className="space-y-1.5">
                                 <div className="flex justify-between text-xs font-mono font-medium">
-                                    <span className="text-slate-400">Score Cutoff</span>
+                                    <span className="text-text-secondary">Score Cutoff</span>
                                     <span className="text-indigo-400">{(confThreshold * 100).toFixed(0)}%</span>
                                 </div>
                                 <input 
@@ -589,14 +677,14 @@ const SingleCameraView: React.FC<{
                                         setConfThreshold(val);
                                         addLog(`Confidence filter adjusted to: ${(val * 100).toFixed(0)}%`, 'info');
                                     }}
-                                    className="w-full accent-indigo-500 bg-slate-800 rounded-lg appearance-none h-1 cursor-pointer"
+                                    className="w-full accent-indigo-500 bg-app-surface rounded-lg appearance-none h-1 cursor-pointer"
                                 />
                             </div>
 
                             {/* IoU Sliders */}
                             <div className="space-y-1.5">
                                 <div className="flex justify-between text-xs font-mono font-medium">
-                                    <span className="text-slate-400">Overlap Limit (IoU)</span>
+                                    <span className="text-text-secondary">Overlap Limit (IoU)</span>
                                     <span className="text-cyan-400">{(iouThreshold * 100).toFixed(0)}%</span>
                                 </div>
                                 <input 
@@ -609,13 +697,13 @@ const SingleCameraView: React.FC<{
                                         const val = Number(e.target.value);
                                         setIouThreshold(val);
                                     }}
-                                    className="w-full accent-cyan-500 bg-slate-800 rounded-lg appearance-none h-1 cursor-pointer"
+                                    className="w-full accent-cyan-500 bg-app-surface rounded-lg appearance-none h-1 cursor-pointer"
                                 />
                             </div>
 
                             {/* Feature Class Checklist filters */}
                             <div className="space-y-2 select-none">
-                                <span className="text-xs text-slate-400 block font-mono">Active Target Anchors</span>
+                                <span className="text-xs text-text-secondary block font-mono">Active Target Anchors</span>
                                 <div className="flex flex-wrap gap-1.5">
                                     {['Person', 'Laptop', 'Backpack', 'Cell Phone', 'Cup', 'Chair'].map((cls) => {
                                         const active = activeClasses.includes(cls.toLowerCase());
@@ -623,9 +711,9 @@ const SingleCameraView: React.FC<{
                                             <button
                                                 key={cls}
                                                 onClick={() => toggleClassFilter(cls)}
-                                                className={`px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-all ${active ? 'bg-slate-850 text-indigo-300 border-indigo-500/50 shadow-sm' : 'bg-slate-950/30 text-slate-500 border-slate-850 hover:bg-slate-900'}`}
+                                                className={`px-2 py-1 rounded text-[10px] font-medium border flex items-center gap-1 transition-all ${active ? 'bg-slate-850 text-indigo-300 border-indigo-500/50 shadow-sm' : 'bg-app-primary/30 text-text-primary0 border-border/80 hover:bg-app-panel'}`}
                                             >
-                                                <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-indigo-400 shadow-[0_0_8px_currentColor]' : 'bg-slate-500'}`} />
+                                                <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-indigo-400 shadow-[0_0_8px_currentColor]' : 'bg-app-primary0'}`} />
                                                 <span>{cls}</span>
                                             </button>
                                         );
@@ -635,24 +723,24 @@ const SingleCameraView: React.FC<{
                         </div>
 
                         {/* Active Targets list */}
-                        <div className="p-4 border-b border-slate-800 bg-slate-950/20 flex-1 min-h-[150px] flex flex-col">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono select-none mb-3">Detected Instances ({visibleDetections.length})</h3>
+                        <div className="p-4 border-b border-border bg-app-primary/20 flex-1 min-h-[150px] flex flex-col">
+                            <h3 className="text-xs font-bold text-text-secondary uppercase tracking-widest font-mono select-none mb-3">Detected Instances ({visibleDetections.length})</h3>
                             
                             {visibleDetections.length === 0 ? (
-                                <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-xs py-10">
+                                <div className="flex-1 flex flex-col items-center justify-center text-text-primary0 text-xs py-10">
                                     <ShieldAlert className="w-8 h-8 mb-2 opacity-50 text-slate-650" />
                                     <span>No targets visible in cutoff limit.</span>
                                 </div>
                             ) : (
                                 <div className="space-y-1.5 overflow-y-auto max-h-[180px] custom-scrollbar">
                                     {visibleDetections.map((itm) => (
-                                        <div key={itm.id} className="flex justify-between items-center bg-slate-950/40 p-2 rounded border border-slate-800 font-mono text-xs">
+                                        <div key={itm.id} className="flex justify-between items-center bg-app-primary/40 p-2 rounded border border-border font-mono text-xs">
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded bg-indigo-500" />
-                                                <span className="font-bold text-slate-200">{itm.label}</span>
+                                                <span className="font-bold text-text-primary">{itm.label}</span>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <span className="text-[10px] text-slate-500">[{itm.left}%, {itm.top}%]</span>
+                                                <span className="text-[10px] text-text-primary0">[{itm.left}%, {itm.top}%]</span>
                                                 <span className="text-indigo-400 font-bold bg-indigo-505/10 px-1 py-0.5 rounded text-[10px] border border-indigo-500/20">{(itm.confidence * 100).toFixed(0)}%</span>
                                             </div>
                                         </div>
@@ -662,20 +750,20 @@ const SingleCameraView: React.FC<{
                         </div>
 
                         {/* Event Logger Segment */}
-                        <div className="p-4 bg-slate-950 border-t border-slate-800 h-[180px] flex flex-col">
+                        <div className="p-4 bg-app-primary border-t border-border h-[180px] flex flex-col">
                             <div className="flex items-center gap-2 select-none mb-2 border-b border-slate-900 pb-1 shrink-0">
-                                <History className="w-4 h-4 text-slate-500" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">System Inference Logs</span>
+                                <History className="w-4 h-4 text-text-primary0" />
+                                <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest font-mono">System Inference Logs</span>
                             </div>
                             <div className="flex-1 overflow-y-auto font-mono text-[10px] space-y-2 custom-scrollbar p-1">
                                 {logs.map((log) => {
-                                    let textColor = 'text-slate-400';
+                                    let textColor = 'text-text-secondary';
                                     if (log.type === 'success') textColor = 'text-emerald-400';
                                     if (log.type === 'warn') textColor = 'text-amber-500';
                                     
                                     return (
                                         <div key={log.id} className="flex items-start gap-2 leading-relaxed">
-                                            <span className="text-slate-600 select-none">{log.time}</span>
+                                            <span className="text-text-muted select-none">{log.time}</span>
                                             <span className={textColor}>{log.text}</span>
                                         </div>
                                     );
@@ -704,12 +792,20 @@ const CameraCard: React.FC<{
     onDragStart: (e: React.DragEvent, id: string) => void,
     onDragOver: (e: React.DragEvent) => void,
     onDrop: (e: React.DragEvent, id: string) => void,
-    onTestConnection?: (cam: Camera) => void
+    onTestConnection?: (cam: Camera) => void,
+    streamMode?: 'mjpeg' | 'direct',
+    analysisConfig: {
+        detectPeople: boolean;
+        recognizeFaces: boolean;
+        enableCounting: boolean;
+        showHeatmap: boolean;
+    }
 }> = ({ 
     camera, sizeMode, onEdit, onDelete, onShare, onStatusToggle, onStreamError, onToggleSize, onSelect,
-    onDragStart, onDragOver, onDrop, onTestConnection
+    onDragStart, onDragOver, onDrop, onTestConnection, streamMode = 'mjpeg', analysisConfig
 }) => {
     const { language } = useLanguage();
+    const containerRef = useRef<HTMLDivElement>(null);
     const isOnline = camera.status === CameraStatus.ONLINE;
     const isLarge = sizeMode === 'large';
 
@@ -780,11 +876,11 @@ const CameraCard: React.FC<{
         },
         [CameraStatus.OFFLINE]: { 
             bg: 'bg-slate-600', 
-            text: 'text-slate-200', 
+            text: 'text-text-primary', 
             icon: WifiOff, 
             label: 'OFFLINE',
             pulse: false,
-            border: 'border-slate-500/50',
+            border: 'border-border/50',
             ring: 'ring-transparent'
         },
         [CameraStatus.CONNECTING]: { 
@@ -807,7 +903,7 @@ const CameraCard: React.FC<{
             ring: 'ring-rose-500/30'
         }
     }[camera.status] || { 
-        bg: 'bg-slate-500', 
+        bg: 'bg-app-primary0', 
         text: 'text-white', 
         icon: Activity, 
         label: 'UNKNOWN',
@@ -825,7 +921,7 @@ const CameraCard: React.FC<{
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, camera.id)}
             className={`
-                bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col group relative hover:border-slate-700 transition-all duration-200
+                bg-app-panel border border-border rounded-xl overflow-hidden shadow-lg flex flex-col group relative hover:border-border transition-all duration-200
                 ${isLarge ? 'md:col-span-2 md:row-span-2' : 'col-span-1'}
                 ${isCameraInactive(camera) ? 'grayscale opacity-75' : ''}
             `}
@@ -833,7 +929,7 @@ const CameraCard: React.FC<{
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/90 to-transparent z-10 flex justify-between items-start pointer-events-none">
                 <div className="flex items-start gap-2">
-                    <div className="p-1 cursor-grab active:cursor-grabbing pointer-events-auto text-slate-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="p-1 cursor-grab active:cursor-grabbing pointer-events-auto text-text-secondary hover:text-white opacity-0 group-hover:opacity-100 transition-opacity">
                         <GripHorizontal size={14} />
                     </div>
                     <div>
@@ -841,7 +937,7 @@ const CameraCard: React.FC<{
                             {camera.name}
                             {isCameraInactive(camera) && <span title="Inactive"><AlertCircle size={12} className="text-amber-500" /></span>}
                         </h3>
-                        <p className="text-[10px] text-slate-300 shadow-black drop-shadow-md flex items-center gap-1">
+                        <p className="text-[10px] text-text-secondary shadow-black drop-shadow-md flex items-center gap-1">
                             <MapPin size={10} className="text-cyan-400" /> {camera.location}
                         </p>
                     </div>
@@ -850,7 +946,7 @@ const CameraCard: React.FC<{
                 <button 
                     onClick={(e) => { e.stopPropagation(); onStatusToggle(camera); }}
                     className={`pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg backdrop-blur-md ${statusConfig.bg}/90 ${statusConfig.text} border ${statusConfig.border} ring-1 ${statusConfig.ring} shadow-black/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer`}
-                    title="Click to Simulate Status Change"
+                    title="Click to Toggle Status"
                 >
                     <StatusIcon size={10} className={statusConfig.spin ? 'animate-spin' : ''} />
                     <span className="text-[10px] font-bold tracking-wider">{statusConfig.label}</span>
@@ -859,7 +955,8 @@ const CameraCard: React.FC<{
 
             {/* Viewport - Now Clickable */}
             <div 
-                className="flex-1 bg-black relative flex items-center justify-center group-hover:bg-slate-950 transition-colors min-h-[200px] cursor-pointer"
+                ref={containerRef}
+                className="flex-1 bg-black relative flex items-center justify-center group-hover:bg-app-primary transition-colors min-h-[200px] cursor-pointer"
                 onClick={() => onSelect(camera.id)}
                 title="Click to Focus"
             >
@@ -874,11 +971,11 @@ const CameraCard: React.FC<{
                 {/* Real-time Telemetry Badges (Always visible when online) */}
                 {isOnline && (
                     <div className="absolute bottom-2 left-3 z-10 flex gap-1.5 pointer-events-none select-none animate-in fade-in duration-300">
-                        <span className="bg-slate-950/85 backdrop-blur-sm text-emerald-400 text-[9px] font-bold px-2 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 shadow-md font-mono">
+                        <span className="bg-app-primary/85 backdrop-blur-sm text-emerald-400 text-[9px] font-bold px-2 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 shadow-md font-mono">
                             <Activity size={10} className="animate-pulse text-emerald-400 shrink-0" />
                             {formatBitrate(currentBitrate)}
                         </span>
-                        <span className="bg-slate-950/85 backdrop-blur-sm text-cyan-400 text-[9px] font-bold px-2 py-0.5 rounded border border-cyan-500/20 flex items-center gap-1.5 shadow-md font-mono">
+                        <span className="bg-app-primary/85 backdrop-blur-sm text-cyan-400 text-[9px] font-bold px-2 py-0.5 rounded border border-cyan-500/20 flex items-center gap-1.5 shadow-md font-mono">
                             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
                             {currentFps.toFixed(1)} FPS
                         </span>
@@ -893,23 +990,38 @@ const CameraCard: React.FC<{
                 ) : (
                     <div className="w-full h-full absolute inset-0 overflow-hidden">
                         {isOnline ? (
-                             <>
-                                <img 
-                                    src={camera.id === 'CAM-02' ? "https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" : "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80&grayscale"}
-                                    className="w-full h-full object-cover opacity-60" 
-                                    alt="feed" 
+                            getYouTubeEmbedUrl(camera.streamUrl) ? (
+                                <iframe
+                                    src={getYouTubeEmbedUrl(camera.streamUrl)!}
+                                    className="w-full h-full border-0 absolute inset-0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/10 to-transparent h-full w-full animate-[scan_4s_linear_infinite] pointer-events-none"></div>
-                                <div className="absolute top-1/2 left-1/3 w-16 h-16 border border-cyan-400/50 rounded pointer-events-none box-border shadow-[0_0_15px_rgba(34,211,238,0.2)]">
-                                    <div className="absolute -top-3 left-0 text-[8px] bg-cyan-900/80 text-cyan-400 px-1 rounded font-mono">0.98</div>
-                                </div>
-                             </>
+                            ) : (
+                                 <>
+                                    {streamMode === 'mjpeg' ? (
+                                        <img 
+                                            src={`/api/cameras/${camera.id}/stream`} 
+                                            alt={camera.name} 
+                                            className="w-full h-full object-cover absolute inset-0 opacity-80" 
+                                            referrerPolicy="no-referrer"
+                                        />
+                                    ) : (
+                                        <SimulatedVideoPlayer 
+                                            src={getCameraSimulatedVideoUrl(camera)!}
+                                            fallbackImg={""}
+                                            className="w-full h-full object-cover opacity-60" 
+                                        />
+                                    )}
+                                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent h-full w-full animate-[scan_4s_linear_infinite] pointer-events-none"></div>
+                                 </>
+                            )
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-600 bg-slate-950/50 px-6">
-                                <div className={`mb-3 p-4 rounded-full bg-slate-900/50 border border-slate-800 ${camera.status === CameraStatus.CONNECTING ? 'animate-pulse' : ''}`}>
+                            <div className="flex flex-col items-center justify-center h-full text-text-muted bg-app-primary/50 px-6">
+                                <div className={`mb-3 p-4 rounded-full bg-app-panel/50 border border-border ${camera.status === CameraStatus.CONNECTING ? 'animate-pulse' : ''}`}>
                                     {camera.status === CameraStatus.ERROR ? <AlertCircle size={24} className="text-rose-500" /> : 
                                      camera.status === CameraStatus.CONNECTING ? <RefreshCw size={24} className="text-amber-500 animate-spin" /> : 
-                                     <WifiOff size={24} className="text-slate-500" />}
+                                     <WifiOff size={24} className="text-text-primary0" />}
                                 </div>
                                 <p className="text-xs font-mono font-bold tracking-widest">{camera.status === CameraStatus.ERROR ? 'SIGNAL LOSS' : camera.status === CameraStatus.CONNECTING ? 'CONNECTING...' : 'DEVICE OFFLINE'}</p>
                                 {camera.errorMsg && (
@@ -925,9 +1037,12 @@ const CameraCard: React.FC<{
                     </div>
                 )}
                 
+                {/* Real-time Dynamic AI Computer Vision Analytics Overlay */}
+                <UnifiedCameraOverlay cameraId={camera.id} mediaRef={containerRef} isActive={isOnline} config={analysisConfig} />
+
                 {/* Overlay Tech Specs (Visible on hover) */}
                 <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 duration-200">
-                     <span className="bg-black/70 backdrop-blur text-slate-300 text-[10px] px-1.5 py-0.5 rounded font-mono border border-white/10">
+                     <span className="bg-black/70 backdrop-blur text-text-secondary text-[10px] px-1.5 py-0.5 rounded font-mono border border-white/10">
                         {camera.resolution}
                      </span>
                      <span className="bg-black/70 backdrop-blur text-cyan-400 text-[10px] px-1.5 py-0.5 rounded font-mono border border-cyan-500/30">
@@ -937,20 +1052,20 @@ const CameraCard: React.FC<{
             </div>
 
             {/* Footer / Controls */}
-            <div className="p-3 bg-slate-900 border-t border-slate-800 flex justify-between items-center">
-                <div className="text-[10px] text-slate-500 font-mono truncate max-w-[140px] flex flex-col">
-                    <div className="flex items-center gap-1.5 text-slate-300 font-bold">
+            <div className="p-3 bg-app-panel border-t border-border flex justify-between items-center">
+                <div className="text-[10px] text-text-primary0 font-mono truncate max-w-[140px] flex flex-col">
+                    <div className="flex items-center gap-1.5 text-text-secondary font-bold">
                         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-slate-700'}`}></span>
                         {camera.type} :: {camera.id}
                     </div>
-                    <span className="text-slate-500 pl-3.5 mt-0.5">
+                    <span className="text-text-primary0 pl-3.5 mt-0.5">
                         FOV: {coverageEngine.calculateOpticalFOV({ focalLength: camera.focalLength, sensorWidth: camera.sensorWidth }).toFixed(1)}°
                     </span>
                 </div>
                 <div className="flex gap-2">
                     {onTestConnection && (
                         <button 
-                            className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-yellow-400 transition-colors cursor-pointer" 
+                            className="p-1.5 hover:bg-app-surface rounded text-text-secondary hover:text-yellow-400 transition-colors cursor-pointer" 
                             title={language === 'uz' ? "Ulanishni sinash" : "Connection Test"} 
                             onClick={(e) => { e.stopPropagation(); onTestConnection(camera); }}
                         >
@@ -958,19 +1073,19 @@ const CameraCard: React.FC<{
                         </button>
                     )}
                     <button 
-                        className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors" 
+                        className="p-1.5 hover:bg-app-surface rounded text-text-secondary hover:text-cyan-400 transition-colors" 
                         title={isLarge ? "Minimize View" : "Maximize View"} 
                         onClick={() => onToggleSize(camera.id)}
                     >
                          {isLarge ? <Minimize size={14} /> : <Maximize size={14} />}
                     </button>
-                    <button className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors" title="Share Stream" onClick={() => onShare(camera)}>
+                    <button className="p-1.5 hover:bg-app-surface rounded text-text-secondary hover:text-cyan-400 transition-colors" title="Share Stream" onClick={() => onShare(camera)}>
                          <Share2 size={14} />
                     </button>
-                    <button className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors" title="Settings" onClick={() => onEdit(camera)}>
+                    <button className="p-1.5 hover:bg-app-surface rounded text-text-secondary hover:text-white transition-colors" title="Settings" onClick={() => onEdit(camera)}>
                          <MoreVertical size={14} />
                     </button>
-                    <button className="p-1.5 hover:bg-red-900/30 rounded text-slate-400 hover:text-red-400 transition-colors" title="Remove" onClick={() => onDelete(camera.id)}>
+                    <button className="p-1.5 hover:bg-red-900/30 rounded text-text-secondary hover:text-red-400 transition-colors" title="Remove" onClick={() => onDelete(camera.id)}>
                          <Trash2 size={14} />
                     </button>
                 </div>
@@ -986,6 +1101,7 @@ interface CameraSetupGuideProps {
 
 const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) => {
     const { language } = useLanguage();
+    const containerRef = useRef<HTMLDivElement>(null);
     const [activeStep, setActiveStep] = useState<number>(1);
     
     // Step 1: Tarmoqni tekshirish (Network Test)
@@ -1180,12 +1296,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             case 1:
                 return (
                     <div className="space-y-6">
-                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl">
+                        <div className="bg-app-primary p-4 border border-border rounded-xl">
                             <h4 className="font-bold text-white mb-2 text-sm flex items-center gap-2">
                                 <Activity className="text-cyan-400" size={16} />
                                 {language === 'uz' ? '1-Bosqich: Lokal Tarmoq va IP Tekshiruvi' : 'Stage 1: Local Network & IP Diagnostics'}
                             </h4>
-                            <p className="text-xs text-slate-400 leading-relaxed">
+                            <p className="text-xs text-text-secondary leading-relaxed">
                                 {language === 'uz' 
                                     ? 'Kameralaringiz tizimga ulanishi uchun ular serveringiz bilan yagona tarmoqda boʻlishi kerak. Routeringiz IP diapazoni 192.168.1.x ekanligiga va barcha kameralar oʻchib yonganda IP manzili oʻzgarmasligi uchun statik qilib sozlanganiga ishonch hosil qiling.'
                                     : 'For cameras to talk to your server, they must reside on the same network subnet. Ensure your router distributes IPs in 192.168.1.x range and that they are configured as Static IP.'}
@@ -1194,7 +1310,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
-                                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider">
                                     {language === 'uz' ? 'Tekshirish uchun kamerani tanlang' : 'Select target camera to Ping'}
                                 </label>
                                 <div className="space-y-2">
@@ -1207,7 +1323,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                         <button
                                             key={item.key}
                                             onClick={() => setPingTarget(item.key as any)}
-                                            className={`w-full p-3 text-left rounded-lg text-xs font-semibold flex justify-between items-center border transition-all ${pingTarget === item.key ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-400 shadow-md shadow-cyan-950/20' : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'}`}
+                                            className={`w-full p-3 text-left rounded-lg text-xs font-semibold flex justify-between items-center border transition-all ${pingTarget === item.key ? 'bg-cyan-950/40 border-cyan-500/50 text-cyan-400 shadow-md shadow-cyan-950/20' : 'bg-app-panel/60 border-border/80 text-text-secondary hover:text-text-primary hover:bg-app-surface/50'}`}
                                         >
                                             <span>{item.label}</span>
                                             <span className={`w-2.5 h-2.5 rounded-full ${pingTarget === item.key ? 'bg-cyan-400 animate-pulse' : 'bg-slate-700'}`} />
@@ -1220,7 +1336,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                         type="text"
                                         value={customIp}
                                         onChange={e => setCustomIp(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:border-cyan-500 outline-none"
+                                        className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-xs text-text-primary font-mono focus:border-cyan-500 outline-none"
                                         placeholder="e.g. 192.168.1.104"
                                     />
                                 )}
@@ -1228,7 +1344,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                 <button
                                     onClick={runPingTest}
                                     disabled={isPinging}
-                                    className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                    className="w-full py-3 bg-cyan-600 hover:bg-cyan-500 disabled:bg-app-surface text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                                 >
                                     <RefreshCw className={`w-4 h-4 ${isPinging ? 'animate-spin' : ''}`} />
                                     {isPinging 
@@ -1238,13 +1354,13 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                             </div>
 
                             <div className="flex flex-col h-full min-h-[220px]">
-                                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                                <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">
                                     {language === 'uz' ? 'Konsol Loglari' : 'Console Output'}
                                 </label>
-                                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-emerald-400 overflow-y-auto custom-scrollbar flex flex-col justify-between">
+                                <div className="flex-1 bg-app-primary border border-border rounded-xl p-4 font-mono text-[11px] text-emerald-400 overflow-y-auto custom-scrollbar flex flex-col justify-between">
                                     <div className="space-y-1">
                                         {pingLogs.length === 0 ? (
-                                            <span className="text-slate-600 italic animate-pulse">
+                                            <span className="text-text-muted italic animate-pulse">
                                                 {language === 'uz' ? 'Ping sinovini boshlash uchun tugmani bosing...' : 'Click Ping to start diagnostic sequence...'}
                                             </span>
                                         ) : (
@@ -1264,12 +1380,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             case 2:
                 return (
                     <div className="space-y-6">
-                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl">
+                        <div className="bg-app-primary p-4 border border-border rounded-xl">
                             <h4 className="font-bold text-white mb-2 text-sm flex items-center gap-2">
                                 <Sliders className="text-cyan-400" size={16} />
                                 {language === 'uz' ? '2-Bosqich: Kamera Admin Panelini Sozlash' : 'Stage 2: Device Configuration Portal'}
                             </h4>
-                            <p className="text-xs text-slate-400 leading-relaxed">
+                            <p className="text-xs text-text-secondary leading-relaxed">
                                 {language === 'uz' 
                                     ? 'Kameralaringizga brauzer orqali kirib, ONVIF protokoli va ISAPI xizmatlarini yoqishingiz shart. Brendni tanlang va sozlash bosqichlarini tasdiqlang.'
                                     : 'Access each camera admin panel in a web browser to activate standard ONVIF protocol and ISAPI integrations. Select your brand below for direct guidelines.'}
@@ -1277,7 +1393,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                         </div>
 
                         {/* Brand Tabs */}
-                        <div className="flex gap-2 border-b border-slate-800 pb-px">
+                        <div className="flex gap-2 border-b border-border pb-px">
                             {[
                                 { key: 'hik', label: 'Hikvision (192.168.1.101)' },
                                 { key: 'dah', label: 'Dahua (192.168.1.102)' },
@@ -1286,7 +1402,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                 <button
                                     key={tab.key}
                                     onClick={() => setBrandTab(tab.key as any)}
-                                    className={`px-4 py-2 border-b-2 font-bold text-xs transition-colors ${brandTab === tab.key ? 'border-cyan-500 text-cyan-400 animate-in fade-in' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                                    className={`px-4 py-2 border-b-2 font-bold text-xs transition-colors ${brandTab === tab.key ? 'border-cyan-500 text-cyan-400 animate-in fade-in' : 'border-transparent text-text-secondary hover:text-text-primary'}`}
                                 >
                                     {tab.label}
                                 </button>
@@ -1294,7 +1410,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                         </div>
 
                         {/* Interactive Checklist Simulation */}
-                        <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-5 space-y-4">
+                        <div className="bg-app-panel/40 border border-border/80 rounded-xl p-5 space-y-4">
                             <h5 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
                                 <BadgeCheck size={14} className="text-cyan-400" />
                                 {brandTab === 'hik' && (language === 'uz' ? 'Hikvision Admin Checklist' : 'Hikvision Setup Checklist')}
@@ -1309,14 +1425,14 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     { key: 'hik_3', label: language === 'uz' ? '"Enable ONVIF" va "Enable ISAPI" katakchalarini faollashtiring' : 'Tick the checkboxes to "Enable ONVIF" and "Enable ISAPI"' },
                                     { key: 'hik_4', label: language === 'uz' ? '"Add User" tugmasini bosib, yangi ONVIF foydalanuvchisi (e.g. admin / parol123) yarating' : 'Click "Add User" and create an ONVIF operator account' }
                                 ].map(item => (
-                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-slate-800/20 rounded-lg cursor-pointer transition-colors">
+                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-app-surface/20 rounded-lg cursor-pointer transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={checklist[item.key]}
                                             onChange={() => toggleChecklist(item.key)}
-                                            className="mt-0.5 rounded border-slate-800 bg-slate-950 text-cyan-500 focus:ring-cyan-500/20"
+                                            className="mt-0.5 rounded border-border bg-app-primary text-cyan-500 focus:ring-cyan-500/20"
                                         />
-                                        <span className={`text-xs ${checklist[item.key] ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{item.label}</span>
+                                        <span className={`text-xs ${checklist[item.key] ? 'text-text-primary0 line-through' : 'text-text-secondary'}`}>{item.label}</span>
                                     </label>
                                 ))}
 
@@ -1326,14 +1442,14 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     { key: 'dah_3', label: language === 'uz' ? 'P2P (DMSS) holati "Online" ekanligini tasdiqlang' : 'Verify P2P / DMSS cloud status is "Online"' },
                                     { key: 'dah_4', label: language === 'uz' ? 'System -> Safety -> Account boʻlimidan ONVIF ulanishi ochiqligini tekshiring' : 'Verify ONVIF integration user is created under Safety -> Account' }
                                 ].map(item => (
-                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-slate-800/20 rounded-lg cursor-pointer transition-colors">
+                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-app-surface/20 rounded-lg cursor-pointer transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={checklist[item.key]}
                                             onChange={() => toggleChecklist(item.key)}
-                                            className="mt-0.5 rounded border-slate-800 bg-slate-950 text-cyan-500 focus:ring-cyan-500/20"
+                                            className="mt-0.5 rounded border-border bg-app-primary text-cyan-500 focus:ring-cyan-500/20"
                                         />
-                                        <span className={`text-xs ${checklist[item.key] ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{item.label}</span>
+                                        <span className={`text-xs ${checklist[item.key] ? 'text-text-primary0 line-through' : 'text-text-secondary'}`}>{item.label}</span>
                                     </label>
                                 ))}
 
@@ -1342,14 +1458,14 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     { key: 'omb_2', label: language === 'uz' ? 'RTSP porti standart 554 holatida ochiqligini tekshiring' : 'Verify RTSP port is active on standard port 554' },
                                     { key: 'omb_3', label: language === 'uz' ? 'Video kodlash formatini H.264 holatiga oʻtkazing (maksimal darajadagi moslik uchun)' : 'Set video encoder profile to H.264 (recommended for wide compatibility)' }
                                 ].map(item => (
-                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-slate-800/20 rounded-lg cursor-pointer transition-colors">
+                                    <label key={item.key} className="flex items-start gap-3 p-2 hover:bg-app-surface/20 rounded-lg cursor-pointer transition-colors">
                                         <input
                                             type="checkbox"
                                             checked={checklist[item.key]}
                                             onChange={() => toggleChecklist(item.key)}
-                                            className="mt-0.5 rounded border-slate-800 bg-slate-950 text-cyan-500 focus:ring-cyan-500/20"
+                                            className="mt-0.5 rounded border-border bg-app-primary text-cyan-500 focus:ring-cyan-500/20"
                                         />
-                                        <span className={`text-xs ${checklist[item.key] ? 'text-slate-500 line-through' : 'text-slate-300'}`}>{item.label}</span>
+                                        <span className={`text-xs ${checklist[item.key] ? 'text-text-primary0 line-through' : 'text-text-secondary'}`}>{item.label}</span>
                                     </label>
                                 ))}
                             </div>
@@ -1359,12 +1475,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             case 3:
                 return (
                     <div className="space-y-6">
-                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl">
+                        <div className="bg-app-primary p-4 border border-border rounded-xl">
                             <h4 className="font-bold text-white mb-2 text-sm flex items-center gap-2">
                                 <Video className="text-cyan-400" size={16} />
                                 {language === 'uz' ? '3-Bosqich: RTSP Oqim Havolalari Generatori' : 'Stage 3: Dynamic RTSP URL Constructor'}
                             </h4>
-                            <p className="text-xs text-slate-400 leading-relaxed">
+                            <p className="text-xs text-text-secondary leading-relaxed">
                                 {language === 'uz' 
                                     ? 'Kameralar oqimini toʻgʻridan-toʻgʻri olish uchun oʻrnatgan login/parolingizni kiriting. Tizim avtomatik ravishda toʻgʻri RTSP manzillarini generatsiya qilib beradi.'
                                     : 'Input your camera device username and security password to construct correct, compliant RTSP streams instantly.'}
@@ -1374,25 +1490,25 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                         {/* Credential input */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">
+                                <label className="block text-xs font-medium text-text-secondary mb-1">
                                     {language === 'uz' ? 'Kamera Logini' : 'Camera Username'}
                                 </label>
                                 <input
                                     type="text"
                                     value={rtspUser}
                                     onChange={e => setRtspUser(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:border-cyan-500 outline-none"
+                                    className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-xs text-text-primary focus:border-cyan-500 outline-none"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">
+                                <label className="block text-xs font-medium text-text-secondary mb-1">
                                     {language === 'uz' ? 'Kamera Paroli' : 'Camera Password'}
                                 </label>
                                 <input
                                     type="password"
                                     value={rtspPass}
                                     onChange={e => setRtspPass(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:border-cyan-500 outline-none"
+                                    className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-xs text-text-primary focus:border-cyan-500 outline-none"
                                 />
                             </div>
                         </div>
@@ -1416,17 +1532,17 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     url: `rtsp://${rtspUser}:${rtspPass}@192.168.1.103:554/onvif1`
                                 }
                             ].map(stream => (
-                                <div key={stream.key} className="p-4 bg-slate-950 border border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div key={stream.key} className="p-4 bg-app-primary border border-border rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div className="space-y-1">
                                         <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider">{stream.name}</span>
-                                        <div className="text-xs font-mono text-slate-300 break-all bg-slate-900 border border-slate-800 p-2 rounded-lg mt-1 select-all">
+                                        <div className="text-xs font-mono text-text-secondary break-all bg-app-panel border border-border p-2 rounded-lg mt-1 select-all">
                                             {stream.url}
                                         </div>
                                     </div>
                                     <div className="flex gap-2 shrink-0">
                                         <button
                                             onClick={() => handleCopy(stream.url, stream.key)}
-                                            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                                            className="px-3 py-2 bg-app-panel hover:bg-app-surface border border-border hover:border-border text-text-secondary rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                                         >
                                             {copiedUrl === stream.key ? (
                                                 <>
@@ -1454,34 +1570,34 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
 
                         {/* Simulated RTSP stream player overlay */}
                         {testStreamCam && (
-                            <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 relative overflow-hidden animate-in fade-in duration-300">
+                            <div className="bg-app-primary border border-border rounded-xl p-5 relative overflow-hidden animate-in fade-in duration-300">
                                 <div className="flex justify-between items-center mb-3">
                                     <h5 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
                                         <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
                                         LIVE PREVIEW: {testStreamCam}
                                     </h5>
-                                    <button onClick={() => setTestStreamCam(null)} className="text-slate-500 hover:text-slate-300 text-xs font-bold">Yopish</button>
+                                    <button onClick={() => setTestStreamCam(null)} className="text-text-primary0 hover:text-text-secondary text-xs font-bold">Yopish</button>
                                 </div>
 
                                 {isTestingStream ? (
-                                    <div className="h-44 bg-slate-900 rounded-lg border border-slate-800 flex flex-col items-center justify-center text-slate-500 gap-3">
+                                    <div className="h-44 bg-app-panel rounded-lg border border-border flex flex-col items-center justify-center text-text-primary0 gap-3">
                                         <RefreshCw size={24} className="animate-spin text-cyan-400" />
                                         <span className="text-xs font-mono">{language === 'uz' ? 'Oqim qabul qilinmoqda...' : 'Connecting to RTSP feed...'}</span>
                                     </div>
                                 ) : (
-                                    <div className="h-44 bg-slate-900 rounded-lg border border-slate-800 relative overflow-hidden flex items-center justify-center">
+                                    <div className="h-44 bg-app-panel rounded-lg border border-border relative overflow-hidden flex items-center justify-center">
                                         {/* CCTV Grid scan overlay */}
                                         <div className="absolute inset-0 bg-[linear-gradient(rgba(18,24,38,0)_95%,rgba(0,180,216,0.1)_95%)] bg-[size:100%_20px] pointer-events-none animate-scan opacity-60" />
                                         <div className="absolute inset-0 bg-cyan-900/5 mix-blend-color-dodge pointer-events-none" />
                                         
                                         {/* Camera HUD text */}
-                                        <div className="absolute top-3 left-3 font-mono text-[9px] text-emerald-400 bg-slate-950/80 px-2 py-1 rounded border border-slate-800/50 space-y-0.5">
+                                        <div className="absolute top-3 left-3 font-mono text-[9px] text-emerald-400 bg-app-primary/80 px-2 py-1 rounded border border-border/50 space-y-0.5">
                                             <div>ID: {testStreamCam.includes('Hikvision') ? 'CAM-01' : testStreamCam.includes('Dahua') ? 'CAM-02' : 'CAM-03'}</div>
                                             <div>RTSP PROTOCOL: UDP/TCP</div>
                                             <div>CODEC: H.264 / AAC</div>
                                         </div>
 
-                                        <div className="absolute bottom-3 right-3 font-mono text-[9px] text-emerald-400 bg-slate-950/80 px-2 py-1 rounded border border-slate-800/50">
+                                        <div className="absolute bottom-3 right-3 font-mono text-[9px] text-emerald-400 bg-app-primary/80 px-2 py-1 rounded border border-border/50">
                                             {new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC
                                         </div>
 
@@ -1490,8 +1606,8 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
 
                                         <div className="text-center space-y-1">
                                             <Video className="mx-auto text-emerald-400 animate-pulse mb-1" size={24} />
-                                            <div className="font-bold text-xs text-slate-300">STREAMING ACTIVE</div>
-                                            <div className="text-[10px] font-mono text-slate-500">1920x1080 @ 25 FPS | BITRATE: 2.1 Mbps</div>
+                                            <div className="font-bold text-xs text-text-secondary">STREAMING ACTIVE</div>
+                                            <div className="text-[10px] font-mono text-text-primary0">1920x1080 @ 25 FPS | BITRATE: 2.1 Mbps</div>
                                         </div>
                                     </div>
                                 )}
@@ -1502,12 +1618,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             case 4:
                 return (
                     <div className="space-y-6">
-                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl">
+                        <div className="bg-app-primary p-4 border border-border rounded-xl">
                             <h4 className="font-bold text-white mb-2 text-sm flex items-center gap-2">
                                 <Lock className="text-cyan-400" size={16} />
                                 {language === 'uz' ? '4-Bosqich: Kiber-Xavfsizlikni Kuchaytirish' : 'Stage 4: Cyber-Security Shielding'}
                             </h4>
-                            <p className="text-xs text-slate-400 leading-relaxed">
+                            <p className="text-xs text-text-secondary leading-relaxed">
                                 {language === 'uz' 
                                     ? 'Kameralaringizni ruxsatsiz kirishlardan himoya qilish uchun quyidagi tavsiyalarga amal qiling va kiber-qalqon darajasini oshiring.'
                                     : 'Harden your camera security footprint to completely seal off potential breaches. Toggle settings below to build your security scorecard.'}
@@ -1516,12 +1632,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
 
                         {/* Security Meter Dashboard */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="md:col-span-1 bg-slate-950 border border-slate-800 rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <div className="md:col-span-1 bg-app-primary border border-border rounded-xl p-5 flex flex-col items-center justify-center text-center space-y-3 animate-in fade-in">
+                                <span className="text-[10px] font-bold text-text-primary0 uppercase tracking-wider">
                                     {language === 'uz' ? 'Tizim Himoya Darajasi' : 'Subnet Security Level'}
                                 </span>
                                 <div className="relative w-28 h-28 flex items-center justify-center">
-                                    <div className="absolute inset-0 rounded-full border-4 border-slate-800" />
+                                    <div className="absolute inset-0 rounded-full border-4 border-border" />
                                     <div className="absolute inset-0 rounded-full border-4 border-cyan-500 border-r-transparent border-b-transparent animate-spin-slow" style={{ opacity: securityScore / 100 }} />
                                     <span className="text-2xl font-black text-white font-sans">{securityScore}%</span>
                                 </div>
@@ -1553,10 +1669,10 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                         desc: language === 'uz' ? 'Autentifikatsiya maʼlumotlarini ochiq matn (Basic) oʻrniga Digest shaklida uzatish.' : 'Force digest authentication over clear-text basic encoding.'
                                     }
                                 ].map(setting => (
-                                    <div key={setting.key} className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex items-center justify-between gap-4">
+                                    <div key={setting.key} className="p-4 bg-app-panel/40 border border-border rounded-xl flex items-center justify-between gap-4">
                                         <div className="space-y-0.5">
                                             <h6 className="font-bold text-white text-xs">{setting.title}</h6>
-                                            <p className="text-[10px] text-slate-500">{setting.desc}</p>
+                                            <p className="text-[10px] text-text-primary0">{setting.desc}</p>
                                         </div>
                                         <button
                                             onClick={() => handleSecurityToggle(setting.key as any)}
@@ -1565,7 +1681,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                             {securitySettings[setting.key as keyof typeof securitySettings] ? (
                                                 <ToggleRight className="text-cyan-400 w-8 h-8" />
                                             ) : (
-                                                <ToggleLeft className="text-slate-700 w-8 h-8" />
+                                                <ToggleLeft className="text-text-muted w-8 h-8" />
                                             )}
                                         </button>
                                     </div>
@@ -1577,12 +1693,12 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             case 5:
                 return (
                     <div className="space-y-6">
-                        <div className="bg-slate-950 p-4 border border-slate-800 rounded-xl text-center space-y-2">
+                        <div className="bg-app-primary p-4 border border-border rounded-xl text-center space-y-2">
                             <Sparkles className="text-cyan-400 mx-auto animate-bounce" size={24} />
                             <h4 className="font-bold text-white text-sm">
                                 {language === 'uz' ? '5-Bosqich: Sentinel Tizimiga Integratsiya Qilish' : 'Stage 5: Secure Integration'}
                             </h4>
-                            <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+                            <p className="text-xs text-text-secondary max-w-lg mx-auto leading-relaxed">
                                 {language === 'uz' 
                                     ? 'Barcha sozlamalar yakunlandi! Quyidagi tugmani bosish orqali 3 ta kamerani (Kirish 01, Parkovka va Ombor) avtomatik tarzda Sentinel maʼlumotlar bazasiga yozishingiz mumkin.'
                                     : 'Configuration compiled successfully! Click import below to push all nodes directly to Sentinel live biometric tracking database.'}
@@ -1600,7 +1716,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     {language === 'uz' ? 'KAMERALARNI TIZIMGA IMPORT QILISH (AUTO-IMPORT)' : 'AUTO-IMPORT ALL CAMERAS TO SYSTEM'}
                                 </button>
                             ) : (
-                                <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 font-mono text-xs text-emerald-400 space-y-2 min-h-[160px] flex flex-col justify-between">
+                                <div className="bg-app-primary border border-border rounded-xl p-5 font-mono text-xs text-emerald-400 space-y-2 min-h-[160px] flex flex-col justify-between">
                                     <div className="space-y-1">
                                         {importLog.map((log, i) => (
                                             <div key={i} className="animate-in slide-in-from-left-2 duration-300">
@@ -1614,7 +1730,7 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                                     </div>
 
                                     {isImporting && (
-                                        <div className="flex items-center gap-2 text-slate-500 font-sans italic text-[11px] mt-4 animate-pulse">
+                                        <div className="flex items-center gap-2 text-text-primary0 font-sans italic text-[11px] mt-4 animate-pulse">
                                             <RefreshCw size={12} className="animate-spin" />
                                             <span>{language === 'uz' ? 'Integratsiya tahrir qilinyapti...' : 'Registering live profiles...'}</span>
                                         </div>
@@ -1636,10 +1752,10 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
     };
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex-1 flex flex-col md:flex-row min-h-[500px] animate-in fade-in duration-300">
+        <div className="bg-app-panel border border-border rounded-xl overflow-hidden flex-1 flex flex-col md:flex-row min-h-[500px] animate-in fade-in duration-300">
             {/* Step Navigation Sidebar */}
-            <div className="w-full md:w-64 bg-slate-950 border-r border-slate-800 p-5 space-y-4 shrink-0">
-                <h3 className="font-bold text-slate-400 text-[10px] uppercase tracking-wider mb-2">
+            <div className="w-full md:w-64 bg-app-primary border-r border-border p-5 space-y-4 shrink-0">
+                <h3 className="font-bold text-text-secondary text-[10px] uppercase tracking-wider mb-2">
                     {language === 'uz' ? 'Sozlash Qadamlari' : 'Wizard Stages'}
                 </h3>
                 
@@ -1654,13 +1770,13 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
                         <button
                             key={item.step}
                             onClick={() => setActiveStep(item.step)}
-                            className={`w-full p-3 rounded-lg text-left text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${activeStep === item.step ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-400' : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'}`}
+                            className={`w-full p-3 rounded-lg text-left text-xs font-bold transition-all flex items-center justify-between border cursor-pointer ${activeStep === item.step ? 'bg-cyan-950/20 border-cyan-500/30 text-cyan-400' : 'bg-transparent border-transparent text-text-secondary hover:text-text-primary'}`}
                         >
                             <span>{item.label}</span>
                             {activeStep > item.step ? (
                                 <CheckCircle2 size={14} className="text-emerald-500" />
                             ) : (
-                                <span className={`w-1.5 h-1.5 rounded-full ${activeStep === item.step ? 'bg-cyan-400 animate-pulse' : 'bg-slate-800'}`} />
+                                <span className={`w-1.5 h-1.5 rounded-full ${activeStep === item.step ? 'bg-cyan-400 animate-pulse' : 'bg-app-surface'}`} />
                             )}
                         </button>
                     ))}
@@ -1668,17 +1784,17 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             </div>
 
             {/* Step Content Container */}
-            <div className="flex-1 p-6 flex flex-col justify-between space-y-8 bg-slate-900/20">
+            <div className="flex-1 p-6 flex flex-col justify-between space-y-8 bg-app-panel/20">
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {renderStepContent()}
                 </div>
 
                 {/* Footer buttons */}
-                <div className="flex justify-between border-t border-slate-800 pt-5 shrink-0">
+                <div className="flex justify-between border-t border-border pt-5 shrink-0">
                     <button
                         onClick={() => setActiveStep(prev => Math.max(1, prev - 1))}
                         disabled={activeStep === 1}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-bold rounded-lg text-xs transition-all cursor-pointer"
+                        className="px-4 py-2 bg-app-surface hover:bg-app-surface disabled:opacity-40 text-text-secondary font-bold rounded-lg text-xs transition-all cursor-pointer"
                     >
                         {language === 'uz' ? '← Orqaga' : '← Previous'}
                     </button>
@@ -1697,7 +1813,27 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
 
 export const CamerasView: React.FC = () => {
     const { t, language } = useLanguage();
-    const [viewMode, setViewMode] = useState<'matrix' | 'config' | 'setup_guide'>('matrix');
+    
+    // Load face-api globally for the matrix overlay
+    useEffect(() => {
+        const loadFaceApi = async () => {
+            if (typeof faceapi === 'undefined') return;
+            try {
+                if (!faceapi.nets.tinyFaceDetector.params) {
+                    await faceapi.nets.tinyFaceDetector.loadFromUri('https://vladmandic.github.io/face-api/model');
+                    await faceapi.nets.faceLandmark68Net.loadFromUri('https://vladmandic.github.io/face-api/model');
+                    await faceapi.nets.faceRecognitionNet.loadFromUri('https://vladmandic.github.io/face-api/model');
+                }
+            } catch (err) {
+                console.error("Failed to load face-api in CamerasView:", err);
+            }
+        };
+        loadFaceApi();
+    }, []);
+
+    const [viewMode, setViewMode] = useState<'matrix' | 'config' | 'setup_guide' | 'recordings'>('matrix');
+    const [gridLayout, setGridLayout] = useState<'1x1' | '2x2' | '3x3' | '4x4' | 'auto'>('auto');
+    const [streamMode, setStreamMode] = useState<'mjpeg' | 'direct'>('mjpeg');
     const [cameras, setCameras] = useState<Camera[]>([]);
     
     // UI Layout State
@@ -1735,12 +1871,119 @@ export const CamerasView: React.FC = () => {
     // Validation State
     const [formError, setFormError] = useState<string | null>(null);
 
+    // Delete Confirmation Modal State
+    const [cameraToDelete, setCameraToDelete] = useState<Camera | null>(null);
+
     // Connection Test State
     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
     const [testingCamera, setTestingCamera] = useState<Camera | null>(null);
     const [testLogs, setTestLogs] = useState<string[]>([]);
     const [testProgress, setTestProgress] = useState(0);
     const [testStatus, setTestStatus] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
+
+    // Central AI Analysis Config
+    const [analysisConfig, setAnalysisConfig] = useState({
+        detectPeople: true,
+        recognizeFaces: true,
+        enableCounting: true,
+        showHeatmap: false,
+    });
+
+    // Recordings view state
+    const [recordings, setRecordings] = useState<any[]>([]);
+    const [storageStats, setStorageStats] = useState<any | null>(null);
+    const [selectedRecForPlayback, setSelectedRecForPlayback] = useState<any | null>(null);
+    const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+    const [selectedCameraIdForSchedule, setSelectedCameraIdForSchedule] = useState<string>('CAM-01');
+    const [recordingSchedule, setRecordingSchedule] = useState<Record<string, boolean[]>>(() => {
+        const initial: Record<string, boolean[]> = {};
+        const days = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
+        days.forEach(day => {
+            // By default, continuous recording is active 24/7
+            initial[day] = Array(24).fill(true);
+        });
+        return initial;
+    });
+
+    const reloadRecordings = async () => {
+        try {
+            const [recRes, statsRes] = await Promise.all([
+                fetch('/api/recordings'),
+                fetch('/api/system/storage')
+            ]);
+            if (recRes.ok && recRes.headers.get("content-type")?.includes("application/json")) {
+                const data = await recRes.json();
+                setRecordings(data);
+            }
+            if (statsRes.ok && statsRes.headers.get("content-type")?.includes("application/json")) {
+                const stats = await statsRes.json();
+                setStorageStats(stats);
+            }
+        } catch (e) {
+            console.error("Failed to load recordings or storage stats:", e);
+        }
+    };
+
+    useEffect(() => {
+        if (viewMode === 'recordings') {
+            reloadRecordings();
+        }
+    }, [viewMode]);
+
+    const runStoragePruning = async () => {
+        try {
+            const res = await fetch('/api/system/storage/rotate', { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success) {
+                    setStorageStats(data.newStats);
+                    await reloadRecordings();
+                }
+            }
+        } catch (e) {
+            console.error("Failed to run storage pruning:", e);
+        }
+    };
+
+    const deleteRecordingFile = async (id: string) => {
+        try {
+            const res = await fetch(`/api/recordings/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                setRecordings(prev => prev.filter(r => r.id !== id));
+                if (storageStats) {
+                    const recSizeMb = recordings.find(r => r.id === id)?.fileSizeMb || 10;
+                    const updatedUsed = Math.max(0, storageStats.usedGb - (recSizeMb / 1024));
+                    setStorageStats({
+                        ...storageStats,
+                        usedGb: Math.round(updatedUsed),
+                        freeGb: Math.round(storageStats.totalGb - updatedUsed),
+                        usagePercent: Math.round((updatedUsed / storageStats.totalGb) * 100)
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("Failed to delete recording:", e);
+        }
+    };
+
+    const [playbackProgress, setPlaybackProgress] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(true);
+
+    useEffect(() => {
+        let timer: any;
+        if (selectedRecForPlayback && isPlaying) {
+            timer = setInterval(() => {
+                setPlaybackProgress(prev => {
+                    if (prev >= 100) {
+                        setIsPlaying(false);
+                        return 100;
+                    }
+                    return prev + (1 * playbackSpeed);
+                });
+            }, 1000);
+        }
+        return () => clearInterval(timer);
+    }, [selectedRecForPlayback, isPlaying, playbackSpeed]);
 
     const activeTestTimersRef = useRef<{ interval: any; timeouts: any[] }>({ interval: null, timeouts: [] });
 
@@ -1929,7 +2172,61 @@ export const CamerasView: React.FC = () => {
 
     const reloadCameras = async () => {
         try {
-            const cams = await cameraService.getAllCameras();
+            let cams = await cameraService.getAllCameras();
+            
+            // Auto-provision demo cameras if none exist to ensure user has immediate value
+            if (!cams || cams.length === 0) {
+                const demoCameras: Camera[] = [
+                    {
+                        id: 'CAM-01',
+                        name: 'Main Lobby Entrance',
+                        location: 'A-Blok, 1-Qavat',
+                        type: CameraType.RTSP,
+                        streamUrl: 'https://images.unsplash.com/photo-1543269664-76bc3997d9ea?w=800&q=80',
+                        status: CameraStatus.ONLINE,
+                        fps: 25,
+                        resolution: '1920x1080',
+                        lastActive: new Date().toISOString(),
+                        focalLength: 4.0,
+                        sensorWidth: 4.8,
+                        sensorHeight: 3.6
+                    },
+                    {
+                        id: 'CAM-02',
+                        name: 'Server Room Alpha',
+                        location: 'C-Blok, Podval',
+                        type: CameraType.RTSP,
+                        streamUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80',
+                        status: CameraStatus.ONLINE,
+                        fps: 20,
+                        resolution: '1280x720',
+                        lastActive: new Date().toISOString(),
+                        focalLength: 6.0,
+                        sensorWidth: 4.8,
+                        sensorHeight: 3.6
+                    },
+                    {
+                        id: 'CAM-03',
+                        name: 'Parking Perimeter East',
+                        location: 'Tashqi Hudud',
+                        type: CameraType.USB,
+                        streamUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800&q=80',
+                        status: CameraStatus.ONLINE,
+                        fps: 15,
+                        resolution: '1280x720',
+                        lastActive: new Date().toISOString(),
+                        focalLength: 2.8,
+                        sensorWidth: 4.8,
+                        sensorHeight: 3.6
+                    }
+                ];
+                
+                for (const dCam of demoCameras) {
+                    await cameraService.saveCamera(dCam);
+                }
+                cams = await cameraService.getAllCameras();
+            }
+            
             setCameras(cams || []);
         } catch (e) {
             console.error("Failed to load cameras:", e);
@@ -1939,35 +2236,6 @@ export const CamerasView: React.FC = () => {
 
     useEffect(() => {
         reloadCameras();
-    }, []);
-
-    // Automatic Health Check Simulation
-    useEffect(() => {
-        const healthCheckInterval = setInterval(() => {
-            setCameras(prevCameras => prevCameras.map(cam => {
-                // Simulate network fluctuations and automatic recovery
-                if (cam.status === CameraStatus.CONNECTING) {
-                    // 80% chance to go online, 20% to error during connection phase
-                    return Math.random() > 0.2 
-                        ? { ...cam, status: CameraStatus.ONLINE, errorMsg: undefined } 
-                        : { ...cam, status: CameraStatus.ERROR, errorMsg: 'Connection Timeout (504)' };
-                }
-                
-                // Randomly recover from error state (Auto-Retry simulation)
-                if (cam.status === CameraStatus.ERROR && Math.random() > 0.8) {
-                    return { ...cam, status: CameraStatus.CONNECTING, errorMsg: undefined };
-                }
-
-                // Very small chance for an online camera to drop (Simulation of instability)
-                if (cam.status === CameraStatus.ONLINE && Math.random() > 0.995) {
-                     return { ...cam, status: CameraStatus.CONNECTING };
-                }
-
-                return cam;
-            }));
-        }, 3000); // Check every 3 seconds
-
-        return () => clearInterval(healthCheckInterval);
     }, []);
 
     // ... (Existing handlers: handleEdit, handleSaveCamera, handleDelete, etc. - maintained)
@@ -2090,10 +2358,18 @@ export const CamerasView: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if(confirm('Are you sure you want to remove this camera?')) {
-            await cameraService.deleteCamera(id);
+        const cam = cameras.find(c => c.id === id);
+        if (cam) {
+            setCameraToDelete(cam);
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (cameraToDelete) {
+            await cameraService.deleteCamera(cameraToDelete.id);
             const cameras = await cameraService.getAllCameras();
             setCameras(cameras || []);
+            setCameraToDelete(null);
         }
     };
 
@@ -2202,6 +2478,7 @@ export const CamerasView: React.FC = () => {
                 onClose={() => setFocusedCameraId(null)}
                 onStatusToggle={handleStatusToggle}
                 onStreamError={handleStreamError}
+                streamMode={streamMode}
             />
         );
     }
@@ -2209,44 +2486,50 @@ export const CamerasView: React.FC = () => {
     return (
         <div className="h-full flex flex-col gap-6">
             {/* Header / Toolbar */}
-            <div className="flex justify-between items-center p-4 bg-slate-900 border border-slate-800 rounded-xl shrink-0">
-                  <div className="flex gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800 animate-in fade-in">
+            <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-4 p-4 bg-app-panel border border-border rounded-xl shrink-0">
+                  <div className="flex flex-wrap gap-1.5 sm:gap-2 bg-app-primary p-1 rounded-lg border border-border animate-in fade-in justify-center sm:justify-start">
                     <button 
                         onClick={() => setViewMode('matrix')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${viewMode === 'matrix' ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all ${viewMode === 'matrix' ? 'bg-cyan-600 text-white shadow-lg' : 'text-text-secondary hover:text-white hover:bg-app-surface'}`}
                     >
                         <Grid size={16} /> {t('cameras.matrix')}
                     </button>
                     <button 
                         onClick={() => setViewMode('config')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${viewMode === 'config' ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all ${viewMode === 'config' ? 'bg-cyan-600 text-white shadow-lg' : 'text-text-secondary hover:text-white hover:bg-app-surface'}`}
                     >
                         <List size={16} /> {t('cameras.config')}
                     </button>
                     <button 
                         onClick={() => setViewMode('setup_guide')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-all ${viewMode === 'setup_guide' ? 'bg-cyan-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all ${viewMode === 'setup_guide' ? 'bg-cyan-600 text-white shadow-lg' : 'text-text-secondary hover:text-white hover:bg-app-surface'}`}
                     >
                         <Settings2 size={16} /> {language === 'uz' ? 'Sozlash Yoʻriqnomasi' : 'Setup Guide'}
                     </button>
+                    <button 
+                        onClick={() => setViewMode('recordings')}
+                        className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-md text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-all ${viewMode === 'recordings' ? 'bg-cyan-600 text-white shadow-lg' : 'text-text-secondary hover:text-white hover:bg-app-surface'}`}
+                    >
+                        <History size={16} /> {language === 'uz' ? 'Arxiv & Yozuvlar' : 'Archive & Recordings'}
+                    </button>
                   </div>
 
-                 <div className="flex gap-3">
+                 <div className="flex flex-wrap gap-2 sm:gap-3 justify-center sm:justify-end">
                     <button 
                         onClick={() => setIsSearchModalOpen(true)}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-lg shadow-indigo-900/20"
+                        className="px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 transition-colors shadow-lg shadow-indigo-900/20"
                     >
                         <Search size={16} /> {language === 'uz' ? 'Aqlli Qidiruv' : 'Smart Search'}
                     </button>
                     <button 
                         onClick={() => { setLinkGenerated(null); setIsLinkModalOpen(true); }}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"
+                        className="px-3 py-1.5 sm:px-4 sm:py-2 bg-app-surface hover:bg-app-surface text-text-secondary rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 transition-colors border border-border"
                     >
                         <LinkIcon size={16} /> {t('cameras.generateLink')}
                     </button>
                     <button 
                         onClick={openAddModal}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-colors shadow-lg shadow-emerald-900/20"
+                        className="px-3 py-1.5 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 transition-colors shadow-lg shadow-emerald-900/20"
                     >
                         <Plus size={16} /> {t('cameras.add')}
                     </button>
@@ -2255,44 +2538,185 @@ export const CamerasView: React.FC = () => {
 
             {/* Matrix View */}
             {viewMode === 'matrix' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 flex-1 overflow-y-auto custom-scrollbar p-1 grid-flow-dense">
-                    {cameras.map(cam => (
-                        <CameraCard 
-                            key={cam.id} 
-                            camera={cam} 
-                            sizeMode={layoutConfig[cam.id] || 'normal'}
-                            onEdit={handleEdit} 
-                            onDelete={handleDelete} 
-                            onShare={openShareModal} 
-                            onStatusToggle={handleStatusToggle}
-                            onStreamError={handleStreamError}
-                            onToggleSize={toggleCameraSize}
-                            onDragStart={handleDragStart}
-                            onDragOver={handleDragOver}
-                            onDrop={handleDrop}
-                            onSelect={setFocusedCameraId}
-                            onTestConnection={startConnectionTest}
-                        />
-                    ))}
-                    {/* Add Placeholder Card */}
-                    <button 
-                        onClick={openAddModal}
-                        className="border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center text-slate-600 hover:text-cyan-500 hover:border-cyan-500/50 hover:bg-cyan-900/5 transition-all group min-h-[250px] col-span-1"
-                    >
-                        <div className="w-16 h-16 rounded-full bg-slate-900 group-hover:bg-cyan-500/10 flex items-center justify-center mb-4 transition-colors">
-                            <Plus size={32} />
+                <div className="flex-1 flex flex-col gap-4 sm:gap-6 overflow-hidden">
+                    {/* Sentinel AI Video Analytics Control Panel */}
+                    <div className="bg-gradient-to-r from-cyan-950/20 via-app-panel to-indigo-950/20 border border-border p-3 sm:p-4 rounded-xl flex flex-col xl:flex-row justify-between items-stretch xl:items-center gap-4 animate-in fade-in duration-305 shrink-0">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)] shrink-0">
+                                <Cpu size={20} className="animate-pulse" />
+                            </div>
+                            <div className="min-w-0">
+                                <h4 className="text-sm font-bold text-white flex items-center gap-2 truncate">
+                                    {language === 'uz' ? 'Sentinel Sun\'iy Intellekt Tahlil Tizimi' : 'Sentinel AI Video Analytics'}
+                                    <span className="hidden sm:inline px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-full text-[9px] font-bold tracking-wider animate-pulse">
+                                        V3.5 CORE
+                                    </span>
+                                </h4>
+                                <p className="text-xs text-text-secondary truncate">
+                                    {language === 'uz' ? 'Kamera oqimlaridagi odamlarni aniqlash, yuzlarni tanish, chiziqli sanash' : 'Real-time multi-object computer vision, biometric mapping'}
+                                </p>
+                            </div>
                         </div>
-                        <span className="font-bold text-sm">Add New Source</span>
-                    </button>
+                        
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-app-primary p-2 sm:p-1.5 rounded-lg border border-border overflow-x-auto custom-scrollbar scrollbar-none">
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    onClick={() => setAnalysisConfig(prev => ({ ...prev, detectPeople: !prev.detectPeople }))}
+                                    className={`h-9 sm:h-auto px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${analysisConfig.detectPeople ? 'bg-cyan-600/25 text-cyan-400 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.1)]' : 'text-text-secondary hover:text-white hover:bg-app-surface border border-transparent'}`}
+                                >
+                                    <Users size={14} />
+                                    <span className="hidden sm:inline">{language === 'uz' ? 'Odamlar' : 'People'}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${analysisConfig.detectPeople ? 'bg-cyan-400 animate-ping' : 'bg-slate-700'}`}></span>
+                                </button>
+                                
+                                <button
+                                    onClick={() => setAnalysisConfig(prev => ({ ...prev, recognizeFaces: !prev.recognizeFaces }))}
+                                    className={`h-9 sm:h-auto px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${analysisConfig.recognizeFaces ? 'bg-indigo-600/25 text-indigo-400 border border-indigo-500/30 shadow-[0_0_10px_rgba(99,102,241,0.1)]' : 'text-text-secondary hover:text-white hover:bg-app-surface border border-transparent'}`}
+                                >
+                                    <ScanFace size={14} />
+                                    <span className="hidden sm:inline">{language === 'uz' ? 'Yuzlar' : 'Faces'}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${analysisConfig.recognizeFaces ? 'bg-indigo-400 animate-ping' : 'bg-slate-700'}`}></span>
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    onClick={() => setAnalysisConfig(prev => ({ ...prev, enableCounting: !prev.enableCounting }))}
+                                    className={`h-9 sm:h-auto px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${analysisConfig.enableCounting ? 'bg-emerald-600/25 text-emerald-400 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-text-secondary hover:text-white hover:bg-app-surface border border-transparent'}`}
+                                >
+                                    <Calculator size={14} />
+                                    <span className="hidden sm:inline">{language === 'uz' ? 'Sanash' : 'Counter'}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${analysisConfig.enableCounting ? 'bg-emerald-400 animate-ping' : 'bg-slate-700'}`}></span>
+                                </button>
+
+                                <button
+                                    onClick={() => setAnalysisConfig(prev => ({ ...prev, showHeatmap: !prev.showHeatmap }))}
+                                    className={`h-9 sm:h-auto px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${analysisConfig.showHeatmap ? 'bg-amber-600/25 text-amber-400 border border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.1)]' : 'text-text-secondary hover:text-white hover:bg-app-surface border border-transparent'}`}
+                                >
+                                    <Flame size={14} />
+                                    <span className="hidden sm:inline">{language === 'uz' ? 'Xarita' : 'Heatmap'}</span>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${analysisConfig.showHeatmap ? 'bg-amber-400 animate-ping' : 'bg-slate-700'}`}></span>
+                                </button>
+                            </div>
+
+                            <div className="h-4 w-px bg-border mx-1 hidden xl:block" />
+
+                            <div className="flex items-center gap-1 bg-app-panel border border-border p-0.5 rounded-md text-xs shrink-0">
+                                <button
+                                    onClick={() => setStreamMode('mjpeg')}
+                                    className={`px-2 py-1 rounded font-bold transition-all cursor-pointer whitespace-nowrap ${streamMode === 'mjpeg' ? 'bg-cyan-600 text-white shadow-sm' : 'text-text-secondary hover:text-white'}`}
+                                >
+                                    VMS
+                                </button>
+                                <button
+                                    onClick={() => setStreamMode('direct')}
+                                    className={`px-2 py-1 rounded font-bold transition-all cursor-pointer whitespace-nowrap ${streamMode === 'direct' ? 'bg-cyan-600 text-white shadow-sm' : 'text-text-secondary hover:text-white'}`}
+                                >
+                                    Loop
+                                </button>
+                            </div>
+
+                            <div className="h-4 w-px bg-border mx-1 hidden xl:block" />
+
+                            <div className="flex items-center gap-1 bg-app-panel border border-border p-0.5 rounded-md text-xs shrink-0">
+                                {(['auto', '1x1', '2x2', '3x3'] as const).map(layout => (
+                                    <button
+                                        key={layout}
+                                        onClick={() => setGridLayout(layout)}
+                                        className={`px-2 py-1 rounded font-bold transition-all cursor-pointer uppercase ${gridLayout === layout ? 'bg-indigo-600 text-white shadow-sm' : 'text-text-secondary hover:text-white'}`}
+                                    >
+                                        {layout}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className={`grid ${
+                        gridLayout === '1x1' ? 'grid-cols-1' :
+                        gridLayout === '2x2' ? 'grid-cols-1 sm:grid-cols-2' :
+                        gridLayout === '3x3' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' :
+                        gridLayout === '4x4' ? 'grid-cols-2 lg:grid-cols-4' :
+                        'grid-cols-1 md:grid-cols-2 xl:grid-cols-3'
+                    } gap-4 sm:gap-6 flex-1 overflow-y-auto custom-scrollbar p-1 grid-flow-dense`}>
+                        {(() => {
+                            const getVisibleCameras = () => {
+                                if (gridLayout === '1x1') {
+                                    const selected = cameras.find(c => c.id === focusedCameraId) || cameras[0];
+                                    return selected ? [selected] : [];
+                                }
+                                let limit = cameras.length;
+                                if (gridLayout === '2x2') limit = 4;
+                                if (gridLayout === '3x3') limit = 9;
+                                if (gridLayout === '4x4') limit = 16;
+                                return cameras.slice(0, limit);
+                            };
+                            
+                            const visibleCams = getVisibleCameras();
+                            const gridLimit = gridLayout === '2x2' ? 4 : gridLayout === '3x3' ? 9 : gridLayout === '4x4' ? 16 : 0;
+                            const emptySlotsCount = Math.max(0, gridLimit - visibleCams.length);
+                            
+                            return (
+                                <>
+                                    {visibleCams.map(cam => (
+                                        <CameraCard 
+                                            key={cam.id} 
+                                            camera={cam} 
+                                            sizeMode={layoutConfig[cam.id] || 'normal'}
+                                            onEdit={handleEdit} 
+                                            onDelete={handleDelete} 
+                                            onShare={openShareModal} 
+                                            onStatusToggle={handleStatusToggle}
+                                            onStreamError={handleStreamError}
+                                            onToggleSize={toggleCameraSize}
+                                            // Drag handlers
+                                            onDragStart={handleDragStart}
+                                            onDragOver={handleDragOver}
+                                            onDrop={handleDrop}
+                                            onSelect={setFocusedCameraId}
+                                            onTestConnection={startConnectionTest}
+                                            streamMode={streamMode}
+                                            analysisConfig={analysisConfig}
+                                        />
+                                    ))}
+                                    
+                                    {/* Empty grid slots for explicit layouts */}
+                                    {Array.from({ length: emptySlotsCount }).map((_, i) => (
+                                        <div 
+                                            key={`empty-slot-${i}`} 
+                                            onClick={openAddModal}
+                                            className="border-2 border-dashed border-border/50 rounded-xl flex flex-col items-center justify-center text-text-secondary/40 hover:text-cyan-500 hover:border-cyan-500/50 hover:bg-cyan-900/5 transition-all group min-h-[250px] cursor-pointer animate-in fade-in zoom-in-95"
+                                        >
+                                            <Video size={24} className="mb-2 group-hover:scale-110 transition-transform" />
+                                            <span className="text-xs font-semibold">{language === 'uz' ? `Bo'sh Kamera Sloti` : `Empty Camera Slot`}</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Add Source button for auto layout */}
+                                    {gridLayout === 'auto' && (
+                                        <button 
+                                            onClick={openAddModal}
+                                            className="border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-text-muted hover:text-cyan-500 hover:border-cyan-500/50 hover:bg-cyan-900/5 transition-all group min-h-[250px] col-span-1 cursor-pointer"
+                                        >
+                                            <div className="w-16 h-16 rounded-full bg-app-panel group-hover:bg-cyan-500/10 flex items-center justify-center mb-4 transition-colors">
+                                                <Plus size={32} />
+                                            </div>
+                                            <span className="font-bold text-sm">Add New Source</span>
+                                        </button>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
                 </div>
             )}
 
             {/* Config List View */}
             {viewMode === 'config' && (
-                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex-1 flex flex-col">
+                <div className="bg-app-panel border border-border rounded-xl overflow-hidden flex-1 flex flex-col">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-950 border-b border-slate-800 text-slate-500 uppercase text-xs">
+                            <thead className="bg-app-primary border-b border-border text-text-primary0 uppercase text-xs">
                                 <tr>
                                     <th className="px-6 py-4 font-medium">ID / Name</th>
                                     <th className="px-6 py-4 font-medium">{t('cameras.location')}</th>
@@ -2304,24 +2728,24 @@ export const CamerasView: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-800">
                                 {cameras.map(cam => (
-                                    <tr key={cam.id} className={`hover:bg-slate-800/50 ${isCameraInactive(cam) ? 'opacity-75 grayscale' : ''}`}>
+                                    <tr key={cam.id} className={`hover:bg-app-surface/50 ${isCameraInactive(cam) ? 'opacity-75 grayscale' : ''}`}>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-slate-400">
+                                                <div className="w-8 h-8 rounded bg-app-surface flex items-center justify-center text-text-secondary">
                                                     <Video size={16} />
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-slate-200 flex items-center gap-1">
+                                                    <p className="font-bold text-text-primary flex items-center gap-1">
                                                         {cam.name}
                                                         {isCameraInactive(cam) && <span title="Inactive"><AlertCircle size={12} className="text-amber-500" /></span>}
                                                     </p>
-                                                    <p className="text-xs font-mono text-slate-500">{cam.id}</p>
+                                                    <p className="text-xs font-mono text-text-primary0">{cam.id}</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-slate-400">{cam.location}</td>
+                                        <td className="px-6 py-4 text-text-secondary">{cam.location}</td>
                                         <td className="px-6 py-4">
-                                            <div className="text-[10px] font-mono text-slate-300 bg-slate-950 border border-slate-800 rounded px-2 py-1 inline-block">
+                                            <div className="text-[10px] font-mono text-text-secondary bg-app-primary border border-border rounded px-2 py-1 inline-block">
                                                 <div>f: {cam.focalLength || 2.8}mm</div>
                                                 <div>s: {cam.sensorWidth || 4.8}mm</div>
                                                 <div className="text-cyan-400 mt-0.5">
@@ -2330,7 +2754,7 @@ export const CamerasView: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="px-2 py-1 bg-slate-950 border border-slate-800 rounded text-xs font-mono text-cyan-400">
+                                            <span className="px-2 py-1 bg-app-primary border border-border rounded text-xs font-mono text-cyan-400">
                                                 {cam.type}
                                             </span>
                                         </td>
@@ -2338,16 +2762,16 @@ export const CamerasView: React.FC = () => {
                                             {(() => {
                                                 const statusConfig = {
                                                     [CameraStatus.ONLINE]: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', icon: CheckCircle2 },
-                                                    [CameraStatus.OFFLINE]: { bg: 'bg-slate-700/30', text: 'text-slate-400', border: 'border-slate-600/30', icon: WifiOff },
+                                                    [CameraStatus.OFFLINE]: { bg: 'bg-slate-700/30', text: 'text-text-secondary', border: 'border-border/30', icon: WifiOff },
                                                     [CameraStatus.CONNECTING]: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', icon: RefreshCw },
                                                     [CameraStatus.ERROR]: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20', icon: AlertCircle },
-                                                }[cam.status] || { bg: 'bg-slate-700/30', text: 'text-slate-400', border: 'border-slate-600/30', icon: Activity };
+                                                }[cam.status] || { bg: 'bg-slate-700/30', text: 'text-text-secondary', border: 'border-border/30', icon: Activity };
                                                 const Icon = statusConfig.icon;
                                                 return (
                                                     <span 
                                                         onClick={() => handleStatusToggle(cam)}
                                                         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border cursor-pointer hover:opacity-80 transition-opacity ${statusConfig.bg} ${statusConfig.text} ${statusConfig.border}`}
-                                                        title="Click to Simulate Status Change"
+                                                        title="Click to Toggle Status"
                                                     >
                                                         <Icon size={12} className={cam.status === CameraStatus.CONNECTING ? 'animate-spin' : ''} />
                                                         {cam.status}
@@ -2358,19 +2782,19 @@ export const CamerasView: React.FC = () => {
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex justify-end gap-2">
                                                 <button 
-                                                    className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-yellow-400 transition-colors cursor-pointer" 
+                                                    className="p-2 hover:bg-app-surface rounded text-text-secondary hover:text-yellow-400 transition-colors cursor-pointer" 
                                                     title={language === 'uz' ? "Ulanishni sinash" : "Connection Test"} 
                                                     onClick={() => startConnectionTest(cam)}
                                                 >
                                                     <Zap size={16} />
                                                 </button>
-                                                <button className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400" title="Share" onClick={() => openShareModal(cam)}>
+                                                <button className="p-2 hover:bg-app-surface rounded text-text-secondary hover:text-cyan-400" title="Share" onClick={() => openShareModal(cam)}>
                                                     <Share2 size={16} />
                                                 </button>
-                                                <button className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white" title="Edit" onClick={() => handleEdit(cam)}>
+                                                <button className="p-2 hover:bg-app-surface rounded text-text-secondary hover:text-white" title="Edit" onClick={() => handleEdit(cam)}>
                                                     <MoreVertical size={16} />
                                                 </button>
-                                                <button className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white" title="Delete" onClick={() => handleDelete(cam.id)}>
+                                                <button className="p-2 hover:bg-app-surface rounded text-text-secondary hover:text-white" title="Delete" onClick={() => handleDelete(cam.id)}>
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>
@@ -2388,12 +2812,348 @@ export const CamerasView: React.FC = () => {
                 <CameraSetupGuide onImportSuccess={reloadCameras} />
             )}
 
+            {/* Archive & Recordings View */}
+            {viewMode === 'recordings' && (
+                <div className="flex-1 flex flex-col lg:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4">
+                    {/* Left Column: Storage Metrics & Scheduler */}
+                    <div className="lg:w-1/3 flex flex-col gap-6">
+                        {/* Storage Metrics Panel */}
+                        <div className="bg-app-panel border border-border rounded-xl p-5 flex flex-col gap-4">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-bold text-white flex items-center gap-2">
+                                    <History className="text-cyan-400" size={18} />
+                                    {language === 'uz' ? 'Disk Xotirasi' : 'Storage Metrics'}
+                                </h3>
+                                <button 
+                                    onClick={runStoragePruning}
+                                    className="px-2.5 py-1.5 bg-cyan-950 hover:bg-cyan-900 border border-cyan-500/30 hover:border-cyan-500/50 text-cyan-400 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                    title="Prune and optimize disk space"
+                                >
+                                    <RefreshCw size={12} className="animate-spin-slow" />
+                                    {language === 'uz' ? 'Rotatsiya' : 'Rotate Files'}
+                                </button>
+                            </div>
+
+                            {storageStats ? (
+                                <div className="space-y-4">
+                                    <div className="flex justify-between text-xs font-mono text-text-secondary">
+                                        <span>{language === 'uz' ? "Ishlatilgan:" : "Used:"} <strong>{storageStats.usedGb} GB</strong></span>
+                                        <span>{language === 'uz' ? "Jami:" : "Total:"} <strong>{storageStats.totalGb} GB</strong></span>
+                                    </div>
+                                    {/* Progress Bar */}
+                                    <div className="w-full bg-app-primary rounded-full h-3 overflow-hidden border border-border flex">
+                                        <div 
+                                            style={{ width: `${storageStats.usagePercent}%` }} 
+                                            className="bg-cyan-500 h-full transition-all duration-500" 
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-[11px] font-mono">
+                                        <div className="flex items-center gap-1.5 text-cyan-400">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
+                                            <span>{language === 'uz' ? "Yozuvlar" : "Recordings"} ({storageStats.usagePercent}%)</span>
+                                        </div>
+                                        <div className="text-text-muted">
+                                            {storageStats.freeGb} GB {language === 'uz' ? "bo'sh" : "free"}
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-border/50 pt-3 space-y-2">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-text-secondary">{language === 'uz' ? "Kameralar soni:" : "Active Cameras:"}</span>
+                                            <span className="font-bold text-white">{storageStats.camerasCount || cameras.length}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-text-secondary">{language === 'uz' ? "Saqlash muddati:" : "Retention Policy:"}</span>
+                                            <span className="font-bold text-cyan-400">{storageStats.retentionDays} {language === 'uz' ? "kun" : "days"}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="h-40 flex items-center justify-center text-text-muted text-xs">
+                                    <RefreshCw size={16} className="animate-spin mr-2" />
+                                    Loading disk details...
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Schedule Recording Grid */}
+                        <div className="bg-app-panel border border-border rounded-xl p-5 flex flex-col gap-4">
+                            <div>
+                                <h3 className="font-bold text-white flex items-center gap-2">
+                                    <Clock className="text-indigo-400" size={18} />
+                                    {language === 'uz' ? 'Yozib olish jadvali' : 'Recording Scheduler'}
+                                </h3>
+                                <p className="text-xs text-text-muted mt-1">
+                                    {language === 'uz' ? 'Kamera uchun haftalik soatlik yozish jadvallarini tanlang.' : 'Select hourly blocks to schedule automated camera stream archiving.'}
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="block text-xs font-medium text-text-secondary">Select Camera</label>
+                                <select 
+                                    className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary text-xs outline-none focus:border-cyan-500"
+                                    value={selectedCameraIdForSchedule}
+                                    onChange={e => setSelectedCameraIdForSchedule(e.target.value)}
+                                >
+                                    {cameras.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name} ({c.id})</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Weekly grid map */}
+                            <div className="space-y-2 overflow-x-auto custom-scrollbar">
+                                <div className="flex text-[10px] text-text-muted font-mono justify-between pb-1 border-b border-border/50">
+                                    <span className="w-16">Day</span>
+                                    <div className="flex-1 flex justify-around">
+                                        <span>00:00</span>
+                                        <span>12:00</span>
+                                        <span>23:00</span>
+                                    </div>
+                                </div>
+                                {['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'].map(day => (
+                                    <div key={day} className="flex items-center gap-2">
+                                        <span className="w-16 text-xs text-text-secondary truncate font-medium">{day}</span>
+                                        <div className="flex-1 grid grid-cols-24 gap-0.5">
+                                            {(recordingSchedule[day] || Array(24).fill(true)).map((active, hour) => (
+                                                <button
+                                                    key={hour}
+                                                    onClick={() => {
+                                                        const updated = { ...recordingSchedule };
+                                                        updated[day][hour] = !updated[day][hour];
+                                                        setRecordingSchedule(updated);
+                                                    }}
+                                                    className={`h-4.5 rounded-sm transition-all border border-border/10 cursor-pointer ${active ? 'bg-emerald-500/80 hover:bg-emerald-400' : 'bg-slate-800 hover:bg-slate-700'}`}
+                                                    title={`${day} soat ${hour}:00 - ${active ? 'Continuous Recording Active' : 'No Recording scheduled'}`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="flex items-center gap-4 text-[10px] font-mono text-text-muted pt-1">
+                                <div className="flex items-center gap-1">
+                                    <span className="w-2.5 h-2.5 rounded bg-emerald-500"></span>
+                                    <span>Continuous</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="w-2.5 h-2.5 rounded bg-slate-800 border border-border/50"></span>
+                                    <span>Disabled</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: Recorded Archive Browser */}
+                    <div className="flex-1 bg-app-panel border border-border rounded-xl p-5 flex flex-col gap-4 min-h-[500px]">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                            <div>
+                                <h3 className="font-bold text-white text-base">
+                                    {language === 'uz' ? 'Yozib Olingan Arxivi' : 'Recorded Video Archive'}
+                                </h3>
+                                <p className="text-xs text-text-muted">
+                                    {language === 'uz' ? "VMS tizimi tomonidan saqlangan barcha continuous va motion kliplar." : "Browse and playback stored historical camera feeds."}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* List table */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar border border-border/50 rounded-lg">
+                            <table className="w-full text-left text-xs">
+                                <thead className="bg-app-primary border-b border-border text-text-secondary uppercase text-[10px] font-mono">
+                                    <tr>
+                                        <th className="px-4 py-3 font-medium">Recording ID</th>
+                                        <th className="px-4 py-3 font-medium">Camera Source</th>
+                                        <th className="px-4 py-3 font-medium">Duration / Size</th>
+                                        <th className="px-4 py-3 font-medium">Time Interval</th>
+                                        <th className="px-4 py-3 font-medium text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                    {recordings.length > 0 ? (
+                                        recordings.map(rec => (
+                                            <tr key={rec.id} className="hover:bg-app-surface/40 group transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`w-2 h-2 rounded-full ${rec.recordingType === 'Motion' ? 'bg-amber-500 animate-pulse' : rec.recordingType === 'Emergency' ? 'bg-rose-500 animate-ping' : 'bg-cyan-500'}`}></span>
+                                                        <div>
+                                                            <p className="font-mono font-bold text-white text-[11px]">{rec.id}</p>
+                                                            <span className="text-[10px] text-text-muted bg-app-surface border border-border rounded px-1.5 py-0.5 mt-0.5 inline-block uppercase font-mono">{rec.recordingType}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 font-medium text-text-secondary">
+                                                    {rec.cameraName || `Camera: ${rec.cameraId}`}
+                                                </td>
+                                                <td className="px-4 py-3 font-mono text-text-secondary">
+                                                    <div>15.0 sec</div>
+                                                    <div className="text-cyan-400 font-semibold">{rec.fileSizeMb || 12} MB</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-text-secondary">
+                                                    <div className="text-[11px] font-mono">
+                                                        <div>Start: {new Date(rec.startTime).toLocaleTimeString()}</div>
+                                                        <div className="text-text-muted">Date: {new Date(rec.startTime).toLocaleDateString()}</div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                                                        <button 
+                                                            onClick={() => {
+                                                                setSelectedRecForPlayback(rec);
+                                                                setPlaybackProgress(0);
+                                                                setIsPlaying(true);
+                                                                setPlaybackSpeed(1);
+                                                            }}
+                                                            className="p-1.5 bg-cyan-900/40 hover:bg-cyan-500 hover:text-white border border-cyan-500/20 text-cyan-400 rounded transition-all cursor-pointer"
+                                                            title="Simulate Playback"
+                                                        >
+                                                            <Play size={13} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => deleteRecordingFile(rec.id)}
+                                                            className="p-1.5 bg-rose-950/40 hover:bg-rose-600 hover:text-white border border-rose-500/20 text-rose-400 rounded transition-all cursor-pointer"
+                                                            title="Delete file"
+                                                        >
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={5} className="text-center py-10 text-text-muted">
+                                                No recordings found in the VMS archive spool.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Playback simulation overlay/modal */}
+            {selectedRecForPlayback && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden">
+                        <div className="p-4 border-b border-border flex justify-between items-center bg-app-primary">
+                            <div>
+                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse"></span>
+                                    {language === 'uz' ? 'Arxiv Videosi Ijrosi (Simulyatsiya)' : 'Archive Video Playback (Simulated)'}
+                                </h3>
+                                <p className="text-xs text-text-secondary mt-0.5">
+                                    {selectedRecForPlayback.cameraName} | File: {selectedRecForPlayback.id}
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedRecForPlayback(null)}
+                                className="p-2 hover:bg-app-surface text-text-secondary hover:text-white rounded-lg transition-colors cursor-pointer"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Player viewport */}
+                        <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden border-b border-border select-none">
+                            {/* Camera Stream representation */}
+                            <img 
+                                key={selectedRecForPlayback.id}
+                                referrerPolicy="no-referrer"
+                                src={`/api/cameras/${selectedRecForPlayback.cameraId}/stream`}
+                                alt="Playback Stream"
+                                className="w-full h-full object-cover opacity-80"
+                                onError={(e) => {
+                                    // fallback if connection drops
+                                    (e.target as HTMLElement).style.display = 'none';
+                                }}
+                            />
+
+                            {/* OSD (On-Screen Display) Playback Info */}
+                            <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-sm border border-border rounded px-3 py-1.5 font-mono text-[11px] text-cyan-400 z-10">
+                                <div className="font-bold uppercase text-white flex items-center gap-1.5">
+                                    <History size={11} /> PLAYBACK ARCHIVE
+                                </div>
+                                <div className="mt-1">SPEED: {playbackSpeed}x</div>
+                                <div>PROGRESS: {Math.round(playbackProgress)}%</div>
+                                <div className="text-text-secondary">DATE: {new Date(selectedRecForPlayback.startTime).toLocaleString()}</div>
+                            </div>
+
+                            {/* Watermark/Scan lines */}
+                            <div className="absolute inset-0 pointer-events-none bg-scan-lines opacity-[0.03] z-10" />
+
+                            {playbackProgress >= 100 && (
+                                <div className="absolute inset-0 bg-black/85 backdrop-blur-sm flex flex-col items-center justify-center text-center z-20">
+                                    <CheckCircle2 size={48} className="text-cyan-400 mb-3 animate-bounce" />
+                                    <p className="font-bold text-white">{language === 'uz' ? 'Klip Tugadi' : 'Playback Finished'}</p>
+                                    <button 
+                                        onClick={() => setPlaybackProgress(0)}
+                                        className="mt-3 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs transition-all cursor-pointer"
+                                    >
+                                        Replay clip
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Controls bar */}
+                        <div className="p-4 bg-app-primary flex flex-col gap-3">
+                            {/* Progress bar scrubber */}
+                            <div className="flex items-center gap-3">
+                                <span className="font-mono text-[10px] text-text-secondary">00:00</span>
+                                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden relative border border-border/20">
+                                    <div 
+                                        style={{ width: `${playbackProgress}%` }} 
+                                        className="bg-cyan-500 h-full transition-all duration-300"
+                                    />
+                                </div>
+                                <span className="font-mono text-[10px] text-cyan-400">00:15</span>
+                            </div>
+
+                            {/* Controls row */}
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => setIsPlaying(!isPlaying)}
+                                        className="px-3.5 py-2 bg-app-panel hover:bg-app-surface text-white border border-border hover:border-cyan-500/40 font-bold rounded-lg text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                    >
+                                        {isPlaying ? 'Pause' : 'Play'}
+                                    </button>
+                                    <button 
+                                        onClick={() => setPlaybackProgress(0)}
+                                        className="px-3.5 py-2 bg-app-panel hover:bg-app-surface text-text-secondary hover:text-white border border-border font-bold rounded-lg text-xs transition-all cursor-pointer"
+                                    >
+                                        Restart
+                                    </button>
+                                </div>
+
+                                {/* Playback speed toggler */}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-mono text-text-muted uppercase">Speed:</span>
+                                    {([0.5, 1, 2, 4, 8, 16] as const).map(speed => (
+                                        <button
+                                            key={speed}
+                                            onClick={() => setPlaybackSpeed(speed)}
+                                            className={`px-2 py-1 rounded text-[10px] font-mono transition-all font-bold cursor-pointer ${playbackSpeed === speed ? 'bg-cyan-600 text-white' : 'bg-app-panel text-text-secondary hover:text-white hover:bg-app-surface border border-border'}`}
+                                        >
+                                            {speed}x
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* --- Modals (Add, Link, Share) kept as before --- */}
             {/* Add / Edit Camera Modal */}
             {isAddModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-lg shadow-2xl">
-                        <div className="p-6 border-b border-slate-800">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-lg shadow-2xl">
+                        <div className="p-6 border-b border-border">
                             <h3 className="text-lg font-bold text-white">{isEditing ? 'Edit Camera' : t('cameras.add')}</h3>
                         </div>
                         <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
@@ -2404,21 +3164,21 @@ export const CamerasView: React.FC = () => {
                                 </div>
                             )}
                             <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">Camera Name</label>
-                                <input type="text" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none" placeholder="e.g. Front Gate"
+                                <label className="block text-xs font-medium text-text-secondary mb-1">Camera Name</label>
+                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="e.g. Front Gate"
                                     value={newCam.name || ''} onChange={e => setNewCam({...newCam, name: e.target.value})}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">Location</label>
-                                <input type="text" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none" placeholder="e.g. Building A"
+                                <label className="block text-xs font-medium text-text-secondary mb-1">Location</label>
+                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="e.g. Building A"
                                     value={newCam.location || ''} onChange={e => setNewCam({...newCam, location: e.target.value})}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1">Source Type</label>
-                                    <select className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none"
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Source Type</label>
+                                    <select className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary outline-none"
                                         value={newCam.type} onChange={e => setNewCam({...newCam, type: e.target.value as CameraType})}
                                     >
                                         <option value={CameraType.RTSP}>RTSP Stream</option>
@@ -2427,98 +3187,98 @@ export const CamerasView: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1">FPS Limit</label>
-                                    <input type="number" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none" placeholder="30"
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">FPS Limit</label>
+                                    <input type="number" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="30"
                                         value={newCam.fps || ''} onChange={e => setNewCam({...newCam, fps: parseInt(e.target.value)})}
                                     />
                                 </div>
                             </div>
 
                             {/* Part 1: Real Optical Parameters Input */}
-                            <div className="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                            <div className="bg-app-primary border border-border rounded-lg p-3">
                                 <label className="block text-xs font-bold text-cyan-400 mb-2 flex items-center gap-1">
                                     <Ruler size={12} /> Optical Parameters (Physical Lens)
                                 </label>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div>
-                                        <label className="block text-[10px] text-slate-500 mb-1">Focal Length (mm)</label>
-                                        <input type="number" step="0.1" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+                                        <label className="block text-[10px] text-text-primary0 mb-1">Focal Length (mm)</label>
+                                        <input type="number" step="0.1" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white"
                                             value={newCam.focalLength} onChange={e => setNewCam({...newCam, focalLength: parseFloat(e.target.value)})}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] text-slate-500 mb-1">Sensor Width (mm)</label>
-                                        <input type="number" step="0.1" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white"
+                                        <label className="block text-[10px] text-text-primary0 mb-1">Sensor Width (mm)</label>
+                                        <input type="number" step="0.1" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white"
                                             value={newCam.sensorWidth} onChange={e => setNewCam({...newCam, sensorWidth: parseFloat(e.target.value)})}
                                         />
                                     </div>
                                     <div className="flex flex-col justify-end">
-                                        <div className="text-[10px] text-slate-500 mb-1">Calculated H-FOV</div>
-                                        <div className="bg-slate-900 border border-slate-700 rounded p-2 text-xs text-emerald-400 font-mono text-center">
+                                        <div className="text-[10px] text-text-primary0 mb-1">Calculated H-FOV</div>
+                                        <div className="bg-app-panel border border-border rounded p-2 text-xs text-emerald-400 font-mono text-center">
                                             {calculatedFOV.toFixed(1)}°
                                         </div>
                                     </div>
                                 </div>
-                                <p className="text-[9px] text-slate-500 mt-2">
+                                <p className="text-[9px] text-text-primary0 mt-2">
                                     * Standard 1/3" sensor width is ~4.8mm. 2.8mm lens gives ~81° FOV.
                                 </p>
                             </div>
 
                             {newCam.type === CameraType.RTSP ? (
-                                <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-3">
+                                <div className="bg-app-primary border border-border rounded-lg p-3 space-y-3">
                                     <label className="block text-xs font-bold text-cyan-400 flex items-center gap-1">
                                         <Globe size={12} /> Network Configuration
                                     </label>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="col-span-2">
-                                            <label className="block text-[10px] text-slate-500 mb-1">IP Address / Host</label>
-                                            <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-mono" placeholder="192.168.1.100"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">IP Address / Host</label>
+                                            <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="192.168.1.100"
                                                 value={rtspDetails.ip} onChange={e => setRtspDetails({...rtspDetails, ip: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 mb-1">Port</label>
-                                            <input type="number" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-mono" placeholder="554"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Port</label>
+                                            <input type="number" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="554"
                                                 value={rtspDetails.port} onChange={e => setRtspDetails({...rtspDetails, port: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 mb-1">Stream Path</label>
-                                            <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-mono" placeholder="/stream1"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Stream Path</label>
+                                            <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="/stream1"
                                                 value={rtspDetails.path} onChange={e => setRtspDetails({...rtspDetails, path: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 mb-1">Username</label>
-                                            <input type="text" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-mono" placeholder="admin"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Username</label>
+                                            <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="admin"
                                                 value={rtspDetails.user} onChange={e => setRtspDetails({...rtspDetails, user: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-slate-500 mb-1">Password</label>
-                                            <input type="password" className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-mono" placeholder="••••••"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Password</label>
+                                            <input type="password" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="••••••"
                                                 value={rtspDetails.pass} onChange={e => setRtspDetails({...rtspDetails, pass: e.target.value})}
                                             />
                                         </div>
                                     </div>
-                                    <div className="text-[10px] text-slate-500 font-mono break-all mt-1 p-2 bg-black/20 rounded border border-white/5">
-                                        <span className="text-slate-600">Preview:</span> rtsp://{rtspDetails.user ? `${rtspDetails.user}:***@` : ''}{rtspDetails.ip || '0.0.0.0'}:{rtspDetails.port}{rtspDetails.path}
+                                    <div className="text-[10px] text-text-primary0 font-mono break-all mt-1 p-2 bg-black/20 rounded border border-white/5">
+                                        <span className="text-text-muted">Preview:</span> rtsp://{rtspDetails.user ? `${rtspDetails.user}:***@` : ''}{rtspDetails.ip || '0.0.0.0'}:{rtspDetails.port}{rtspDetails.path}
                                     </div>
                                 </div>
                             ) : (
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1 flex items-center gap-2">
+                                    <label className="block text-xs font-medium text-text-secondary mb-1 flex items-center gap-2">
                                         {newCam.type === CameraType.USB ? <Usb size={12}/> : <Globe size={12}/>}
                                         {streamInputProps.label}
                                     </label>
-                                    <input type="text" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none font-mono text-sm" placeholder={streamInputProps.placeholder}
+                                    <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none font-mono text-sm" placeholder={streamInputProps.placeholder}
                                         value={newCam.streamUrl || ''} onChange={e => setNewCam({...newCam, streamUrl: e.target.value})}
                                     />
                                 </div>
                             )}
                         </div>
-                        <div className="p-4 border-t border-slate-800 flex justify-end gap-3 bg-slate-950 rounded-b-xl">
-                            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white font-medium">Cancel</button>
+                        <div className="p-4 border-t border-border flex justify-end gap-3 bg-app-primary rounded-b-xl">
+                            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-text-secondary hover:text-white font-medium">Cancel</button>
                             <button onClick={handleSaveCamera} className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg shadow-lg shadow-cyan-900/20">{isEditing ? 'Save Changes' : 'Save Camera'}</button>
                         </div>
                     </div>
@@ -2528,33 +3288,33 @@ export const CamerasView: React.FC = () => {
             {/* Device Enrollment Modal */}
             {isLinkModalOpen && (
                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md shadow-2xl">
-                         <div className="p-6 border-b border-slate-800">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-md shadow-2xl">
+                         <div className="p-6 border-b border-border">
                              <div className="flex items-center gap-3 mb-2">
                                 <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
                                     <LinkIcon size={20} />
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-white">{t('cameras.generateLink')}</h3>
-                                    <p className="text-xs text-slate-400">Secure WebRTC Handshake</p>
+                                    <p className="text-xs text-text-secondary">Secure WebRTC Handshake</p>
                                 </div>
                              </div>
                         </div>
                         
                         {!linkGenerated ? (
                             <div className="p-6 space-y-4">
-                                <p className="text-sm text-slate-400 bg-slate-950 p-3 rounded border border-slate-800">
+                                <p className="text-sm text-text-secondary bg-app-primary p-3 rounded border border-border">
                                     {t('cameras.secureLinkDesc')}
                                 </p>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1">Device/User Identifier</label>
-                                    <input type="text" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none" placeholder="e.g. Officer Tablet 1"
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Device/User Identifier</label>
+                                    <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="e.g. Officer Tablet 1"
                                         value={linkConfig.deviceName} onChange={e => setLinkConfig({...linkConfig, deviceName: e.target.value})}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1">Token Expiry (Minutes)</label>
-                                    <input type="number" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:border-cyan-500 outline-none"
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Token Expiry (Minutes)</label>
+                                    <input type="number" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none"
                                         value={linkConfig.expiry} onChange={e => setLinkConfig({...linkConfig, expiry: parseInt(e.target.value)})}
                                     />
                                 </div>
@@ -2573,20 +3333,20 @@ export const CamerasView: React.FC = () => {
                                     <CheckCircle2 size={48} className="animate-in zoom-in spin-in-180" />
                                 </div>
                                 <h4 className="text-center font-bold text-white">Link Generated Successfully</h4>
-                                <div className="bg-black border border-slate-800 rounded-lg p-3 break-all font-mono text-xs text-slate-300 relative group">
+                                <div className="bg-black border border-border rounded-lg p-3 break-all font-mono text-xs text-text-secondary relative group">
                                     {linkGenerated}
                                 </div>
                                 <button 
                                     onClick={() => copyToClipboard(linkGenerated)}
-                                    className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors ${isCopied ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'}`}
+                                    className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors ${isCopied ? 'bg-emerald-600 text-white' : 'bg-app-surface hover:bg-app-surface text-text-primary'}`}
                                 >
                                     {isCopied ? <Check size={18} /> : <Copy size={18} />}
                                     {isCopied ? 'Copied to Clipboard' : 'Copy Link'}
                                 </button>
                             </div>
                         )}
-                         <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-950 rounded-b-xl">
-                            <button onClick={() => setIsLinkModalOpen(false)} className="text-slate-400 hover:text-white text-sm">Close</button>
+                         <div className="p-4 border-t border-border flex justify-end bg-app-primary rounded-b-xl">
+                            <button onClick={() => setIsLinkModalOpen(false)} className="text-text-secondary hover:text-white text-sm">Close</button>
                         </div>
                     </div>
                  </div>
@@ -2595,15 +3355,15 @@ export const CamerasView: React.FC = () => {
             {/* Share Stream Modal (New Feature) */}
             {isShareModalOpen && sharingCamera && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md shadow-2xl">
-                         <div className="p-6 border-b border-slate-800">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-md shadow-2xl">
+                         <div className="p-6 border-b border-border">
                              <div className="flex items-center gap-3 mb-2">
                                 <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-400">
                                     <Share2 size={20} />
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-white">Share Live Stream</h3>
-                                    <p className="text-xs text-slate-400">Generate temporary viewer link for <span className="text-white font-mono">{sharingCamera.name}</span></p>
+                                    <p className="text-xs text-text-secondary">Generate temporary viewer link for <span className="text-white font-mono">{sharingCamera.name}</span></p>
                                 </div>
                              </div>
                         </div>
@@ -2611,7 +3371,7 @@ export const CamerasView: React.FC = () => {
                         {!generatedStreamLink ? (
                             <div className="p-6 space-y-6">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-400 mb-1.5 flex items-center gap-1">
+                                    <label className="block text-xs font-medium text-text-secondary mb-1.5 flex items-center gap-1">
                                         <Clock size={12} /> Link Expiry Duration
                                     </label>
                                     <div className="grid grid-cols-2 gap-2">
@@ -2622,14 +3382,14 @@ export const CamerasView: React.FC = () => {
                                                 className={`py-2 px-3 rounded-lg text-sm font-medium border transition-all ${
                                                     shareExpiry === opt 
                                                     ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400 shadow-sm' 
-                                                    : 'bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-800'
+                                                    : 'bg-app-primary border-border text-text-primary0 hover:bg-app-surface'
                                                 }`}
                                             >
                                                 {opt === 'perm' ? 'Permanent' : opt.toUpperCase()}
                                             </button>
                                         ))}
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mt-2">
+                                    <p className="text-[10px] text-text-primary0 mt-2">
                                         This will create a read-only HLS/WebRTC stream link accessible without a password until expiration.
                                     </p>
                                 </div>
@@ -2649,29 +3409,29 @@ export const CamerasView: React.FC = () => {
                                 </div>
                                 
                                 <div className="space-y-1">
-                                    <label className="text-xs font-bold text-slate-500 uppercase">Stream URL</label>
+                                    <label className="text-xs font-bold text-text-primary0 uppercase">Stream URL</label>
                                     <div className="flex gap-2">
                                         <input 
                                             readOnly 
                                             value={generatedStreamLink} 
-                                            className="flex-1 bg-black border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono outline-none"
+                                            className="flex-1 bg-black border border-border rounded-lg px-3 py-2 text-xs text-text-secondary font-mono outline-none"
                                         />
                                         <button 
                                             onClick={() => copyToClipboard(generatedStreamLink)}
-                                            className={`px-3 rounded-lg border transition-all ${isCopied ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`}
+                                            className={`px-3 rounded-lg border transition-all ${isCopied ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-app-surface border-border text-text-secondary hover:bg-app-surface'}`}
                                         >
                                             {isCopied ? <Check size={16} /> : <Copy size={16} />}
                                         </button>
                                     </div>
                                 </div>
-                                <p className="text-[10px] text-slate-500 text-center">
+                                <p className="text-[10px] text-text-primary0 text-center">
                                     Anyone with this link can view the camera feed until it expires.
                                 </p>
                             </div>
                         )}
 
-                        <div className="p-4 border-t border-slate-800 flex justify-end bg-slate-950 rounded-b-xl">
-                            <button onClick={() => setIsShareModalOpen(false)} className="text-slate-400 hover:text-white text-sm">Close</button>
+                        <div className="p-4 border-t border-border flex justify-end bg-app-primary rounded-b-xl">
+                            <button onClick={() => setIsShareModalOpen(false)} className="text-text-secondary hover:text-white text-sm">Close</button>
                         </div>
                     </div>
                 </div>
@@ -2680,9 +3440,9 @@ export const CamerasView: React.FC = () => {
             {/* Connection Test Modal */}
             {isTestModalOpen && testingCamera && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                         {/* Header */}
-                        <div className="p-6 border-b border-slate-800 bg-slate-950 flex justify-between items-center shrink-0">
+                        <div className="p-6 border-b border-border bg-app-primary flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                                     testStatus === 'success' ? 'bg-emerald-500/10 text-emerald-400' :
@@ -2695,8 +3455,8 @@ export const CamerasView: React.FC = () => {
                                     <h3 className="text-lg font-bold text-white">
                                         {language === 'uz' ? 'Kamera Ulanishini Sinash' : 'Camera Connection Test'}
                                     </h3>
-                                    <p className="text-xs text-slate-400">
-                                        {language === 'uz' ? 'Kamera:' : 'Device:'} <span className="text-slate-200 font-bold">{testingCamera.name}</span>
+                                    <p className="text-xs text-text-secondary">
+                                        {language === 'uz' ? 'Kamera:' : 'Device:'} <span className="text-text-primary font-bold">{testingCamera.name}</span>
                                         <span className="mx-2">|</span>
                                         {language === 'uz' ? 'Turi:' : 'Type:'} <span className="text-cyan-400 font-mono text-xs">{testingCamera.type}</span>
                                     </p>
@@ -2719,14 +3479,14 @@ export const CamerasView: React.FC = () => {
                         {/* Body */}
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
                             {/* URL and address info */}
-                            <div className="bg-slate-950 p-3 rounded-lg border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                            <div className="bg-app-primary p-3 rounded-lg border border-border/80 flex flex-col md:flex-row md:items-center justify-between gap-3">
                                 <div className="space-y-0.5">
-                                    <span className="text-[10px] font-mono text-slate-500 font-bold uppercase">{language === 'uz' ? 'Oqim havolasi (RTSP URL)' : 'RTSP STREAM SOURCE'}</span>
-                                    <div className="text-xs font-mono text-slate-300 break-all select-all">
+                                    <span className="text-[10px] font-mono text-text-primary0 font-bold uppercase">{language === 'uz' ? 'Oqim havolasi (RTSP URL)' : 'RTSP STREAM SOURCE'}</span>
+                                    <div className="text-xs font-mono text-text-secondary break-all select-all">
                                         {testingCamera.streamUrl}
                                     </div>
                                 </div>
-                                <div className="shrink-0 flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded border border-slate-800">
+                                <div className="shrink-0 flex items-center gap-1.5 text-xs text-text-secondary bg-app-panel px-3 py-1.5 rounded border border-border">
                                     <Clock size={12} className="text-cyan-400" />
                                     <span>Port: {testingCamera.streamUrl.match(/:(\d+)/)?.[1] || '554'}</span>
                                 </div>
@@ -2736,7 +3496,7 @@ export const CamerasView: React.FC = () => {
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                                 {/* Left Side: Terminal Logs */}
                                 <div className="lg:col-span-7 flex flex-col gap-2">
-                                    <div className="flex justify-between items-center text-xs text-slate-400 px-1">
+                                    <div className="flex justify-between items-center text-xs text-text-secondary px-1">
                                         <span className="font-bold flex items-center gap-1">
                                             <FileText size={12} />
                                             {language === 'uz' ? 'Diagnostika jurnali' : 'Diagnostic Terminal'}
@@ -2745,7 +3505,7 @@ export const CamerasView: React.FC = () => {
                                     </div>
                                     
                                     {/* Console Terminal */}
-                                    <div className="bg-black/90 rounded-lg p-4 font-mono text-[11px] text-emerald-400 h-64 overflow-y-auto border border-slate-800 flex flex-col gap-1.5 custom-scrollbar shadow-inner select-text">
+                                    <div className="bg-black/90 rounded-lg p-4 font-mono text-[11px] text-emerald-400 h-64 overflow-y-auto border border-border flex flex-col gap-1.5 custom-scrollbar shadow-inner select-text">
                                         {testLogs.map((log, index) => {
                                             const isError = log.includes('✗') || log.includes('[ERROR]');
                                             const isSuccess = log.includes('✓') || log.includes('[SUCCESS]');
@@ -2770,7 +3530,7 @@ export const CamerasView: React.FC = () => {
                                     </div>
 
                                     {/* Progress Bar */}
-                                    <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800/80">
+                                    <div className="w-full bg-app-primary h-1.5 rounded-full overflow-hidden border border-border/80">
                                         <div 
                                             className={`h-full transition-all duration-300 rounded-full ${
                                                 testStatus === 'success' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' :
@@ -2784,11 +3544,11 @@ export const CamerasView: React.FC = () => {
 
                                 {/* Right Side: Visual Feed / Diagnostics Status */}
                                 <div className="lg:col-span-5 flex flex-col gap-2">
-                                    <span className="text-xs text-slate-400 px-1 font-bold">
+                                    <span className="text-xs text-text-secondary px-1 font-bold">
                                         {language === 'uz' ? 'Jonli monitoring' : 'Live Stream Verification'}
                                     </span>
 
-                                    <div className="h-64 bg-black rounded-lg border border-slate-800 relative overflow-hidden flex flex-col items-center justify-center select-none shadow-lg">
+                                    <div className="h-64 bg-black rounded-lg border border-border relative overflow-hidden flex flex-col items-center justify-center select-none shadow-lg">
                                         {testStatus === 'running' && (
                                             <div className="text-center p-4 space-y-3 z-10 animate-in fade-in duration-300">
                                                 <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
@@ -2797,8 +3557,8 @@ export const CamerasView: React.FC = () => {
                                                     <RefreshCw size={24} className="animate-spin text-yellow-500" />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <p className="text-xs font-bold text-slate-200">{language === 'uz' ? 'Ulanish oʻrnatilmoqda...' : 'Connecting to RTSP source...'}</p>
-                                                    <p className="text-[10px] text-slate-500 font-mono">Handshake progress: {testProgress}%</p>
+                                                    <p className="text-xs font-bold text-text-primary">{language === 'uz' ? 'Ulanish oʻrnatilmoqda...' : 'Connecting to RTSP source...'}</p>
+                                                    <p className="text-[10px] text-text-primary0 font-mono">Handshake progress: {testProgress}%</p>
                                                 </div>
                                             </div>
                                         )}
@@ -2810,7 +3570,7 @@ export const CamerasView: React.FC = () => {
                                                 </div>
                                                 <div className="space-y-1">
                                                     <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">{language === 'uz' ? 'SIGNAL UZILISHI (SIGNAL LOSS)' : 'SIGNAL LOSS'}</p>
-                                                    <p className="text-[10px] text-slate-400 max-w-xs mx-auto">
+                                                    <p className="text-[10px] text-text-secondary max-w-xs mx-auto">
                                                         {language === 'uz' 
                                                             ? 'Kamera bilan tarmoq ulanishi oʻrnatilmadi. IP manzilini va port faolligini qayta tekshiring.'
                                                             : 'RTSP handshake failed. Check your target credentials, network path, or device power.'}
@@ -2824,7 +3584,7 @@ export const CamerasView: React.FC = () => {
                                                 {/* Simulated active CCTV view */}
                                                 <div className="absolute inset-0 w-full h-full">
                                                     <img 
-                                                        src={testingCamera.id === 'CAM-02' ? "https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" : "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80&grayscale"}
+                                                        src={""}
                                                         className="w-full h-full object-cover opacity-75" 
                                                         alt="preview-feed" 
                                                     />
@@ -2833,7 +3593,7 @@ export const CamerasView: React.FC = () => {
                                                     <div className="absolute inset-0 bg-cyan-950/10 mix-blend-color-dodge pointer-events-none" />
                                                     
                                                     {/* HUD telemetry text */}
-                                                    <div className="absolute top-2 left-2 font-mono text-[9px] text-emerald-400 bg-slate-950/80 p-1.5 rounded border border-slate-800/80 space-y-0.5">
+                                                    <div className="absolute top-2 left-2 font-mono text-[9px] text-emerald-400 bg-app-primary/80 p-1.5 rounded border border-border/80 space-y-0.5">
                                                         <div className="flex items-center gap-1">
                                                             <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
                                                             <span className="font-bold">LIVE PREVIEW</span>
@@ -2842,7 +3602,7 @@ export const CamerasView: React.FC = () => {
                                                         <div>FPS: {testingCamera.fps} FPS</div>
                                                     </div>
 
-                                                    <div className="absolute bottom-2 right-2 font-mono text-[8px] text-emerald-400 bg-slate-950/80 p-1 rounded border border-slate-800/50">
+                                                    <div className="absolute bottom-2 right-2 font-mono text-[8px] text-emerald-400 bg-app-primary/80 p-1 rounded border border-border/50">
                                                         {new Date().toISOString().replace('T', ' ').substring(0, 19)} UTC
                                                     </div>
 
@@ -2856,12 +3616,12 @@ export const CamerasView: React.FC = () => {
                         </div>
 
                         {/* Footer */}
-                        <div className="p-4 border-t border-slate-800 flex justify-between items-center bg-slate-950 rounded-b-xl shrink-0">
+                        <div className="p-4 border-t border-border flex justify-between items-center bg-app-primary rounded-b-xl shrink-0">
                             <div>
                                 {testStatus === 'failed' && (
                                     <button 
                                         onClick={() => startConnectionTest(testingCamera)}
-                                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors border border-slate-700 cursor-pointer"
+                                        className="px-4 py-2 bg-app-surface hover:bg-app-surface text-text-primary rounded-lg text-xs font-bold flex items-center gap-2 transition-colors border border-border cursor-pointer"
                                     >
                                         <RefreshCw size={14} />
                                         {language === 'uz' ? 'Qayta urinish' : 'Retry Diagnostics'}
@@ -2874,6 +3634,51 @@ export const CamerasView: React.FC = () => {
                                 className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-cyan-950/20 cursor-pointer"
                             >
                                 {language === 'uz' ? 'Yopish' : 'Close'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Delete Confirmation Modal */}
+            {cameraToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-border bg-app-primary flex justify-between items-center">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                <Trash2 className="text-rose-500" size={16} />
+                                {language === 'uz' ? 'Kamerani oʻchirish' : 'Remove Camera'}
+                            </h3>
+                            <button onClick={() => setCameraToDelete(null)} className="text-text-secondary hover:text-white transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-xs text-text-secondary leading-relaxed">
+                                {language === 'uz' 
+                                    ? `Haqiqatdan ham "${cameraToDelete.name}" kamerasini tizimdan oʻchirib tashlamoqchimisiz? Bu amalni ortga qaytarib boʻlmaydi.`
+                                    : `Are you sure you want to permanently delete "${cameraToDelete.name}"? This action cannot be undone.`}
+                            </p>
+                            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg flex items-start gap-2.5">
+                                <AlertCircle className="text-rose-400 shrink-0 mt-0.5" size={14} />
+                                <div className="text-[10px] text-rose-300 font-mono space-y-0.5">
+                                    <div>ID: {cameraToDelete.id}</div>
+                                    <div>URL: {cameraToDelete.streamUrl}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-border flex justify-end gap-2 bg-app-primary">
+                            <button 
+                                onClick={() => setCameraToDelete(null)}
+                                className="px-4 py-2 bg-app-surface hover:bg-app-surface text-text-secondary hover:text-white text-xs font-bold rounded-lg transition-all cursor-pointer border border-border"
+                            >
+                                {language === 'uz' ? 'Bekor qilish' : 'Cancel'}
+                            </button>
+                            <button 
+                                onClick={confirmDelete}
+                                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg transition-all shadow-lg shadow-rose-950/20 cursor-pointer"
+                            >
+                                {language === 'uz' ? 'Oʻchirish' : 'Delete'}
                             </button>
                         </div>
                     </div>

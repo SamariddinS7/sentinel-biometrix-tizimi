@@ -109,56 +109,7 @@ export const WebcamFeed = forwardRef<HTMLVideoElement, WebcamFeedProps>(({ onStr
         if (!active) return;
 
         if (!success) {
-          console.warn("All real camera constraints failed. Triggering canvas mock feed.", lastError);
-          // Fall back to Canvas Mock Feed
-          const canvas = document.createElement('canvas');
-          canvas.width = width || 1280;
-          canvas.height = height || 720;
-          const ctx = canvas.getContext('2d');
-          
-          if (ctx) {
-            const captureStream = (canvas as any).captureStream || (canvas as any).webkitCaptureStream;
-            if (captureStream) {
-              const streamInstance = captureStream.call(canvas, 30);
-              
-              if (!active) {
-                streamInstance.getTracks().forEach((track: any) => track.stop());
-                return;
-              }
-              
-              localStream = streamInstance;
-              
-              let frame = 0;
-              const drawMockFeed = () => {
-                if (!active || !localStream) return;
-                ctx.fillStyle = '#1e293b'; // slate-800
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Draw some moving elements to simulate video
-                ctx.fillStyle = '#334155'; // slate-700
-                ctx.font = '48px monospace';
-                ctx.textAlign = 'center';
-                ctx.fillText('MOCK CAMERA FEED', canvas.width / 2, canvas.height / 2 - 50);
-                
-                ctx.font = '24px monospace';
-                ctx.fillStyle = '#64748b'; // slate-500
-                ctx.fillText('Camera access denied or unavailable.', canvas.width / 2, canvas.height / 2 + 20);
-                
-                // Moving indicator
-                ctx.fillStyle = '#0ea5e9'; // sky-500
-                const x = (frame * 5) % canvas.width;
-                ctx.fillRect(x, canvas.height / 2 + 60, 50, 10);
-                
-                frame++;
-                requestAnimationFrame(drawMockFeed);
-              };
-              drawMockFeed();
-            } else {
-              throw lastError || new Error("Canvas captureStream is not supported.");
-            }
-          } else {
-            throw lastError || new Error("Canvas context is not available.");
-          }
+          throw lastError || new Error("All real camera constraints failed.");
         }
 
         if (internalVideoRef.current && localStream && active) {
@@ -211,12 +162,11 @@ export const WebcamFeed = forwardRef<HTMLVideoElement, WebcamFeedProps>(({ onStr
         playsInline
         muted
         className="w-full h-full object-cover"
-        style={{ transform: 'scaleX(-1)' }}
       />
       
       {/* Loading State */}
       {isLoading && !error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 text-slate-400">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-app-primary/80 text-text-secondary">
            <Camera className="w-12 h-12 mb-4 animate-pulse opacity-50" />
            <p className="text-sm font-medium">Initializing Camera Feed...</p>
         </div>
@@ -224,11 +174,11 @@ export const WebcamFeed = forwardRef<HTMLVideoElement, WebcamFeedProps>(({ onStr
 
       {/* Error State */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 text-rose-500 px-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-app-primary/90 text-rose-500 px-6 text-center">
            <AlertCircle className="w-12 h-12 mb-4" />
            <h3 className="text-lg font-bold text-white mb-2">Camera Access Failed</h3>
            <p className="text-sm opacity-80">{error}</p>
-           <p className="text-xs text-slate-500 mt-4">Please check permissions and try again.</p>
+           <p className="text-xs text-text-primary0 mt-4">Please check permissions and try again.</p>
         </div>
       )}
 

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dashboard } from './components/Dashboard';
 import { UserManagement } from './components/UserManagement';
+import { AlarmCenter } from './components/AlarmCenter';
 import { FaceDetectorView } from './components/FaceDetectorView';
 import { SettingsView } from './components/SettingsView';
 import { AttendanceLogViewer } from './components/AttendanceLogViewer';
@@ -12,16 +13,23 @@ import { DigitalTwinBuilder } from './components/DigitalTwinBuilder';
 import { ProfileModal } from './components/ProfileModal';
 import { SupportModal } from './components/SupportModal';
 import { NotificationCenter } from './components/NotificationCenter';
+import { SystemHealthView } from './components/SystemHealthView';
+import { AuditLogsView } from './components/AuditLogsView';
+import { IdentityFusionConsole } from './components/IdentityFusionConsole';
+import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligenceConsole';
+import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
 import { User } from './types';
 import { 
   LayoutDashboard, Users, FileText, Settings, Search, Bell, Menu, X, Shield, 
   ChevronDown, Camera, Video, LogOut, User as UserIcon, Lock, HelpCircle, 
-  KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, PenTool, Moon, Sun
+  KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, PenTool, Moon, Sun,
+  Activity, Terminal, ShieldAlert, Layers, Eye, Network
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './services/i18n';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
+import { motion, AnimatePresence } from 'motion/react';
 
 const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
   const [email, setEmail] = useState('admin@sentinel.sys');
@@ -126,7 +134,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState(!!authService.getCurrentUser()); 
   
-  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel'>('dashboard');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
@@ -188,6 +196,9 @@ const AppContent: React.FC = () => {
           case 'ai_chat': return t('nav.aiChat');
           case 'map': return t('nav.areaMap');
           case 'builder': return 'Raqamli Egizak Arxitektori'; 
+          case 'system_health': return 'Tizim Salomatligi';
+          case 'audit_logs': return 'Xavfsizlik Auditi';
+          case 'alarm_center': return 'Tizim Favqulodda Vaziyatlar Markazi';
           default: return '';
       }
   };
@@ -207,12 +218,18 @@ const AppContent: React.FC = () => {
       )}
       <SupportModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
 
-      {isSidebarOpen && (
-        <div 
-            className="fixed inset-0 bg-app-primary/80 backdrop-blur-sm z-40 lg:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+      {/* Mobile Backdrop */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
+              onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {(isProfileOpen || isNotificationsOpen) && (
         <div 
@@ -221,28 +238,29 @@ const AppContent: React.FC = () => {
         />
       )}
 
+      {/* Sidebar - Desktop & Mobile Drawer */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-app-panel border-r border-border transform transition-transform duration-200 ease-in-out flex flex-col
+        fixed lg:static inset-y-0 left-0 z-50 w-64 bg-app-panel border-r border-border transform transition-transform duration-300 ease-in-out flex flex-col
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
-        <div className="h-16 flex items-center px-6 border-b border-border bg-app-panel">
+        <div className="h-16 flex items-center px-6 border-b border-border bg-app-panel shrink-0">
           <div className="w-8 h-8 rounded bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white mr-3 shadow-lg shadow-brand-primary/20">
              <Shield size={18} fill="currentColor" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-text-primary leading-tight tracking-tight">FaceRec<span className="text-brand-primary">Analytics</span></h1>
+            <h1 className="text-lg font-bold text-text-primary leading-tight tracking-tight">Sentinel<span className="text-brand-primary">Bio</span></h1>
             <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Enterprise v3.0</p>
           </div>
           <button 
-            className="ml-auto lg:hidden text-text-muted"
+            className="ml-auto lg:hidden text-text-muted p-2 hover:bg-app-surface rounded-lg"
             onClick={() => setIsSidebarOpen(false)}
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-          <div className="mb-8">
+        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-8">
+          <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Asosiy Menyu</p>
             <SidebarItem 
               icon={LayoutDashboard} 
@@ -290,6 +308,46 @@ const AppContent: React.FC = () => {
               active={currentView === 'ai_chat'} 
               onClick={() => { setCurrentView('ai_chat'); setIsSidebarOpen(false); }} 
             />
+            <SidebarItem 
+              icon={Layers} 
+              label="Identity Fusion Markazi" 
+              active={currentView === 'identity_fusion'} 
+              onClick={() => { setCurrentView('identity_fusion'); setIsSidebarOpen(false); }} 
+            />
+            <SidebarItem 
+              icon={Network} 
+              label="Multi-Modal Identity Engine" 
+              active={currentView === 'multi_modal_intel'} 
+              onClick={() => { setCurrentView('multi_modal_intel'); setIsSidebarOpen(false); }} 
+            />
+            <SidebarItem 
+              icon={Eye} 
+              label="Appearance Intelligence" 
+              active={currentView === 'appearance_intel'} 
+              onClick={() => { setCurrentView('appearance_intel'); setIsSidebarOpen(false); }} 
+            />
+          </div>
+
+          <div>
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Monitoring & Audit</p>
+            <SidebarItem 
+              icon={ShieldAlert} 
+              label="Alarmlar Markazi" 
+              active={currentView === 'alarm_center'} 
+              onClick={() => { setCurrentView('alarm_center'); setIsSidebarOpen(false); }} 
+            />
+            <SidebarItem 
+              icon={Activity} 
+              label="Tizim Salomatligi" 
+              active={currentView === 'system_health'} 
+              onClick={() => { setCurrentView('system_health'); setIsSidebarOpen(false); }} 
+            />
+            <SidebarItem 
+              icon={Terminal} 
+              label="Xavfsizlik Auditi" 
+              active={currentView === 'audit_logs'} 
+              onClick={() => { setCurrentView('audit_logs'); setIsSidebarOpen(false); }} 
+            />
           </div>
 
           <div>
@@ -303,16 +361,16 @@ const AppContent: React.FC = () => {
           </div>
         </div>
         
-        <div className="p-4 border-t border-border bg-app-surface">
+        <div className="p-4 border-t border-border bg-app-surface mt-auto">
             <div className="bg-app-primary p-3 rounded-lg border border-border">
                 <div className="flex items-center gap-2 text-status-safe-text font-medium text-xs">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-safe-text opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-status-safe-text"></span>
                     </span>
-                    <span className="text-[10px] font-bold">ALOQADA</span>
+                    <span className="text-[10px] font-bold">ONLINE</span>
                 </div>
-                <div className="flex justify-between items-center text-[10px] text-text-muted font-mono">
+                <div className="flex justify-between items-center text-[10px] text-text-muted font-mono mt-1">
                     <span>CPU: 12%</span>
                     <span>RAM: 3.4GB</span>
                 </div>
@@ -323,107 +381,167 @@ const AppContent: React.FC = () => {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-app-primary transition-colors duration-300">
-        <header className="h-16 px-6 border-b border-border bg-app-panel flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-4">
+      <div className="flex-1 flex flex-col min-w-0 bg-app-primary transition-colors duration-300 relative h-screen">
+        <header className="h-16 px-4 md:px-6 border-b border-border bg-app-panel flex items-center justify-between shrink-0 sticky top-0 z-30">
+          <div className="flex items-center gap-3 overflow-hidden">
             <button 
-              className="lg:hidden text-text-secondary hover:text-text-primary"
+              className="lg:hidden text-text-secondary hover:text-text-primary p-1.5 hover:bg-app-surface rounded-lg transition-colors"
               onClick={() => setIsSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h2 className="text-xl font-bold text-text-primary tracking-tight">{getViewTitle()}</h2>
+            <h2 className="text-lg md:text-xl font-bold text-text-primary tracking-tight truncate">{getViewTitle()}</h2>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Search */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* Search - Collapses on mobile */}
             {(currentView === 'users' || currentView === 'logs' || currentView === 'dashboard') && (
-                <div className="hidden md:flex items-center relative">
+                <div className="hidden sm:flex items-center relative">
                     <Search className="w-4 h-4 absolute left-3 text-text-muted" />
                     <input 
                         type="text" 
-                        placeholder="Tezkor Qidiruv..." 
+                        placeholder="Search..." 
                         value={globalSearchTerm}
                         onChange={(e) => setGlobalSearchTerm(e.target.value)}
-                        className="bg-app-primary border border-border rounded-full pl-9 pr-4 py-1.5 text-sm text-text-primary focus:border-brand-primary focus:ring-1 focus:ring-brand-primary outline-none w-64 transition-all"
+                        className="bg-app-primary border border-border rounded-full pl-9 pr-4 py-1.5 text-sm text-text-primary focus:border-brand-primary focus:ring-1 focus:ring-brand-primary outline-none w-40 md:w-64 transition-all"
                     />
                 </div>
             )}
 
-            {/* Theme Toggle */}
-            <ThemeToggle />
+            <div className="flex items-center gap-1 sm:gap-2">
+              <ThemeToggle />
 
-            {/* Notifications */}
-            <div className="relative">
-                <button 
-                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                    className="p-2 text-text-secondary hover:text-text-primary hover:bg-app-surface rounded-full transition-colors relative"
-                >
-                    <Bell className="w-5 h-5" />
-                    {/* Badge uses inline semantic colors for consistency */}
-                    {notificationCount > 0 && (
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-status-critical-text rounded-full animate-pulse border border-app-panel" />
-                    )}
-                </button>
-                <NotificationCenter isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />
+              <div className="relative">
+                  <button 
+                      onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                      className="p-2 text-text-secondary hover:text-text-primary hover:bg-app-surface rounded-full transition-colors relative"
+                  >
+                      <Bell className="w-5 h-5" />
+                      {notificationCount > 0 && (
+                          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-status-critical-text rounded-full animate-pulse border border-app-panel" />
+                      )}
+                  </button>
+                  <NotificationCenter isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />
+              </div>
             </div>
 
-            <div className="h-6 w-px bg-border mx-1" />
+            <div className="h-6 w-px bg-border mx-1 hidden xs:block" />
 
-            {/* Profile Dropdown */}
             <div className="relative">
                 <button 
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
-                    className="flex items-center gap-3 p-1 rounded-full hover:bg-app-surface transition-colors"
+                    className="flex items-center gap-2 sm:gap-3 p-1 rounded-full hover:bg-app-surface transition-colors"
                 >
                     <div className="text-right hidden md:block">
                         <p className="text-sm font-bold text-text-primary leading-none">{currentUser?.fullName}</p>
-                        <p className="text-[10px] text-text-muted font-mono leading-none mt-1">{currentUser?.role}</p>
+                        <p className="text-[10px] text-text-muted font-mono leading-none mt-1 uppercase">{currentUser?.role}</p>
                     </div>
-                    <img src={currentUser?.avatarUrl} alt="User" className="w-8 h-8 rounded-full border border-border bg-app-surface object-cover" />
-                    <ChevronDown className={`w-4 h-4 text-text-muted transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />
+                    <img src={currentUser?.avatarUrl} alt="User" className="w-8 h-8 rounded-full border border-border bg-app-surface object-cover flex-shrink-0" />
+                    <ChevronDown className={`w-4 h-4 text-text-muted transition-transform hidden sm:block ${isProfileOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {isProfileOpen && (
-                    <div className="absolute right-0 mt-2 w-56 bg-app-panel border border-border rounded-xl shadow-2xl z-50 py-1 animate-in slide-in-from-top-2">
-                        <div className="px-4 py-3 border-b border-border md:hidden">
-                            <p className="text-sm font-bold text-text-primary">{currentUser?.fullName}</p>
-                            <p className="text-xs text-text-muted">{currentUser?.email}</p>
-                        </div>
-                        <button onClick={() => openProfileModal('profile')} className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-2">
-                            <UserIcon size={16} /> Profilim
-                        </button>
-                        <button onClick={() => openProfileModal('security')} className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-2">
-                            <Lock size={16} /> Xavfsizlik Sozlamalari
-                        </button>
-                        <button onClick={() => setIsHelpModalOpen(true)} className="w-full text-left px-4 py-2 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-2">
-                            <HelpCircle size={16} /> Yordam va Qo'llab-quvvatlash
-                        </button>
-                        <div className="my-1 border-t border-border" />
-                        <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-status-critical-text hover:bg-status-critical-bg flex items-center gap-2">
-                            <LogOut size={16} /> Chiqish
-                        </button>
-                    </div>
-                )}
+                <AnimatePresence>
+                  {isProfileOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-2 w-56 bg-app-panel border border-border rounded-xl shadow-2xl z-50 py-1 overflow-hidden"
+                      >
+                          <div className="px-4 py-3 border-b border-border md:hidden">
+                              <p className="text-sm font-bold text-text-primary truncate">{currentUser?.fullName}</p>
+                              <p className="text-xs text-text-muted truncate">{currentUser?.email}</p>
+                          </div>
+                          <button onClick={() => openProfileModal('profile')} className="w-full text-left px-4 py-2.5 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-3 transition-colors">
+                              <UserIcon size={16} /> Profilim
+                          </button>
+                          <button onClick={() => openProfileModal('security')} className="w-full text-left px-4 py-2.5 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-3 transition-colors">
+                              <Lock size={16} /> Xavfsizlik
+                          </button>
+                          <button onClick={() => setIsHelpModalOpen(true)} className="w-full text-left px-4 py-2.5 text-sm text-text-secondary hover:bg-app-surface hover:text-text-primary flex items-center gap-3 transition-colors">
+                              <HelpCircle size={16} /> Yordam
+                          </button>
+                          <div className="my-1 border-t border-border" />
+                          <button onClick={handleLogout} className="w-full text-left px-4 py-2.5 text-sm text-status-critical-text hover:bg-status-critical-bg flex items-center gap-3 transition-colors">
+                              <LogOut size={16} /> Chiqish
+                          </button>
+                      </motion.div>
+                  )}
+                </AnimatePresence>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden p-6 relative">
-            {/* Background gradient needs to use CSS variables for transparency */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,var(--color-brand-primary)_0%,transparent_70%)] opacity-10 pointer-events-none" />
-            <div className="relative z-10 h-full animate-in fade-in slide-in-from-bottom-4 duration-300">
-                {currentView === 'dashboard' && <Dashboard globalSearchTerm={globalSearchTerm} />}
-                {currentView === 'users' && <UserManagement globalSearchTerm={globalSearchTerm} />}
-                {currentView === 'logs' && <AttendanceLogViewer globalSearchTerm={globalSearchTerm} />}
-                {currentView === 'cameras' && <CamerasView />}
-                {currentView === 'map' && <AreaMapView />}
-                {/* Note: 'builder' view is now handled inside 'map' view as a sub-mode if user navigates internally, but we can keep this for safety if direct link used */}
-                {currentView === 'builder' && <DigitalTwinBuilder />} 
-                {currentView === 'settings' && <SettingsView />}
-                {currentView === 'ai_chat' && <AIChatView />}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-6 relative scroll-smooth custom-scrollbar">
+            {/* Animated High-Tech Background */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {/* Animated Panning Grid */}
+              <div className="absolute inset-0 animate-grid-pan opacity-60" />
+              
+              {/* Ambient Glowing Orbs */}
+              <div className="absolute top-1/4 left-1/4 w-[40vw] h-[40vw] rounded-full bg-[radial-gradient(circle,var(--color-brand-primary)_0%,transparent_70%)] opacity-10 blur-3xl animate-drift" />
+              <div className="absolute bottom-1/4 right-1/4 w-[35vw] h-[35vw] rounded-full bg-[radial-gradient(circle,var(--color-brand-secondary)_0%,transparent_70%)] opacity-10 blur-3xl animate-drift-reverse" />
+              <div className="absolute top-1/2 right-1/3 w-[30vw] h-[30vw] rounded-full bg-[radial-gradient(circle,var(--color-status-safe-text)_0%,transparent_70%)] opacity-5 blur-3xl animate-drift" />
+            </div>
+            <div className="relative z-10 h-full">
+                <AnimatePresence mode="wait">
+                  <motion.div 
+                    key={currentView}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="min-h-full"
+                  >
+                      {currentView === 'dashboard' && <Dashboard globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'users' && <UserManagement globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'logs' && <AttendanceLogViewer globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'cameras' && <CamerasView />}
+                      {currentView === 'map' && <AreaMapView />}
+                      {currentView === 'builder' && <DigitalTwinBuilder />} 
+                      {currentView === 'settings' && <SettingsView />}
+                      {currentView === 'ai_chat' && <AIChatView />}
+                      {currentView === 'system_health' && <SystemHealthView />}
+                      {currentView === 'audit_logs' && <AuditLogsView />}
+                      {currentView === 'alarm_center' && <AlarmCenter />}
+                      {currentView === 'identity_fusion' && <IdentityFusionConsole />}
+                      {currentView === 'appearance_intel' && <AppearanceIntelligenceConsole />}
+                      {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
+                  </motion.div>
+                </AnimatePresence>
             </div>
         </main>
+
+        {/* Mobile Bottom Navigation - Visible only on small screens */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-app-panel/90 backdrop-blur-xl border-t border-border flex justify-around items-center h-16 px-1 z-50 shadow-[0_-8px_30px_rgba(0,0,0,0.3)] transition-colors duration-300">
+          {[
+            { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+            { id: 'cameras', label: t('nav.cameras'), icon: Video },
+            { id: 'map', label: t('nav.areaMap'), icon: MapIcon },
+            { id: 'ai_chat', label: t('nav.aiChat'), icon: Bot },
+            { id: 'settings', label: t('nav.settings'), icon: Settings },
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = currentView === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { setCurrentView(item.id as any); setIsSidebarOpen(false); }}
+                className={`flex flex-col items-center justify-center flex-1 h-full relative group transition-all duration-300 ${
+                  isActive ? 'text-brand-primary' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <div className={`p-1 rounded-lg transition-all duration-300 ${isActive ? 'bg-brand-primary/10' : ''}`}>
+                  <Icon size={20} className={isActive ? 'scale-110' : 'group-hover:scale-105'} />
+                </div>
+                <span className="text-[10px] mt-1 font-bold tracking-tight truncate max-w-[64px] transition-all">{item.label}</span>
+                {isActive && (
+                  <motion.div layoutId="mobile-nav-pill" className="absolute -top-px left-1/4 right-1/4 h-1 bg-brand-primary rounded-b-full shadow-[0_0_12px_rgba(6,182,212,0.6)]" />
+                )}
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </div>
   );

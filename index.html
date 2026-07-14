@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Load face-api.js for InsightFace architecture simulation in browser -->
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
     <script>
       tailwind.config = {
         theme: {
@@ -67,6 +67,42 @@
         background-color: var(--color-bg-app); 
         color: var(--color-text-primary); 
         transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      
+      /* Background Tech Grid & Orb Animations */
+      @keyframes drift {
+        0% { transform: translate(0px, 0px) scale(1); }
+        33% { transform: translate(50px, -80px) scale(1.15); }
+        66% { transform: translate(-30px, 40px) scale(0.9); }
+        100% { transform: translate(0px, 0px) scale(1); }
+      }
+
+      @keyframes drift-reverse {
+        0% { transform: translate(0px, 0px) scale(1); }
+        33% { transform: translate(-60px, 50px) scale(0.85); }
+        66% { transform: translate(40px, -40px) scale(1.1); }
+        100% { transform: translate(0px, 0px) scale(1); }
+      }
+
+      @keyframes grid-pan {
+        0% { background-position: 0px 0px; }
+        100% { background-position: 40px 40px; }
+      }
+
+      .animate-drift {
+        animation: drift 25s infinite ease-in-out;
+      }
+
+      .animate-drift-reverse {
+        animation: drift-reverse 30s infinite ease-in-out;
+      }
+
+      .animate-grid-pan {
+        animation: grid-pan 25s linear infinite;
+        background-size: 40px 40px;
+        background-image: 
+          linear-gradient(to right, rgba(6, 182, 212, 0.035) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(6, 182, 212, 0.035) 1px, transparent 1px);
       }
       
       /* Custom Scrollbar */

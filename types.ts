@@ -117,6 +117,10 @@ export interface Camera {
   focalLength: number; // mm (e.g., 2.8, 3.6, 6.0)
   sensorWidth: number; // mm (e.g., 4.8 for 1/3")
   sensorHeight: number; // mm (e.g., 3.6 for 1/3")
+  recordingMode?: 'Continuous' | 'Motion' | 'Schedule' | 'Manual' | 'None';
+  retentionDays?: number;
+  manualRecordingActive?: boolean;
+  emergencyRecordingActive?: boolean;
 }
 
 // --- BIOMETRIC & AI TYPES ---
@@ -270,6 +274,12 @@ export interface SecurityAlert {
     entityId: string;
     zoneId?: string;
     type?: string;
+    status?: 'ACTIVE' | 'ACKNOWLEDGED' | 'ESCALATED' | 'RESOLVED';
+    assignedTo?: string;
+    resolutionNotes?: string;
+    escalatedAt?: number;
+    resolvedAt?: number;
+    notesHistory?: Array<{ timestamp: number; operator: string; text: string; action: string }>;
 }
 
 // --- SETTINGS TYPES ---
