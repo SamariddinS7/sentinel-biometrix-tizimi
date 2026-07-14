@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@google/genai": "^1.38.0",
     "@react-three/drei": "9.99.0",
     "@react-three/fiber": "8.15.16",
