@@ -42,9 +42,22 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
     e.preventDefault();
     setIsLoading(true);
     await new Promise(r => setTimeout(r, 800)); 
-    await authService.login(email);
+    await authService.login(email, password);
     setIsLoading(false);
     onLogin();
+  };
+
+  // Vaqtinchalik: parolsiz to'g'ridan-to'g'ri kirish (test/demo maqsadida)
+  const handleDirectLogin = async () => {
+    setIsLoading(true);
+    try {
+      await authService.login('admin@sentinel.sys', 'SentinelAdmin2026!');
+      onLogin();
+    } catch (err) {
+      console.error('Direct login failed:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -97,6 +110,22 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
             {isLoading ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Kirish <ArrowRight size={18} /></>}
           </button>
         </form>
+
+        <div className="flex items-center gap-3 my-6">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[11px] uppercase tracking-wider text-text-muted">yoki</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDirectLogin}
+          disabled={isLoading}
+          className="w-full bg-app-surface hover:bg-app-primary border border-border text-text-primary font-semibold py-3 rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+        >
+          <Fingerprint size={18} className="text-brand-primary" />
+          To'g'ridan-to'g'ri kirish (Admin)
+        </button>
       </div>
       <p className="mt-8 text-xs text-text-muted">v3.0.4-Enterprise • Gemini AI tomonidan himoyalangan</p>
     </div>

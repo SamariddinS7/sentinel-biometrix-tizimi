@@ -45,14 +45,14 @@ class AuthService {
   }
 
   // Real JWT Login via backend
-  async login(email: string): Promise<User> {
+  async login(email: string, password?: string): Promise<User> {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, password })
       });
       if (!response.ok) {
         throw new Error('Kirish muvaffaqiyatsiz tugadi');

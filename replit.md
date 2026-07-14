@@ -9,6 +9,9 @@ An enterprise video management / biometric security system: React 18 (Vite) fron
 - Firebase config (`firebase-applet-config.json`) is a public client config already committed to the repo (project `coherent-backup-w2cdj`); it's pre-existing and points at the original author's Firebase project.
 - Demo login: `admin@sentinel.sys` / `SentinelAdmin2026!` (also `supervisor@sentinel.sys` with the same password for a Supervisor role).
 
+## Temporary: direct login button
+Per user request, the login screen (`App.tsx` `LoginScreen`) has a "To'g'ridan-to'g'ri kirish (Admin)" button that logs straight in as the bootstrap admin (`admin@sentinel.sys`) without typing credentials — for development convenience only. Remove it before shipping to real users; it should not exist in a production build.
+
 ## Optional secrets
 - `GEMINI_API_KEY` — enables real Gemini-powered AI analysis instead of the software fallback.
 - `JWT_SECRET`, `VMS_ENCRYPTION_KEY` — override the built-in defaults for production use.
