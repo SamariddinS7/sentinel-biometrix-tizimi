@@ -154,6 +154,9 @@ export const WebcamFeed = forwardRef<HTMLVideoElement, WebcamFeedProps>(({ onStr
     };
   }, []);
 
+  const isContain = className?.includes('object-contain');
+  const videoFitClass = isContain ? 'object-contain' : 'object-cover';
+
   return (
     <div className={`relative bg-black overflow-hidden flex items-center justify-center ${className}`}>
       <video
@@ -161,7 +164,7 @@ export const WebcamFeed = forwardRef<HTMLVideoElement, WebcamFeedProps>(({ onStr
         autoPlay
         playsInline
         muted
-        className="w-full h-full object-cover"
+        className={`w-full h-full ${videoFitClass}`}
       />
       
       {/* Loading State */}

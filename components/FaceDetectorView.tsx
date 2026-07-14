@@ -72,14 +72,8 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
     
     streamService.onResult((serverTracks, serverHeatmap, serverAlerts) => {
         setIsServerStreamingActive(true);
-        // If backend is sending tracks, use them
-        if (serverTracks.length > 0) {
-            setTracks(serverTracks);
-            setFps(prev => Math.round(prev * 0.9 + (1000 / 40) * 0.1)); 
-        } else {
-            setTracks([]);
-        }
-        
+        // We do not overwrite local tracks with serverTracks in this local webcam view,
+        // as local client-side face-api.js tracking has face descriptors needed for enrollment.
         if (serverHeatmap) {
             setHeatmapData(serverHeatmap);
             if (serverHeatmap.insights) {
@@ -161,23 +155,18 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
                                                   .withFaceDescriptors();
                   
                   if (!localDetections || localDetections.length === 0) {
-                      if (!isServerStreamingActive) setTracks([]);
+                      setTracks([]);
                       return;
                   }
                   setAiError(null);
                   setDiagnosticMessage(`Detected ${localDetections.length} faces`);
               } catch (e: any) {
                   setAiError(`Detection Error: ${e.message}`);
-                  if (!isServerStreamingActive) setTracks([]);
+                  setTracks([]);
                   return;
               }
 
-              if (isServerStreamingActive) {
-                  // If server is active, we don't overwrite the tracks with local ones
-                  // but we could use local results for immediate UI feedback.
-                  // For now, we allow the server to dominate the state if it's sending data.
-                  return;
-              }
+              // Local face-api.js detections are the source of truth for the local webcam.
 
               // Mapping coordinates to object-contain video
               const videoRatio = video.videoWidth / video.videoHeight;
