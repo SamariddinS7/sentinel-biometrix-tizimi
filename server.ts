@@ -21,6 +21,8 @@ import { db, auth } from "./services/firestoreService";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc } from "firebase/firestore";
 import net from "net";
+import crypto from "crypto";
+import os from "os";
 import dns from "dns";
 
 // VMS Enterprise Core Services
@@ -38,7 +40,17 @@ const logsCollection = collection(db, "logs");
 const anomaliesCollection = collection(db, "anomalies");
 const recordingsCollection = collection(db, "recordings");
 
-const JWT_SECRET = process.env.JWT_SECRET || "sentinel_biometrics_super_secret_key_2026";
+// JWT_SECRET must be set via environment variable. No hardcoded fallback allowed.
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("[SECURITY] CRITICAL: JWT_SECRET environment variable is not set. Authentication is disabled. Set JWT_SECRET in your environment before running in production.");
+}
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || (() => {
+  const fallback = crypto.randomBytes(64).toString('hex');
+  console.warn("[SECURITY] WARNING: Using a randomly generated JWT_SECRET for this session only. All sessions will be invalidated on restart. Set JWT_SECRET in your environment.");
+  return fallback;
+})();
+
 const geminiKey = process.env.GEMINI_API_KEY;
 const isValidKey = (key: string | undefined): boolean => {
   if (!key) return false;
@@ -47,14 +59,14 @@ const isValidKey = (key: string | undefined): boolean => {
   return trimmed.startsWith("AIzaSy");
 };
 
+// Gemini AI is an optional plugin. If GEMINI_API_KEY is not set, AI endpoints will use rule-based fallbacks.
 const ai = isValidKey(geminiKey) ? new GoogleGenAI({ 
-  apiKey: geminiKey!.trim(),
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
-  }
+  apiKey: geminiKey!.trim()
 }) : null;
+
+if (!ai) {
+  console.warn("[AI] GEMINI_API_KEY not set or invalid. AI-powered endpoints will use rule-based fallback processing. Set GEMINI_API_KEY to enable full AI features.");
+}
 
 // --- VMS CCTV CONFIG ---
 // Production environment: Cameras are managed via /api/cameras endpoints and stored in Firestore.
@@ -330,7 +342,7 @@ async function startServer() {
       return;
     }
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    jwt.verify(token, EFFECTIVE_JWT_SECRET, (err: any, user: any) => {
       if (err) {
         res.status(403).json({ error: "Yaroqsiz yoki muddati o'tgan sessiya" });
         return;
@@ -359,19 +371,18 @@ async function startServer() {
     res.json({ status: "ok", time: new Date().toISOString() });
   });
 
-  // Telemetry API for real data
+  // Telemetry API — real OS metrics from the Node.js process
   app.get("/api/telemetry", (req, res) => {
-    const os = require('os');
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     const cpus = os.cpus();
     
-    // Calculate CPU usage (rough estimation over last tick)
+    // Calculate approximate CPU usage across all cores
     let totalIdle = 0, totalTick = 0;
-    for(let i = 0, len = cpus.length; i < len; i++) {
+    for (let i = 0; i < cpus.length; i++) {
         const cpu = cpus[i];
-        for(let type in cpu.times) {
+        for (const type in cpu.times) {
             totalTick += (cpu.times as any)[type];
         }
         totalIdle += cpu.times.idle;
@@ -380,14 +391,16 @@ async function startServer() {
 
     res.json({
       cpuUsage: cpuUsage,
-      cpuTemperature: 45.0, // Mock temperature as OS temp needs special packages
+      // CPU temperature requires OS-level access (not available in sandboxed environments).
+      // In production, read from /sys/class/thermal/thermal_zone0/temp or via lm-sensors.
+      cpuTemperature: null,
       ramTotalMb: Math.round(totalMem / 1024 / 1024),
       ramUsedMb: Math.round(usedMem / 1024 / 1024),
       ramUsagePercentage: parseFloat(((usedMem / totalMem) * 100).toFixed(1)),
-      networkInboundKbps: 0,
+      networkInboundKbps: 0,   // Requires packet capture; integrate with ifstat or /proc/net/dev in production
       networkOutboundKbps: 0,
       uptimeSec: os.uptime(),
-      gpuUsage: 0,
+      gpuUsage: 0,        // Requires nvidia-ml-py or similar; integrate GPU driver bindings in production
       gpuTemperature: 0
     });
   });
@@ -395,6 +408,16 @@ async function startServer() {
   // Login
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
+
+    // Input validation
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      res.status(400).json({ error: "Yaroqli email manzil kiritilishi shart" });
+      return;
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      res.status(400).json({ error: "Parol kamida 6 belgidan iborat bo'lishi kerak" });
+      return;
+    }
     
     try {
       // Authenticate securely against Firebase Auth
@@ -427,7 +450,7 @@ async function startServer() {
       
       const token = jwt.sign(
         { id: user.uid, email: user.email, role, fullName },
-        JWT_SECRET,
+        EFFECTIVE_JWT_SECRET,
         { expiresIn: "12h" }
       );
       
@@ -438,16 +461,20 @@ async function startServer() {
     } catch (authError: any) {
       console.warn("[VMS Auth] Firebase Auth failed, attempting secure bootstrap check:", authError.message);
       
-      // Secure local check for system bootstrap accounts when Firebase is offline or first-run unconfigured
-      if (password === "SentinelAdmin2026!" && (email === "admin@sentinel.sys" || email === "supervisor@sentinel.sys")) {
+      // Bootstrap fallback for initial setup when Firebase is offline or unconfigured.
+      // The bootstrap password MUST be overridden via BOOTSTRAP_ADMIN_PASSWORD env var.
+      const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+      const isBootstrapAllowed = bootstrapPassword && password === bootstrapPassword &&
+        (email === "admin@sentinel.sys" || email === "supervisor@sentinel.sys");
+      if (isBootstrapAllowed) {
         const role = email === "admin@sentinel.sys" ? "ADMIN" : "SUPERVISOR";
-        const fullName = email === "admin@sentinel.sys" ? "Kamron Aliyev" : "Madina Solihova";
-        const department = email === "admin@sentinel.sys" ? "IT Bo'limi" : "Moliya Bo'limi";
-        const id = email === "admin@sentinel.sys" ? "U-EMP-01" : "U-EMP-02";
+        const fullName = email === "admin@sentinel.sys" ? "Tizim Admini" : "Tizim Nazoratchi";
+        const department = email === "admin@sentinel.sys" ? "IT Bo'limi" : "Xavfsizlik Bo'limi";
+        const id = email === "admin@sentinel.sys" ? "U-BOOTSTRAP-01" : "U-BOOTSTRAP-02";
         
         const token = jwt.sign(
           { id, email, role, fullName },
-          JWT_SECRET,
+          EFFECTIVE_JWT_SECRET,
           { expiresIn: "12h" }
         );
         
@@ -521,8 +548,20 @@ async function startServer() {
     try {
       const { id } = req.params;
       const camera = req.body;
-      await setDoc(doc(db, "cameras", id), camera, { merge: true });
-      res.json({ success: true, camera });
+      if (!camera || typeof camera !== 'object') {
+        res.status(400).json({ error: "Kamera ma'lumotlari noto'g'ri formatda" });
+        return;
+      }
+      // Sanitize: only allow known fields to prevent injection of arbitrary Firestore fields
+      const allowed = ['name','location','type','streamUrl','status','fps','resolution',
+        'focalLength','sensorWidth','sensorHeight','recordingMode','retentionDays',
+        'manualRecordingActive','emergencyRecordingActive','lastActive'];
+      const sanitized: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (key in camera) sanitized[key] = camera[key];
+      }
+      await setDoc(doc(db, "cameras", id), sanitized, { merge: true });
+      res.json({ success: true, camera: sanitized });
     } catch (error) {
       console.error("VMS Server: Error updating camera:", error);
       res.status(500).json({ error: "Kamerani yangilashda xatolik yuz berdi" });

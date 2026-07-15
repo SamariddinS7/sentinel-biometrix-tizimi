@@ -81,7 +81,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
         action: `VIEW_PERSON_INTELLIGENCE_DOSSIER`,
         module: `Person Intelligence Engine`,
         status: `SUCCESS`,
-        ipAddress: `10.240.10.15`,
+        ipAddress: window.location.hostname || 'unknown',
         details: `Operator viewed intelligence dossier for profile ID: ${selectedPersonId}`
       }).then(() => {
         // Refresh local audits
@@ -176,7 +176,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
         action: `GDPR_ARTICLE_17_ERASURE`,
         module: `Person Intelligence Engine`,
         status: `SUCCESS`,
-        ipAddress: `10.240.10.15`,
+        ipAddress: window.location.hostname || 'unknown',
         details: `Strict compliance erasure completed for subject ID: ${selectedPersonId}. All biometric models scrubbed.`
       });
 
@@ -225,7 +225,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
       action: `EXPORT_CONFIDENTIAL_DOSSIER_JSON`,
       module: `Person Intelligence Engine`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator exported cryptographic dossier JSON for subject ID: ${selectedPersonId}`
     });
 
@@ -617,7 +617,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
 
                   </div>
 
-                  {/* RTMPose 17 simulated vectors */}
+                  {/* RTMPose-M 17-Keypoint Skeleton Vectors */}
                   <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
                     <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
                       <User size={14} /> RTMPose-M 17-Keypoint Skeleton Vectors
@@ -965,7 +965,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
                         auditLogs.filter(log => log.details.includes(selectedPersonId)).map((log, idx) => (
                           <div key={idx} className="p-2.5 bg-app-surface border border-border rounded-lg text-[10px] font-mono flex justify-between items-center">
                             <div>
-                              <span className="text-text-primary block font-bold">{log.userName} (IP: {log.ipAddress || '10.240.10.15'})</span>
+                              <span className="text-text-primary block font-bold">{log.userName} (IP: {log.ipAddress || 'unknown'})</span>
                               <span className="text-text-muted block mt-0.5">{log.action}: {log.details}</span>
                             </div>
                             <span className="text-text-muted">{new Date(log.timestamp).toLocaleTimeString()}</span>

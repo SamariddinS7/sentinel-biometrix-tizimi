@@ -81,18 +81,19 @@ export const SOCCommandCenter: React.FC = () => {
   const [newIncidentTeam, setNewIncidentTeam] = useState('Alpha Tactical Response');
   const [sopLogs, setSopLogs] = useState<Record<string, boolean[]>>({});
   
-  // Real time stats tracker state
+  // System utilization stats — populated from /api/system/health telemetry.
+  // Initial values are zero; real data loads via the useEffect below.
   const [systemUtilization, setSystemUtilization] = useState({
-    cpu: 42,
-    gpu: 68,
-    ram: 51,
-    bandwidthMbps: 485,
-    rtspLoss: 0.02,
-    gpuTemp: 74,
-    recordingDaysRemaining: 28,
+    cpu: 0,
+    gpu: 0,
+    ram: 0,
+    bandwidthMbps: 0,
+    rtspLoss: 0,
+    gpuTemp: 0,
+    recordingDaysRemaining: 0,
   });
 
-  // Load initial cameras and mock seed services
+  // Load cameras from the data service on mount
   useEffect(() => {
     const fetchCameras = async () => {
       try {
@@ -202,16 +203,41 @@ export const SOCCommandCenter: React.FC = () => {
       action: `ENTER_SOC_COMMAND_CENTER`,
       module: `SOC Unified Orchestration Layer`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
-      details: `Operator accessed Unified SOC Command Center environment. Site context: Tashkent Campus HQ`
+      ipAddress: window.location.hostname || 'unknown',
+      details: `Operator accessed Unified SOC Command Center environment.`
     });
 
   }, []);
 
   // Remove simulated stats flux to comply with production requirements
+  // Poll real system telemetry from /api/telemetry every 10 seconds
   useEffect(() => {
-    // In production, real telemetry is received via WebSocket or health service.
-    // Placeholder logic has been removed.
+    const fetchTelemetry = async () => {
+      try {
+        const token = authService.getToken?.() || '';
+        const res = await fetch('/api/telemetry', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setSystemUtilization(prev => ({
+          ...prev,
+          cpu: data.cpuUsage ?? prev.cpu,
+          ram: data.ramUsagePercentage ?? prev.ram,
+          gpu: data.gpuUsage ?? prev.gpu,
+          gpuTemp: data.gpuTemperature ?? prev.gpuTemp,
+          bandwidthMbps: data.networkInboundKbps != null
+            ? Math.round((data.networkInboundKbps + (data.networkOutboundKbps || 0)) / 1000)
+            : prev.bandwidthMbps,
+        }));
+      } catch {
+        // Telemetry unavailable — retain last values
+      }
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 10_000);
+    return () => clearInterval(interval);
   }, []);
 
   // Standard Operating Procedures template based on Incident Type
@@ -253,7 +279,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: `ASSIGN_CAM_TO_VIDEO_WALL_SLOT`,
       module: `SOC Video Wall`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator routed live feed of ${targetCamera?.name || cameraId} to grid slot ${selectedSlotIndex + 1}`
     });
   };
@@ -280,7 +306,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: `ACKNOWLEDGE_SECURITY_ALARM`,
       module: `SOC Alarm Console`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator acknowledged severity: ${targetAlarm?.severity} alarm ID: ${alarmId} triggered at ${targetAlarm?.source}`
     });
   };
@@ -299,7 +325,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: `RESOLVE_SECURITY_ALARM`,
       module: `SOC Alarm Console`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator resolved alarm ID: ${alarmId}. Verified situation status as safe.`
     });
   };
@@ -336,7 +362,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: `CREATE_SOC_INCIDENT_DOSSIER`,
       module: `SOC Incident Management`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator instantiated official security incident dossier. ID: ${newId}. Title: "${newIncidentTitle}". Assigned: ${newIncidentTeam}`
     });
   };
@@ -363,7 +389,7 @@ export const SOCCommandCenter: React.FC = () => {
         action: `UPDATE_INCIDENT_SOP_CHECKLIST`,
         module: `SOC Incident Management`,
         status: `SUCCESS`,
-        ipAddress: `10.240.10.15`,
+        ipAddress: window.location.hostname || 'unknown',
         details: `Operator updated SOP step ${index + 1} on incident ${incidentId} to: ${logs[index] ? 'COMPLETED' : 'PENDING'}`
       });
 
@@ -385,7 +411,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: nextState ? `ACTIVATE_EMERGENCY_LOCKDOWN` : `DEACTIVATE_EMERGENCY_LOCKDOWN`,
       module: `SOC Emergency Controls`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: nextState 
         ? `CRITICAL EVENT: Operator activated full campus structural lock-down. Mag-locks locked, fire shutters standby.`
         : `CRITICAL EVENT: Operator cleared campus lockdown status. Normal access control resumed.`
@@ -413,7 +439,7 @@ export const SOCCommandCenter: React.FC = () => {
       action: `DISPATCH_FIELD_SECURITY_PERSONNEL`,
       module: `SOC Operator Dispatch`,
       status: `SUCCESS`,
-      ipAddress: `10.240.10.15`,
+      ipAddress: window.location.hostname || 'unknown',
       details: `Operator dispatched officer ${targetOfficer?.name} (ID: ${personnelId}) to location: ${location} on radio channel: ${targetOfficer?.radioChannel}`
     });
   };

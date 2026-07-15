@@ -1,0 +1,1 @@
+- [VMS Audit Fixes](vms-audit-fixes.md) — audit hujjatidan barcha code-level tuzatishlar bajarildi; infra (Docker/GPU/K8s) qismlari qoldi.

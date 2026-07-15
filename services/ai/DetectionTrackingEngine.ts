@@ -227,10 +227,13 @@ export class YoloDetector implements IDetector {
   }
 
   async detect(frameData: Uint8Array, width: number, height: number, config: InferenceConfig): Promise<DetectionResult[]> {
-    if (!this.isLoaded) return [];
-    // Strict compliance: Do not simulate fake detections.
-    // In production, this binds directly to TensorRT/ONNX Runtime.
-    // We return empty if no native hardware binding has been initialized or weights are missing.
+    if (!this.isLoaded) {
+      console.warn('[YoloDetector] detect() called but model is not loaded. Load model weights via load() before inference. Returning empty detections.');
+      return [];
+    }
+    // Production binding point: connect TensorRT/ONNX Runtime here.
+    // Example: return await onnxSession.run({ input: frameData }) then parse outputs.
+    console.warn('[YoloDetector] No native ONNX/TensorRT binding is active. Deploy model weights and bind the ONNX session to enable real detections.');
     return [];
   }
 
@@ -266,7 +269,13 @@ export class RtDetrDetector implements IDetector {
   }
 
   async detect(frameData: Uint8Array, width: number, height: number, config: InferenceConfig): Promise<DetectionResult[]> {
-    return []; // No simulated detections
+    if (!this.isLoaded) {
+      console.warn('[RtDetrDetector] detect() called but model is not loaded. Load model weights via load() before inference. Returning empty detections.');
+      return [];
+    }
+    // Production binding point: connect TensorRT/ONNX Runtime here.
+    console.warn('[RtDetrDetector] No native ONNX/TensorRT binding is active. Deploy model weights and bind the ONNX session to enable real detections.');
+    return [];
   }
 
   async detectBatch(frames: Uint8Array[], width: number, height: number, config: InferenceConfig): Promise<DetectionResult[][]> {

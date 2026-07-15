@@ -2616,6 +2616,30 @@ export const CamerasView: React.FC = () => {
                             
                             return (
                                 <>
+                                    {/* No cameras configured — prompt operator to add one */}
+                                    {cameras.length === 0 && (
+                                        <div className="col-span-full flex flex-col items-center justify-center py-20 text-center animate-in fade-in">
+                                            <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-6">
+                                                <Video size={36} className="text-amber-400" />
+                                            </div>
+                                            <h3 className="text-lg font-bold text-text-primary mb-2">
+                                                {language === 'uz' ? 'Hech qanday kamera sozlanmagan' : 'No Cameras Configured'}
+                                            </h3>
+                                            <p className="text-sm text-text-secondary max-w-sm mb-6">
+                                                {language === 'uz'
+                                                    ? 'Tizim hali birorta ham kamera manbai bilan ulanmagan. Boshlash uchun haqiqiy RTSP yoki ONVIF kamerangizni qo\'shing.'
+                                                    : 'The system has no camera sources connected. Add your first real RTSP or ONVIF camera to get started.'}
+                                            </p>
+                                            <button
+                                                onClick={openAddModal}
+                                                className="flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg transition-colors text-sm"
+                                            >
+                                                <Plus size={16} />
+                                                {language === 'uz' ? 'Kamera Qo\'shish' : 'Add Camera'}
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {visibleCams.map(cam => (
                                         <CameraCard 
                                             key={cam.id} 
@@ -2651,7 +2675,7 @@ export const CamerasView: React.FC = () => {
                                     ))}
                                     
                                     {/* Add Source button for auto layout */}
-                                    {gridLayout === 'auto' && (
+                                    {gridLayout === 'auto' && cameras.length > 0 && (
                                         <button 
                                             onClick={openAddModal}
                                             className="border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-text-muted hover:text-cyan-500 hover:border-cyan-500/50 hover:bg-cyan-900/5 transition-all group min-h-[250px] col-span-1 cursor-pointer"

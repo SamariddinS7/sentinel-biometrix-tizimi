@@ -47,14 +47,20 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
     onLogin();
   };
 
-  // Vaqtinchalik: parolsiz to'g'ridan-to'g'ri kirish (test/demo maqsadida)
+  // Bootstrap admin login — only works if BOOTSTRAP_ADMIN_PASSWORD is configured on the server.
+  // This is intended for first-run setup when Firebase Auth is not yet configured.
   const handleDirectLogin = async () => {
+    const bootstrapPassword = prompt(
+      "Bootstrap admin login.\nEnter the BOOTSTRAP_ADMIN_PASSWORD set on the server:"
+    );
+    if (!bootstrapPassword) return;
     setIsLoading(true);
     try {
-      await authService.login('admin@sentinel.sys', 'SentinelAdmin2026!');
+      await authService.login('admin@sentinel.sys', bootstrapPassword);
       onLogin();
     } catch (err) {
-      console.error('Direct login failed:', err);
+      console.error('Bootstrap login failed. Ensure BOOTSTRAP_ADMIN_PASSWORD is set on the server:', err);
+      alert('Bootstrap login failed. Check that BOOTSTRAP_ADMIN_PASSWORD is configured on the server.');
     } finally {
       setIsLoading(false);
     }

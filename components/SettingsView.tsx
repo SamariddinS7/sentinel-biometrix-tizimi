@@ -297,7 +297,7 @@ export const SettingsView: React.FC = () => {
                             
                             <Toggle 
                                 label="'Unutish Huquqi'ni Yoqish (GDPR Erasure)" 
-                                checked={settings.security.gdprCompliance} // Mapping prop for demo
+                                checked={settings.security.gdprCompliance}
                                 onChange={(v:any) => update('security', 'gdprCompliance', v)} 
                                 help="Foydalanuvchilar uchun 'Shaxsni Unutish' API va UI boshqaruvini yoqish."
                             />

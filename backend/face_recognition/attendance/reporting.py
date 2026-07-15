@@ -20,17 +20,10 @@ class ReportingService:
         # Header
         writer.writerow(["Date", "Employee ID", "Name", "Check In", "Check Out", "Total Hours", "Status", "Notes"])
         
-        # In a real app, we'd query the DB. Here we dump the memory archive + active.
-        # This is a simplification.
-        
-        # Access internal state via facade (Not ideal for prod, but fits this monolithic service pattern)
-        # Assuming we have a way to list all users or iterating existing records.
-        # For demo, we iterate the mock users + what's in memory.
-        
-        # Let's use the attendance_service logic to fetch known states
-        
-        # Mocking the iteration over all known identities
-        # In production: for user in db.users.find(): ...
+        # Iterates all person IDs that have attendance records in memory.
+        # In production, replace with a DB query: for user in db.users.find(): ...
+        # The attendance_service._daily_archive and _active_sessions maps act as the
+        # in-process store until a persistent database layer is wired in.
         from ..services.user_service import user_service # Hypothetical internal import
         
         # We will iterate known sessions in memory for now

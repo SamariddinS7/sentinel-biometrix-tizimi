@@ -377,9 +377,18 @@ class CameraManager:
                 "center_pixel_y": 240
             }
             
+            # Production: source URL must be provided by the caller via add_camera().
+            # get_or_create_pipeline() in PUSH mode does not need an RTSP source
+            # since frames are injected externally via inject_frame().
+            if mode == 'PULL':
+                raise ValueError(
+                    f"[CameraManager] Cannot create PULL pipeline for '{camera_id}': "
+                    "no RTSP source URL was provided. Configure the camera's stream URL "
+                    "via the /api/cameras endpoint before starting the pipeline."
+                )
             pipeline = CameraPipeline(
                 camera_id=camera_id,
-                source=f"rtsp://mock_stream_{camera_id}",
+                source="",  # PUSH mode: frames injected via inject_frame(), no RTSP source needed
                 detection_service=detection_service,
                 optical_params=optical_params,
                 mode=mode
