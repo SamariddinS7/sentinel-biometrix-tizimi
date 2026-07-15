@@ -1,27 +1,47 @@
-# Sentinel Biometrics (VMS)
+# Sentinel Biometrik Tizimi
 
-## Overview
-An enterprise video management / biometric security system: React 18 (Vite) frontend + Express backend in a single Node process, Firebase/Firestore for data storage and auth, and Google Gemini for AI-based analysis (face recognition, hazard detection, digital twin, area maps, movement intelligence, etc.). Originally built with Google AI Studio and imported from GitHub.
+An enterprise AI Video Management System (VMS) with biometrics, face recognition, digital twin 3D views, and Gemini AI-powered anomaly detection. The UI is in Uzbek.
 
-## Running on Replit
-- Workflow "Start application" runs `npm run dev` (`tsx server.ts`), which starts a single Express server on port 5000 that also mounts Vite in middleware mode (serves the frontend and API together).
-- No secrets are required to run: `JWT_SECRET` and `VMS_ENCRYPTION_KEY` fall back to built-in defaults, and `GEMINI_API_KEY` is optional — AI features gracefully no-op/fallback when it's unset.
-- Firebase config (`firebase-applet-config.json`) is a public client config already committed to the repo (project `coherent-backup-w2cdj`); it's pre-existing and points at the original author's Firebase project.
-- Demo login: `admin@sentinel.sys` / `SentinelAdmin2026!` (also `supervisor@sentinel.sys` with the same password for a Supervisor role).
+## Stack
 
-## Temporary: direct login button
-Per user request, the login screen (`App.tsx` `LoginScreen`) has a "To'g'ridan-to'g'ri kirish (Admin)" button that logs straight in as the bootstrap admin (`admin@sentinel.sys`) without typing credentials — for development convenience only. Remove it before shipping to real users; it should not exist in a production build.
+- **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS
+- **Backend:** Express 5 (TypeScript, `tsx` runtime)
+- **Database:** Firebase Firestore (config in `firebase-applet-config.json`)
+- **AI:** Google Gemini (`@google/genai`), custom inference pipeline
+- **3D:** Three.js + React Three Fiber (digital twin views)
+- **Auth:** Firebase Auth (anonymous) + JWT for API routes
 
-## Optional secrets
-- `GEMINI_API_KEY` — enables real Gemini-powered AI analysis instead of the software fallback.
-- `JWT_SECRET`, `VMS_ENCRYPTION_KEY` — override the built-in defaults for production use.
+## How to run
 
-## Project structure
-- `server.ts` — Express app, API routes, Vite middleware integration, WebSocket server.
-- `App.tsx`, `index.tsx`, `components/` — React frontend.
-- `services/` — business logic (AI pipeline, camera, security, Firestore, VMS enterprise services).
-- `backend/` — supporting modules (area map, digital twin, face recognition, security).
-- `docs/`, `VMS_ARCHITECTURE.md`, `security_spec.md` — architecture and design docs.
+```
+npm install
+npm run dev
+```
+
+The server starts on port **5000** (Express serves both the API and Vite dev middleware).
+
+## Environment variables
+
+| Variable | Required | Notes |
+|---|---|---|
+| `GEMINI_API_KEY` | Optional | Enables AI features. Must start with `AIzaSy`. |
+| `JWT_SECRET` | Optional | Defaults to a built-in fallback value if not set. |
+| `VMS_ENCRYPTION_KEY` | Optional | Used for VMS credential encryption. |
+
+Firebase config is stored in `firebase-applet-config.json` (already included).
+
+## Login
+
+The app has a login screen at `/`. Use the **"To'g'ridan-to'g'ri kirish (Admin)"** button for direct admin access, or sign in with Firebase credentials.
+
+## Key directories
+
+- `components/` — 32 React UI components
+- `services/` — Application services (auth, camera, AI pipeline, Firestore, etc.)
+- `services/ai/` — AI inference pipeline, face/biometric engines, plugins
+- `backend/` — Pure computation modules (area maps, digital twin math, face recognition, security)
+- `server.ts` — Express API gateway + Vite dev server integration
 
 ## User preferences
-None recorded yet.
+
+<!-- Add user preferences here -->
