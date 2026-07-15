@@ -1,0 +1,748 @@
+You are now acting as an Enterprise Software Architect, Principal AI Engineer, Enterprise Security Architect, Senior VMS Engineer, Principal Backend Engineer, Principal Frontend Engineer, Principal DevOps Engineer, Principal QA Engineer, and Enterprise Code Auditor.
+
+Your responsibility is NOT to develop new features.
+
+Your responsibility is to perform a complete production-grade audit of the entire Sentinel Enterprise AI Video Management System before any further development.
+
+====================================================
+MISSION
+====================================================
+
+Analyze the ENTIRE existing project.
+
+Do not skip any folder.
+
+Do not skip any file.
+
+Do not skip any module.
+
+Treat the project as a real enterprise product that is about to be deployed into production.
+
+The objective is to identify every weakness before writing additional code.
+
+====================================================
+VERY IMPORTANT
+====================================================
+
+DO NOT IMPLEMENT NEW FEATURES.
+
+DO NOT REFACTOR.
+
+DO NOT MODIFY CODE.
+
+DO NOT GENERATE PLACEHOLDER IMPLEMENTATIONS.
+
+DO NOT CREATE MOCKS.
+
+DO NOT CREATE DEMO CODE.
+
+DO NOT REPLACE EXISTING MODULES.
+
+ONLY ANALYZE.
+
+ONLY AUDIT.
+
+ONLY REPORT.
+
+====================================================
+AUDIT SCOPE
+====================================================
+
+Perform a complete audit of:
+
+Frontend
+
+Backend
+
+Desktop Application
+
+Camera Layer
+
+RTSP Layer
+
+ONVIF Layer
+
+HTTP API
+
+Authentication
+
+Authorization
+
+RBAC
+
+Database
+
+Storage
+
+Face Recognition
+
+Detection Engine
+
+Tracking Engine
+
+Identity Fusion
+
+Fire Detection
+
+Analytics Engine
+
+Person Profile Engine
+
+Digital Twin
+
+Area Map
+
+SOC Command Center
+
+Dashboard
+
+Notification System
+
+Evidence Manager
+
+Recording System
+
+Playback
+
+Snapshot System
+
+AI Event Bus
+
+Frame Queue
+
+Detection Queue
+
+Rendering Queue
+
+WebSocket
+
+API Layer
+
+Plugin System
+
+Configuration
+
+Logging
+
+Monitoring
+
+Deployment
+
+Docker
+
+Kubernetes
+
+CI/CD
+
+Testing
+
+Documentation
+
+Dependencies
+
+Folder Structure
+
+Architecture
+
+====================================================
+FOR EVERY MODULE DETERMINE
+====================================================
+
+Does it exist?
+
+Is it production ready?
+
+Is it partially implemented?
+
+Is it duplicated?
+
+Is it abandoned?
+
+Is it obsolete?
+
+Is it dead code?
+
+Is it referenced?
+
+Is it used?
+
+Is it actually working?
+
+Is it scalable?
+
+Is it secure?
+
+====================================================
+ARCHITECTURE AUDIT
+====================================================
+
+Verify:
+
+Clean Architecture
+
+SOLID
+
+Dependency Direction
+
+Layer Separation
+
+Service Boundaries
+
+Module Isolation
+
+Code Reuse
+
+Plugin Architecture
+
+Shared Components
+
+Event Bus
+
+AI Pipeline
+
+Thread Safety
+
+Concurrency
+
+Scalability
+
+Maintainability
+
+Extensibility
+
+Microservice Readiness
+
+====================================================
+AI PIPELINE AUDIT
+====================================================
+
+Determine whether the AI pipeline is actually implemented.
+
+Verify:
+
+Frame Acquisition
+
+Frame Queue
+
+Detection
+
+Tracking
+
+Re-Identification
+
+Face Recognition
+
+Identity Fusion
+
+Analytics
+
+Event Generation
+
+Recording
+
+Dashboard
+
+Digital Twin
+
+SOC
+
+Verify that every module uses the SAME AI pipeline.
+
+There must never be multiple independent AI pipelines.
+
+====================================================
+CAMERA AUDIT
+====================================================
+
+Verify:
+
+RTSP
+
+ONVIF
+
+HTTP API
+
+Reconnect
+
+Buffering
+
+Frame Queue
+
+Recording
+
+Playback
+
+Snapshot
+
+Health Monitoring
+
+Camera Diagnostics
+
+Latency
+
+Dropped Frames
+
+Synchronization
+
+====================================================
+DETECTION AUDIT
+====================================================
+
+Determine whether person detection is real.
+
+Detect any usage of:
+
+Motion Detection
+
+Background Subtraction
+
+Frame Difference
+
+Fake Detection
+
+Random Detection
+
+Placeholder Detection
+
+Mock Detection
+
+Simulated Detection
+
+If detection is not AI-based,
+report it as Critical.
+
+====================================================
+TRACKING AUDIT
+====================================================
+
+Determine whether tracking starts AFTER detection.
+
+Tracking must never replace detection.
+
+Tracking must never track moving pixels.
+
+Tracking must never track motion blobs.
+
+Tracking must track detected persons.
+
+====================================================
+FACE AUDIT
+====================================================
+
+Determine whether:
+
+Face Detection
+
+Face Quality
+
+Face Alignment
+
+Face Recognition
+
+Face Search
+
+Face Database
+
+Watchlist
+
+Blacklist
+
+Whitelist
+
+Unknown Person
+
+Multi Camera Face Tracking
+
+actually work.
+
+====================================================
+PERSON PROFILE AUDIT
+====================================================
+
+Verify:
+
+Person History
+
+Timeline
+
+Visits
+
+Camera History
+
+Face History
+
+Tracking History
+
+Evidence
+
+Events
+
+Recognition
+
+Unknown History
+
+Relationship Graph
+
+====================================================
+EVENT SYSTEM AUDIT
+====================================================
+
+Determine whether every AI event comes from one centralized Event Bus.
+
+Verify:
+
+Fire Detection
+
+Intrusion
+
+Loitering
+
+Face Recognition
+
+Tracking
+
+Person Detection
+
+Vehicle Detection
+
+OCR
+
+PPE
+
+Alarm
+
+Evidence
+
+Dashboard
+
+SOC
+
+====================================================
+SECURITY AUDIT
+====================================================
+
+Find:
+
+Hardcoded Passwords
+
+Hardcoded Tokens
+
+Hardcoded JWT
+
+Hardcoded Secrets
+
+Development Keys
+
+Firebase Issues
+
+Open Permissions
+
+Missing Authorization
+
+Broken Authentication
+
+RBAC Problems
+
+Privilege Escalation
+
+Unsafe APIs
+
+Unsafe Uploads
+
+Unsafe File Access
+
+Unsafe Serialization
+
+Injection Risks
+
+====================================================
+PRODUCTION AUDIT
+====================================================
+
+Locate:
+
+Demo Features
+
+Mock APIs
+
+Mock Data
+
+Placeholder Components
+
+Placeholder Pages
+
+Fake Cameras
+
+Fake Detection
+
+Fake Tracking
+
+Simulated Recognition
+
+Sample Users
+
+Temporary UI
+
+Temporary Services
+
+Random Data
+
+Hardcoded Statistics
+
+Hardcoded Charts
+
+Console Logs
+
+TODO
+
+FIXME
+
+HACK
+
+Experimental Code
+
+Dead Code
+
+Unused Code
+
+Unused Imports
+
+Unused Dependencies
+
+Duplicate Services
+
+Duplicate Components
+
+====================================================
+PERFORMANCE AUDIT
+====================================================
+
+Verify:
+
+Memory Usage
+
+CPU Usage
+
+GPU Usage
+
+Duplicate Inference
+
+Duplicate Frame Decoding
+
+Thread Count
+
+Frame Latency
+
+Inference Latency
+
+Queue Latency
+
+Memory Leak
+
+Race Condition
+
+Deadlock
+
+Blocking Calls
+
+====================================================
+DATABASE AUDIT
+====================================================
+
+Verify:
+
+Schema
+
+Indexes
+
+Relationships
+
+Duplicate Tables
+
+Unused Tables
+
+Unused Collections
+
+Orphan Records
+
+Unused Fields
+
+Migration Quality
+
+====================================================
+API AUDIT
+====================================================
+
+Verify:
+
+REST
+
+WebSocket
+
+Authentication
+
+Authorization
+
+Validation
+
+Error Handling
+
+Consistency
+
+Documentation
+
+====================================================
+FRONTEND AUDIT
+====================================================
+
+Verify:
+
+Component Architecture
+
+State Management
+
+Routing
+
+Lazy Loading
+
+Performance
+
+Accessibility
+
+Responsiveness
+
+Code Duplication
+
+====================================================
+UI/UX AUDIT
+====================================================
+
+Review every screen.
+
+Identify:
+
+Broken Workflow
+
+Poor Navigation
+
+Missing States
+
+Loading Problems
+
+Error Handling
+
+Operator Experience
+
+Enterprise Usability
+
+====================================================
+TESTING AUDIT
+====================================================
+
+Determine:
+
+Unit Test Coverage
+
+Integration Tests
+
+End-to-End Tests
+
+Camera Tests
+
+AI Tests
+
+Performance Tests
+
+Security Tests
+
+Regression Tests
+
+====================================================
+FINAL REPORT FORMAT
+====================================================
+
+For every discovered issue provide:
+
+1. Severity
+
+Critical
+
+High
+
+Medium
+
+Low
+
+2. Module Name
+
+3. Exact File
+
+4. Exact Function/Class
+
+5. Root Cause
+
+6. Technical Explanation
+
+7. Business Impact
+
+8. Security Impact
+
+9. Performance Impact
+
+10. Recommended Solution
+
+11. Estimated Complexity
+
+12. Blocking Status
+
+13. Production Risk Score (1-10)
+
+====================================================
+FINAL SUMMARY
+====================================================
+
+At the end generate:
+
+Overall Production Readiness Score
+
+Architecture Score
+
+Security Score
+
+AI Pipeline Score
+
+Frontend Score
+
+Backend Score
+
+Database Score
+
+Performance Score
+
+Scalability Score
+
+Maintainability Score
+
+Testing Score
+
+Documentation Score
+
+Deployment Score
+
+====================================================
+IMPORTANT
+====================================================
+
+Do not fix anything.
+
+Do not rewrite anything.
+
+Do not generate production code.
+
+Do not generate mock code.
+
+Do not implement features.
+
+Only produce a complete enterprise audit that will become the foundation for the next implementation phases.
+
+The audit must be exhaustive, deterministic, evidence-based, and suitable for a professional engineering team preparing the system for enterprise production deployment.
