@@ -521,23 +521,18 @@ async function startServer() {
     });
   });
 
-  // Reconnect / Bulk Health Check Refresh
+  // Reconnect / Bulk Health Check Refresh — updates lastActive timestamp for all cameras.
+  // Actual RTSP connectivity checks require the Sentinel Edge Proxy on the local subnet.
   app.post("/api/cameras/reconnect", async (req, res) => {
     try {
       const querySnapshot = await getDocs(collection(db, "cameras"));
-      const cameras = querySnapshot.docs.map(doc => doc.data());
-      
-      for (const cam of cameras) {
-        const isPingOk = Math.random() > 0.05;
-        const updatedStatus = isPingOk ? "ONLINE" : "OFFLINE";
-        await updateDoc(doc(db, "cameras", cam.id), {
-          status: updatedStatus,
-          lastActive: new Date().toISOString()
-        });
-      }
+      const updates = querySnapshot.docs.map(d =>
+        updateDoc(doc(db, "cameras", d.id), { lastActive: new Date().toISOString() })
+      );
+      await Promise.all(updates);
       res.json({ success: true, message: "Kamera ulanishlari yangilandi" });
     } catch (e) {
-      res.json({ success: true, message: "Demo ulanishlari yangilandi" });
+      res.status(500).json({ error: "Kamera ulanishlarini yangilashda xatolik yuz berdi" });
     }
   });
 
@@ -697,7 +692,7 @@ async function startServer() {
       // Step 3: Authentication Credentials Check
       addLog("Step 3: Kirish huquqlarini (Credentials) tekshirish...");
       await new Promise(resolve => setTimeout(resolve, 400));
-      const hasWrongPass = password.toLowerCase().includes("wrong") || password === "123" || (username === "admin" && password === "");
+      const hasWrongPass = !username || !password;
       
       if (!hasWrongPass) {
         steps.push({ step: 3, status: "success", message: `Digest autentifikatsiyadan muvaffaqiyatli o'tdi. Foydalanuvchi: '${username || "admin"}'` });

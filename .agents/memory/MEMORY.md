@@ -1,1 +1,2 @@
 - [VMS Stabilization](vms-stabilization.md) — Phase 2 complete: sim blocks, pickle RCE, WS auth, RBAC, rate-limit, dead files all fixed; infra secrets remain.
+- [VMS Arch Stabilization 2026-07-16](vms-arch-stabilization.md) — Removed fake data, dead scripts, fake DB writes; sidebar now live telemetry; TS clean; report in STABILIZATION_REPORT.md.

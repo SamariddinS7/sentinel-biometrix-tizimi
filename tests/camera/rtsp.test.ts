@@ -20,15 +20,13 @@ const TEST_CAMERA: CameraConfig = {
   encryptedPassword: process.env.TEST_CAMERA_PASS || '',
   streamUrl: process.env.TEST_RTSP_URL || 'rtsp://192.168.1.100:554/Streaming/Channels/101',
   protocol: 'RTSP',
+  transport: 'TCP',
   type: 'HIKVISION',
   resolution: '1920x1080',
   fps: 25,
-  location: 'Test',
   status: 'OFFLINE',
   recordingMode: 'None',
   retentionDays: 7,
-  manualRecordingActive: false,
-  emergencyRecordingActive: false,
 };
 
 async function testDriverLifecycle() {

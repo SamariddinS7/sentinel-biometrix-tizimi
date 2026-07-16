@@ -34,7 +34,7 @@ import { ThemeProvider, useTheme } from './theme/ThemeProvider';
 import { motion, AnimatePresence } from 'motion/react';
 
 const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
-  const [email, setEmail] = useState('admin@sentinel.sys');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -59,8 +59,7 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
       await authService.login('admin@sentinel.sys', bootstrapPassword);
       onLogin();
     } catch (err) {
-      console.error('Bootstrap login failed. Ensure BOOTSTRAP_ADMIN_PASSWORD is set on the server:', err);
-      alert('Bootstrap login failed. Check that BOOTSTRAP_ADMIN_PASSWORD is configured on the server.');
+      alert('Kirish amalga oshmadi. Serverda BOOTSTRAP_ADMIN_PASSWORD sozlanganligi tekshiring.');
     } finally {
       setIsLoading(false);
     }
@@ -181,12 +180,31 @@ const AppContent: React.FC = () => {
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'security' | 'sessions'>('profile');
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [sidebarTelemetry, setSidebarTelemetry] = useState<{ cpu: number; ram: string } | null>(null);
 
   const { t } = useLanguage();
 
   useEffect(() => {
     setGlobalSearchTerm('');
   }, [currentView]);
+
+  useEffect(() => {
+    const fetchTelemetry = async () => {
+      try {
+        const res = await fetch('/api/telemetry');
+        if (res.ok) {
+          const data = await res.json();
+          setSidebarTelemetry({
+            cpu: data.cpuUsage ?? 0,
+            ram: `${((data.ramUsedMb ?? 0) / 1024).toFixed(1)}GB`
+          });
+        }
+      } catch {}
+    };
+    fetchTelemetry();
+    const iv = setInterval(fetchTelemetry, 8000);
+    return () => clearInterval(iv);
+  }, []);
 
   useEffect(() => {
     const updateCount = () => {
@@ -422,11 +440,14 @@ const AppContent: React.FC = () => {
                     <span className="text-[10px] font-bold">ONLINE</span>
                 </div>
                 <div className="flex justify-between items-center text-[10px] text-text-muted font-mono mt-1">
-                    <span>CPU: 12%</span>
-                    <span>RAM: 3.4GB</span>
+                    <span>CPU: {sidebarTelemetry ? `${sidebarTelemetry.cpu}%` : '—'}</span>
+                    <span>RAM: {sidebarTelemetry ? sidebarTelemetry.ram : '—'}</span>
                 </div>
                 <div className="w-full bg-app-surface h-1 mt-2 rounded-full overflow-hidden">
-                    <div className="bg-status-safe-text h-full w-[12%]"></div>
+                    <div
+                      className="bg-status-safe-text h-full transition-all duration-500"
+                      style={{ width: `${sidebarTelemetry?.cpu ?? 0}%` }}
+                    />
                 </div>
             </div>
         </div>

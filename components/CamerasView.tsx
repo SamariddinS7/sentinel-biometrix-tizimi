@@ -1167,10 +1167,6 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
     const settingKey = (k: string) => k as keyof typeof securitySettings;
 
     const runPingTest = () => {
-        setIsPinging(true);
-        setPingSuccess(null);
-        setPingLogs([]);
-        
         const ip = {
             hik: '192.168.1.101',
             dah: '192.168.1.102',
@@ -1178,28 +1174,18 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
             custom: customIp
         }[pingTarget];
 
-        const lines = [
-            `PING ${ip} (${ip}) 56(84) bytes of data.`,
-            `64 bytes from ${ip}: icmp_seq=1 ttl=64 time=1.45 ms`,
-            `64 bytes from ${ip}: icmp_seq=2 ttl=64 time=1.12 ms`,
-            `64 bytes from ${ip}: icmp_seq=3 ttl=64 time=1.38 ms`,
-            `--- ${ip} ping statistics ---`,
-            `3 packets transmitted, 3 received, 0% packet loss, time 2003ms`,
-            `rtt min/avg/max/mdev = 1.12/1.31/1.45/0.14 ms`
-        ];
-
-        let index = 0;
-        const interval = setInterval(() => {
-            if (index < lines.length) {
-                const currentLine = lines[index];
-                setPingLogs(prev => [...prev, currentLine]);
-                index++;
-            } else {
-                clearInterval(interval);
-                setIsPinging(false);
-                setPingSuccess(true);
-            }
-        }, 300);
+        setPingLogs([
+            language === 'uz'
+                ? `[INFO] ICMP ping ${ip} ga brauzerdan bajarib bo'lmaydi.`
+                : `[INFO] ICMP ping to ${ip} cannot be executed from the browser.`,
+            language === 'uz'
+                ? `[INFO] Tarmoq diagnostikasi uchun kamera qo'shilgandan so'ng "Diagnostika" tugmasini ishlating.`
+                : `[INFO] Use the Diagnostics tool on an added camera for real connectivity checks.`,
+            language === 'uz'
+                ? `[INFO] Yoki mahalliy tarmoqda Sentinel Edge Proxy o'rnating.`
+                : `[INFO] Alternatively, deploy the Sentinel Edge Proxy on your local subnet.`
+        ]);
+        setPingSuccess(null);
     };
 
     const handleCopy = (url: string, key: string) => {
@@ -1220,81 +1206,20 @@ const CameraSetupGuide: React.FC<CameraSetupGuideProps> = ({ onImportSuccess }) 
         }, 1200);
     };
 
-    const runAutoImport = async () => {
-        setIsImporting(true);
+    const runAutoImport = () => {
+        setIsImporting(false);
         setImportDone(false);
-        setImportLog([]);
-
-        const logs = [
-            language === 'uz' ? 'Qurilmalarni aniqlash skaneri ishga tushirildi...' : 'Device scanning agent initialized...',
-            '192.168.1.101 -> Hikvision (Kirish 01) ONVIF ISAPI ulanishi oʻrnatildi.',
-            '192.168.1.102 -> Dahua (Parkovka) DMSS protokoli va RTSP oqimi integratsiya qilindi.',
-            '192.168.1.103 -> Universal (Ombor) ONVIF standarti boʻyicha ulandi.',
-            language === 'uz' ? 'Sozlamalar maʼlumotlar bazasiga yozilmoqda...' : 'Writing credentials to primary cloud ledger...',
-            language === 'uz' ? 'Barcha kameralar tizimga toʻliq qoʻshildi!' : 'All nodes successfully integrated into Sentinel grid!'
-        ];
-
-        const importedCams: Camera[] = [
-            { 
-                id: 'CAM-01', 
-                name: language === 'uz' ? 'Kirish 01 (Hikvision)' : 'Entrance 01 (Hikvision)', 
-                location: language === 'uz' ? 'Asosiy Darvoza' : 'Main Entrance', 
-                type: CameraType.RTSP, 
-                streamUrl: `rtsp://${rtspUser}:${rtspPass}@192.168.1.101:554/Streaming/Channels/101`, 
-                status: CameraStatus.ONLINE, 
-                fps: 30, 
-                resolution: '1920x1080', 
-                lastActive: 'Hozir',
-                focalLength: 4.0,
-                sensorWidth: 4.8, 
-                sensorHeight: 3.6 
-            },
-            { 
-                id: 'CAM-02', 
-                name: language === 'uz' ? 'Parkovka (Dahua)' : 'Parking (Dahua)', 
-                location: language === 'uz' ? 'Tashqi Hudud' : 'Outdoor Zone', 
-                type: CameraType.RTSP, 
-                streamUrl: `rtsp://${rtspUser}:${rtspPass}@192.168.1.102:554/cam/realmonitor?channel=1&subtype=0`, 
-                status: CameraStatus.ONLINE, 
-                fps: 25, 
-                resolution: '1920x1080', 
-                lastActive: 'Hozir',
-                focalLength: 3.6,
-                sensorWidth: 4.8, 
-                sensorHeight: 3.6 
-            },
-            { 
-                id: 'CAM-03', 
-                name: language === 'uz' ? 'Ombor (Universal)' : 'Warehouse (Universal)', 
-                location: language === 'uz' ? 'B Bino, Podval' : 'Building B, Basement', 
-                type: CameraType.RTSP, 
-                streamUrl: `rtsp://${rtspUser}:${rtspPass}@192.168.1.103:554/onvif1`, 
-                status: CameraStatus.ONLINE, 
-                fps: 20, 
-                resolution: '1280x720', 
-                lastActive: 'Hozir',
-                focalLength: 2.8,
-                sensorWidth: 4.8, 
-                sensorHeight: 3.6 
-            }
-        ];
-
-        let index = 0;
-        const interval = setInterval(async () => {
-            if (index < logs.length) {
-                const currentLog = logs[index];
-                setImportLog(prev => [...prev, currentLog]);
-                index++;
-            } else {
-                clearInterval(interval);
-                for (const c of importedCams) {
-                    await cameraService.saveCamera(c);
-                }
-                setIsImporting(false);
-                setImportDone(true);
-                onImportSuccess();
-            }
-        }, 500);
+        setImportLog([
+            language === 'uz'
+                ? '[INFO] Avto-kashfiyot bulutli muhitdan mahalliy qurilmalarni skan qila olmaydi.'
+                : '[INFO] Auto-discovery cannot scan local devices from a cloud environment.',
+            language === 'uz'
+                ? '[INFO] Kameralarni qo\'lda qo\'shish uchun "Yangi kamera qo\'shish" tugmasini ishlating.'
+                : '[INFO] Use "Add New Camera" to register cameras manually with their RTSP URLs.',
+            language === 'uz'
+                ? '[INFO] Yoki mahalliy tarmoqda Sentinel Edge Proxy o\'rnating va ulantirishni yoqing.'
+                : '[INFO] Alternatively, deploy the Sentinel Edge Proxy locally and enable relay mode.',
+        ]);
     };
 
     const renderStepContent = () => {

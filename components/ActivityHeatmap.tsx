@@ -17,21 +17,6 @@ export const ActivityHeatmap: React.FC<{ logs: AttendanceRecord[] }> = ({ logs }
             });
         });
 
-        // Add some base data to always have a nice visualization even if logs are sparse
-        const basePattern = [
-            { h: '08', d: 'Mon', v: 12 }, { h: '09', d: 'Mon', v: 34 }, { h: '17', d: 'Mon', v: 28 }, { h: '18', d: 'Mon', v: 15 },
-            { h: '08', d: 'Tue', v: 14 }, { h: '09', d: 'Tue', v: 40 }, { h: '17', d: 'Tue', v: 35 }, { h: '18', d: 'Tue', v: 20 },
-            { h: '08', d: 'Wed', v: 10 }, { h: '09', d: 'Wed', v: 38 }, { h: '17', d: 'Wed', v: 30 }, { h: '18', d: 'Wed', v: 18 },
-            { h: '08', d: 'Thu', v: 15 }, { h: '09', d: 'Thu', v: 42 }, { h: '17', d: 'Thu', v: 32 }, { h: '18', d: 'Thu', v: 22 },
-            { h: '08', d: 'Fri', v: 8 },  { h: '09', d: 'Fri', v: 25 }, { h: '16', d: 'Fri', v: 30 }, { h: '17', d: 'Fri', v: 15 },
-        ];
-        
-        basePattern.forEach(({h, d, v}) => {
-            if (matrix[d] && matrix[d][h] !== undefined) {
-                matrix[d][h] = v;
-            }
-        });
-
         // Add actual logs
         logs.forEach(log => {
             const date = new Date(log.timestamp);

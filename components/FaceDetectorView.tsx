@@ -99,7 +99,6 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
               await faceapi.nets.faceRecognitionNet.loadFromUri('https://vladmandic.github.io/face-api/model');
               setIsClientAiReady(true);
               setDiagnosticMessage("Ready");
-              console.log("Client-side Face AI Ready");
           } catch (e: any) {
               const errMsg = "Failed to load Face AI models";
               console.warn(errMsg, e);
@@ -124,7 +123,6 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
               for (const u of allUsers) {
                   if (u.faceDescriptor && u.faceDescriptor.length > 0) {
                       descriptorsMap[u.id] = new Float32Array(u.faceDescriptor);
-                      console.log(`Loaded persisted biometric descriptor for ${u.fullName}`);
                   }
               }
 
@@ -229,7 +227,6 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
                                   lastActive: 'Hozirgina'
                               };
                               userService.saveUser(updatedUser).then(() => {
-                                  console.log(`[Auto-Enroll] Automatically enrolled face to employee: ${unenrolledUser.fullName}`);
                                   setEnrolledDescriptors(prev => ({
                                       ...prev,
                                       [unenrolledUser.id]: new Float32Array(descriptor)

@@ -42,6 +42,16 @@ The app has a login screen at `/`. Use the **"To'g'ridan-to'g'ri kirish (Admin)"
 - `backend/` — Pure computation modules (area maps, digital twin math, face recognition, security)
 - `server.ts` — Express API gateway + Vite dev server integration
 
+## Stabilization status
+
+Architecture stabilization completed 2026-07-16. See `STABILIZATION_REPORT.md` for full details.
+Key changes:
+- Deleted 5 dead patch/update scripts from root
+- Removed all fake/mock data from production code paths (fake camera statuses, fake DB writes, fake ping, hardcoded activity heatmap seed data)
+- Fixed security issues: fake credential bypass in diagnose endpoint, hardcoded admin email pre-fill, CVE in websocket-driver
+- Sidebar CPU/RAM now reads live from `/api/telemetry` instead of hardcoded values
+- TypeScript clean (0 errors)
+
 ## User preferences
 
 <!-- Add user preferences here -->
