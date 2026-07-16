@@ -14,7 +14,7 @@
 import http from 'http';
 import https from 'https';
 import { AbstractCameraDriver, StreamStats } from './CameraDriver';
-import { RtspSession, rtspConnectionPool } from '../rtsp';
+import { RtspSession, rtspConnectionPool } from '../RtspConnectionPool';
 import { securityManager } from '../security';
 import {
   CameraCapabilities,

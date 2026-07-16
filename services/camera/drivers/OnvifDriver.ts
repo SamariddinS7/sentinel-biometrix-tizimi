@@ -13,8 +13,8 @@ import http from 'http';
 import {
   AbstractCameraDriver,
 } from './CameraDriver';
-import { OnvifClient } from '../onvif';
-import { rtspConnectionPool } from '../rtsp';
+import { OnvifClient } from '../OnvifService';
+import { rtspConnectionPool } from '../RtspConnectionPool';
 import { securityManager } from '../security';
 import {
   CameraCapabilities,

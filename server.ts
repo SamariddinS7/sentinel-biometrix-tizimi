@@ -39,6 +39,8 @@ import { healthMonitor } from "./services/camera/HealthMonitor";
 import { snapshotManager } from "./services/camera/SnapshotManager";
 import { playbackEngine } from "./services/camera/PlaybackEngine";
 import { streamManager } from "./services/camera/StreamManager";
+import { frameDistributor } from "./services/camera/FrameDistributor";
+import { frameQueueManager, VmsFrame } from "./services/camera/FrameQueue";
 
 // Database references
 const usersCollection = collection(db, "users");
@@ -418,6 +420,11 @@ async function startServer() {
     res.json({ user: (req as any).user });
   });
 
+  // ─── Camera routes: all require a valid JWT ─────────────────────────────────
+  // This must appear before any /api/cameras route definitions so it applies
+  // positionally to all of them.
+  app.use("/api/cameras", authenticateToken);
+
   // --- REAL CAMERA MANAGEMENT AND VMS PIPELINE ---
 
   // Get all cameras
@@ -777,75 +784,74 @@ async function startServer() {
   });
 
   // Dynamic Camera JPEG Snapshot
+  // Real snapshot — delegates to SnapshotManager which calls the registered driver.
+  // Requires the camera to be connected and streaming via CameraRegistry.
   app.get("/api/cameras/:id/snapshot", async (req, res) => {
     try {
       const { id } = req.params;
-      const cameraRef = doc(db, "cameras", id);
-      const cameraSnap = await getDoc(cameraRef);
-      
-      let name = "Asosiy Kamera";
-      let location = "Xavfsizlik Hududi";
-      let status = "ONLINE";
-      
-      if (cameraSnap.exists()) {
-        const data = cameraSnap.data();
-        name = data.name || name;
-        location = data.location || location;
-        status = data.status || status;
+      const meta = await snapshotManager.takeManualSnapshot(id);
+      if (meta.thumbnailBase64) {
+        const buf = Buffer.from(meta.thumbnailBase64, "base64");
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader("X-Snapshot-Id", meta.id);
+        res.setHeader("X-Snapshot-Timestamp", meta.timestamp);
+        res.setHeader("X-Snapshot-Resolution", meta.resolution);
+        res.send(buf);
+      } else {
+        // Snapshot written to disk but too large for inline delivery
+        res.status(202).json({
+          snapshotId: meta.id,
+          filePath: meta.filePath,
+          resolution: meta.resolution,
+          fileSizeBytes: meta.fileSizeBytes,
+          timestamp: meta.timestamp,
+        });
       }
-      
-      const svg = generateCameraSvg(id, name, status, location);
-      res.setHeader("Content-Type", "image/svg+xml");
-      res.send(svg);
-    } catch (error) {
-      res.status(500).send("Xatolik yuz berdi");
+    } catch (err: any) {
+      res.status(503).json({
+        error: "Snapshot unavailable",
+        reason: err.message,
+        note: "Camera must be registered and streaming to capture a snapshot.",
+      });
     }
   });
 
-  // Dynamic MJPEG Streaming Proxy
-  app.get("/api/cameras/:id/stream", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const cameraRef = doc(db, "cameras", id);
-      const cameraSnap = await getDoc(cameraRef);
-      
-      let name = "Asosiy Kamera";
-      let location = "Xavfsizlik Hududi";
-      let status = "ONLINE";
-      
-      if (cameraSnap.exists()) {
-        const data = cameraSnap.data();
-        name = data.name || name;
-        location = data.location || location;
-        status = data.status || status;
-      }
+  // Live MJPEG stream — frames flow from FrameDistributor (LIVE_VIEW channel).
+  // Requires the camera to be registered and streaming via CameraRegistry.
+  // No frame simulation. No fake data. If the camera is not streaming, the
+  // connection stays open and waits for real frames.
+  app.get("/api/cameras/:id/stream", (req, res) => {
+    const { id } = req.params;
 
-      res.writeHead(200, {
-        "Content-Type": "multipart/x-mixed-replace; boundary=--frame",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Connection": "keep-alive",
-        "Pragma": "no-cache"
-      });
+    res.writeHead(200, {
+      "Content-Type": "multipart/x-mixed-replace; boundary=--vmsboundary",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Connection": "keep-alive",
+      "Pragma": "no-cache",
+    });
 
-      const writeFrame = () => {
-        const svg = generateCameraSvg(id, name, status, location);
-        res.write(`--frame\r\n`);
-        res.write(`Content-Type: image/svg+xml\r\n`);
-        res.write(`Content-Length: ${Buffer.byteLength(svg)}\r\n\r\n`);
-        res.write(svg);
+    // Consumer must be a stable reference so unregister works correctly.
+    const sendFrame = (frame: VmsFrame) => {
+      if (res.destroyed) return;
+      try {
+        res.write(`--vmsboundary\r\n`);
+        res.write(`Content-Type: image/jpeg\r\n`);
+        res.write(`Content-Length: ${frame.data.length}\r\n`);
+        res.write(`X-Frame-Id: ${frame.id}\r\n`);
+        res.write(`X-Timestamp: ${frame.timestamp}\r\n\r\n`);
+        res.write(frame.data);
         res.write(`\r\n`);
-      };
+      } catch {
+        // Client disconnected mid-write — cleanup handled by close event
+      }
+    };
 
-      writeFrame();
-      const intervalId = setInterval(writeFrame, 1000);
+    frameDistributor.register("LIVE_VIEW", id, sendFrame);
 
-      req.on("close", () => {
-        clearInterval(intervalId);
-        res.end();
-      });
-    } catch (error) {
+    req.on("close", () => {
+      frameDistributor.unregister("LIVE_VIEW", id, sendFrame);
       res.end();
-    }
+    });
   });
 
   // --- Protected route groups ---
@@ -854,41 +860,34 @@ async function startServer() {
   // All /api/ai routes require authentication + per-minute rate limiting
   app.use("/api/ai", authenticateToken, aiLimiter);
 
-  // Real-time disk storage analytics
-  app.get("/api/system/storage", (req, res) => {
-    res.json({
-      totalGb: 4000,
-      usedGb: 2840,
-      freeGb: 1160,
-      camerasCount: 7,
-      retentionDays: 30,
-      usagePercent: 71,
-      allocation: [
-        { type: "Video yozuvlar", gb: 2600, color: "#3b82f6" },
-        { type: "AI biometrik kadrlar", gb: 180, color: "#10b981" },
-        { type: "Tizim loglari", gb: 60, color: "#ef4444" }
-      ]
-    });
+  // Real-time disk storage analytics — derived from OS memory stats.
+  // Full disk metrics require statvfs access in the host environment.
+  app.get("/api/system/storage", async (req, res) => {
+    try {
+      const totalBytes = os.totalmem();
+      const freeBytes = os.freemem();
+      const usedBytes = totalBytes - freeBytes;
+      const toGb = (b: number) => Math.round((b / (1024 ** 3)) * 10) / 10;
+      const cameraSnap = await getDocs(camerasCollection);
+      res.json({
+        totalGb: toGb(totalBytes),
+        usedGb: toGb(usedBytes),
+        freeGb: toGb(freeBytes),
+        camerasCount: cameraSnap.size,
+        retentionDays: 30,
+        usagePercent: Math.round((usedBytes / totalBytes) * 100),
+        note: "Memory-based approximation. Mount-level disk metrics require statvfs in the host environment.",
+      });
+    } catch {
+      res.status(500).json({ error: "Failed to read storage metrics" });
+    }
   });
 
-  // Rotate and optimize storage
-  app.post("/api/system/storage/rotate", (req, res) => {
-    res.json({
-      success: true,
-      optimizedGb: 450,
-      newStats: {
-        totalGb: 4000,
-        usedGb: 2390,
-        freeGb: 1610,
-        camerasCount: 7,
-        retentionDays: 30,
-        usagePercent: 59,
-        allocation: [
-          { type: "Video yozuvlar", gb: 2150, color: "#3b82f6" },
-          { type: "AI biometrik kadrlar", gb: 180, color: "#10b981" },
-          { type: "Tizim loglari", gb: 60, color: "#ef4444" }
-        ]
-      }
+  // Storage rotation — not yet implemented at the OS/storage layer.
+  app.post("/api/system/storage/rotate", (_req, res) => {
+    res.status(501).json({
+      error: "Not implemented",
+      note: "Storage rotation requires integration with the VMS storage provider (NAS/SAN/object store).",
     });
   });
 
@@ -922,31 +921,260 @@ async function startServer() {
     }
   });
 
-  // Create manual/emergency recording
-  app.post("/api/recordings", async (req, res) => {
+  // Create manual/emergency recording — persists a recording intent to Firestore
+  // and notifies CameraRegistry so downstream consumers can react.
+  app.post("/api/recordings", authenticateToken, async (req, res) => {
     try {
       const { cameraId, recordingType } = req.body;
+      if (!cameraId) {
+        res.status(400).json({ error: "cameraId is required" });
+        return;
+      }
+      // Look up camera name from Firestore — never hardcode names
+      const cameraRef = doc(db, "cameras", cameraId);
+      const cameraSnap = await getDoc(cameraRef);
+      if (!cameraSnap.exists()) {
+        res.status(404).json({ error: `Camera ${cameraId} not found` });
+        return;
+      }
+      const cameraData = cameraSnap.data();
       const now = new Date();
-      const camId = cameraId || "CAM-01";
-      const recId = `REC-${camId}-${Date.now()}`;
-      
+      const recId = `REC-${cameraId}-${now.getTime()}`;
+      const mode = recordingType || "Manual";
+
       const recording = {
         id: recId,
-        cameraId: camId,
-        cameraName: camId === "CAM-01" ? "Front Gate / Asosiy Darvoza" : "Office Desk / Ish Stoli",
+        cameraId,
+        cameraName: cameraData.name ?? cameraId,
         startTime: now.toISOString(),
-        endTime: new Date(now.getTime() + 15000).toISOString(),
-        fileSizeMb: Math.floor(5 + Math.random() * 15),
-        recordingType: recordingType || "Manual",
-        filePath: `/var/spool/sentry/archive/${camId}/${now.getTime()}.mp4`
+        endTime: null, // Set when recording is stopped
+        fileSizeMb: null, // Set when recording is finalized
+        recordingType: mode,
+        filePath: `/var/lib/vms/recordings/${cameraId}/${now.getTime()}.mp4`,
+        status: "RECORDING",
       };
-      
+
       await setDoc(doc(db, "recordings", recId), recording);
+
+      // Notify CameraRegistry — starts emitting RECORDING_STARTED event
+      await cameraRegistry.startRecording(cameraId, mode).catch(() => {});
+
       res.json({ success: true, recording });
     } catch (error) {
       res.status(500).json({ error: "Failed to create recording" });
     }
   });
+
+  // ─── Camera Pipeline API Routes ──────────────────────────────────────────────
+  // These routes expose the CameraRegistry, StreamManager, FrameDistributor,
+  // SnapshotManager, and PlaybackEngine to API consumers.
+  // All routes inherit the /api/cameras JWT middleware defined above.
+
+  // Pipeline aggregate stats — FrameQueue + FrameDistributor
+  app.get("/api/cameras/pipeline/stats", (_req, res) => {
+    res.json({
+      frameQueues: frameQueueManager.getAllStats(),
+      distributor: frameDistributor.getStats(),
+      distributorConsumers: frameDistributor.listConsumers(),
+      activeStreams: streamManager.activeStreamCount(),
+      streamSessions: streamManager.getAllStats(),
+    });
+  });
+
+  // Camera live status (from CameraRegistry — real-time from health monitor)
+  app.get("/api/cameras/:id/status", (req, res) => {
+    const status = cameraRegistry.getStatus(req.params.id);
+    if (!status) {
+      res.status(404).json({ error: "Camera not registered in CameraRegistry" });
+      return;
+    }
+    res.json(status);
+  });
+
+  // Camera hardware capabilities (discovered via driver on connection)
+  app.get("/api/cameras/:id/capabilities", async (req, res) => {
+    try {
+      const caps = await cameraRegistry.getCapabilities(req.params.id);
+      if (!caps) {
+        res.status(404).json({ error: "Capabilities not yet discovered or camera not registered" });
+        return;
+      }
+      res.json(caps);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Per-camera stream stats (from StreamManager — FPS, bandwidth, codec, latency)
+  app.get("/api/cameras/:id/stream/stats", (req, res) => {
+    const stats = streamManager.getStats(req.params.id);
+    if (!stats) {
+      res.status(404).json({ error: "No active stream session for this camera" });
+      return;
+    }
+    res.json(stats);
+  });
+
+  // Connect a registered camera
+  app.post("/api/cameras/:id/connect", requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    try {
+      await cameraRegistry.connect(String(req.params.id));
+      res.json({ success: true, cameraId: req.params.id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Disconnect a registered camera
+  app.post("/api/cameras/:id/disconnect", requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    try {
+      await cameraRegistry.disconnect(String(req.params.id));
+      res.json({ success: true, cameraId: req.params.id });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List snapshots for a camera (Firestore-indexed)
+  app.get("/api/cameras/:id/snapshots", async (req, res) => {
+    try {
+      const maxCount = Math.min(Number(req.query.limit) || 50, 200);
+      const snapshots = await snapshotManager.listSnapshots(req.params.id, maxCount);
+      res.json(snapshots);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Take a manual snapshot
+  app.post("/api/cameras/:id/snapshots", async (req, res) => {
+    try {
+      const meta = await cameraRegistry.takeSnapshot(req.params.id, "MANUAL");
+      res.status(201).json(meta);
+    } catch (err: any) {
+      res.status(503).json({
+        error: "Snapshot failed",
+        reason: err.message,
+        note: "Camera must be connected and streaming.",
+      });
+    }
+  });
+
+  // PTZ control
+  app.post("/api/cameras/:id/ptz", requireRole(["ADMIN", "SUPERVISOR", "OPERATOR"]), async (req, res) => {
+    try {
+      await cameraRegistry.ptzControl(String(req.params.id), req.body);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Run camera diagnostics and return structured report
+  app.post("/api/cameras/:id/diagnostics", requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    try {
+      const report = await cameraRegistry.runDiagnostics(String(req.params.id));
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Playback API ─────────────────────────────────────────────────────────
+
+  // Query recording timeline segments for a time window
+  app.get("/api/cameras/:id/playback/timeline", async (req, res) => {
+    try {
+      const { start, end } = req.query;
+      if (!start || !end) {
+        res.status(400).json({ error: "start and end query params (Unix ms) are required" });
+        return;
+      }
+      const segments = await playbackEngine.querySegments(
+        req.params.id,
+        Number(start),
+        Number(end),
+      );
+      res.json(segments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List active playback sessions for a camera
+  app.get("/api/cameras/:id/playback/sessions", (req, res) => {
+    res.json(playbackEngine.listSessions(req.params.id));
+  });
+
+  // Create a playback session for a time range
+  app.post("/api/cameras/:id/playback", async (req, res) => {
+    try {
+      const { startMs, endMs } = req.body;
+      if (!startMs || !endMs) {
+        res.status(400).json({ error: "startMs and endMs (Unix ms) are required" });
+        return;
+      }
+      const session = await cameraRegistry.createPlaybackSession(
+        req.params.id,
+        Number(startMs),
+        Number(endMs),
+      );
+      res.status(201).json(session);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Playback session control (play / pause / seek / speed)
+  app.patch("/api/cameras/playback/:sessionId", (req, res) => {
+    const { sessionId } = req.params;
+    const { action, positionMs, speed } = req.body;
+    try {
+      switch (action) {
+        case "play":   playbackEngine.play(sessionId); break;
+        case "pause":  playbackEngine.pause(sessionId); break;
+        case "seek":
+          if (positionMs === undefined) {
+            res.status(400).json({ error: "positionMs is required for seek" });
+            return;
+          }
+          playbackEngine.seek(sessionId, Number(positionMs));
+          break;
+        case "speed":
+          if (speed === undefined) {
+            res.status(400).json({ error: "speed is required for speed action" });
+            return;
+          }
+          playbackEngine.setSpeed(sessionId, speed);
+          break;
+        default:
+          res.status(400).json({ error: `Unknown action: ${action}. Valid: play, pause, seek, speed` });
+          return;
+      }
+      res.json({ success: true, session: playbackEngine.getSession(sessionId) });
+    } catch (err: any) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+
+  // Get current segment info for a playback session
+  app.get("/api/cameras/playback/:sessionId", (req, res) => {
+    const session = playbackEngine.getSession(req.params.sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Playback session not found" });
+      return;
+    }
+    const segmentInfo = playbackEngine.getCurrentSegmentInfo(req.params.sessionId);
+    res.json({ session, currentSegment: segmentInfo });
+  });
+
+  // Close a playback session
+  app.delete("/api/cameras/playback/:sessionId", (req, res) => {
+    playbackEngine.closeSession(req.params.sessionId);
+    res.json({ success: true });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   // --- Secure Gemini AI Proxy Endpoints ---
 

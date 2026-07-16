@@ -1,6 +1,6 @@
 import { CameraCapabilities, CameraConfig, CameraHealth, CameraProvider, CameraState, CodecType, DeviceDetails, PtzCommand, StorageInfo, StreamProfile } from '../interfaces';
-import { OnvifClient } from '../onvif';
-import { RtspSession, rtspConnectionPool } from '../rtsp';
+import { OnvifClient } from '../OnvifService';
+import { RtspSession, rtspConnectionPool } from '../RtspConnectionPool';
 import { securityManager } from '../security';
 import { vmsEventService } from '../../vmsEventService';
 
