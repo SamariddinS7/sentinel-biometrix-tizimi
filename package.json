@@ -30,6 +30,9 @@
     "three": "0.160.0",
     "ws": "^8.21.0"
   },
+  "overrides": {
+    "websocket-driver": "0.7.5"
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",

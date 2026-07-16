@@ -1,0 +1,500 @@
+You are acting as the Principal Software Architect, Principal AI Engineer, Enterprise Code Auditor, Senior Backend Engineer, Senior Frontend Engineer, Enterprise Security Architect and Production Release Engineer.
+The Enterprise Architecture Audit has already been completed.
+Now your responsibility is to stabilize the entire project before implementing any new functionality.
+MISSION
+Transform the existing codebase into a clean, production-ready foundation.
+
+DO NOT implement any new business features.
+
+DO NOT redesign the product.
+
+DO NOT add new AI capabilities.
+
+Your task is to clean, stabilize, standardize and prepare the architecture.
+STRICT RULES
+Do not create new demo functionality.
+
+Do not create mock services.
+
+Do not generate placeholder implementations.
+
+Do not generate fake APIs.
+
+Do not simulate any AI result.
+
+Do not replace working production modules.
+
+Reuse existing implementations whenever possible.
+
+REMOVE COMPLETELY
+Remove every occurrence of:
+
+Demo Features
+
+Mock Data
+
+Mock APIs
+
+Placeholder Components
+
+Placeholder Pages
+
+Placeholder Services
+
+Dummy Objects
+
+Temporary Services
+
+Temporary Components
+
+Temporary Routes
+
+Example Data
+
+Fake Detection
+
+Fake Tracking
+
+Fake Recognition
+
+Fake Cameras
+
+Simulated Cameras
+
+Random AI Results
+
+Hardcoded Statistics
+
+Hardcoded Dashboard Cards
+
+Temporary Charts
+
+Developer Panels
+
+Debug Panels
+
+Debug Menus
+
+Console Logs
+
+Print Statements
+
+TODO
+
+FIXME
+
+HACK
+
+Experimental Code
+
+Legacy Unused Code
+
+Dead Code
+
+Unused Components
+
+Unused APIs
+
+Unused Hooks
+
+Unused Imports
+
+Unused Dependencies
+
+Duplicate Components
+
+Duplicate Services
+
+Duplicate APIs
+
+Duplicate AI Engines
+
+Duplicate Camera Managers
+
+Duplicate Event Systems
+
+====================================================
+ARCHITECTURE STABILIZATION
+====================================================
+
+Standardize the entire architecture.
+
+Ensure:
+
+Single Camera Layer
+
+Single AI Pipeline
+
+Single Event Bus
+
+Single Authentication Flow
+
+Single Authorization Flow
+
+Single Logging System
+
+Single Configuration System
+
+Single Error Handling System
+
+Single Notification System
+
+Single Recorder
+
+Single Snapshot Manager
+
+Single Camera Manager
+
+Remove every duplicate implementation.
+
+====================================================
+PROJECT STRUCTURE
+====================================================
+
+Normalize folder structure.
+
+Group modules by responsibility.
+
+Separate:
+
+Frontend
+
+Backend
+
+Shared
+
+AI
+
+Camera
+
+Security
+
+Storage
+
+Dashboard
+
+SOC
+
+Digital Twin
+
+Events
+
+Plugins
+
+Utilities
+
+Configuration
+
+Documentation
+
+Testing
+
+====================================================
+DEPENDENCY CLEANUP
+====================================================
+
+Audit every dependency.
+
+Remove:
+
+Unused Packages
+
+Deprecated Libraries
+
+Abandoned Libraries
+
+Duplicate Libraries
+
+Development-only Packages from Production
+
+Verify:
+
+Version Compatibility
+
+Security Vulnerabilities
+
+License Compatibility
+
+====================================================
+CONFIGURATION
+====================================================
+
+Move every configuration outside source code.
+
+Support:
+
+Environment Variables
+
+Configuration Files
+
+Secrets Management
+
+Runtime Configuration
+
+Nothing may remain hardcoded.
+
+====================================================
+SECURITY CLEANUP
+====================================================
+
+Remove:
+
+Hardcoded Passwords
+
+Hardcoded JWT
+
+Hardcoded API Keys
+
+Hardcoded Tokens
+
+Development Credentials
+
+Default Passwords
+
+Open Permissions
+
+Unsafe Endpoints
+
+Debug Authentication
+
+Bypass Logic
+
+Unsafe File Access
+
+====================================================
+DATABASE CLEANUP
+====================================================
+
+Remove:
+
+Unused Tables
+
+Unused Collections
+
+Duplicate Schemas
+
+Temporary Fields
+
+Development Records
+
+Demo Records
+
+Sample Records
+
+Verify:
+
+Indexes
+
+Relationships
+
+Constraints
+
+Migration Consistency
+
+====================================================
+API CLEANUP
+====================================================
+
+Standardize:
+
+REST Endpoints
+
+WebSocket Endpoints
+
+Response Format
+
+Error Format
+
+Validation
+
+Authentication
+
+Authorization
+
+Versioning
+
+====================================================
+FRONTEND CLEANUP
+====================================================
+
+Standardize:
+
+Routing
+
+Layout
+
+State Management
+
+Shared Components
+
+Theme
+
+Responsive Design
+
+Accessibility
+
+Error Handling
+
+Loading States
+
+====================================================
+BACKEND CLEANUP
+====================================================
+
+Standardize:
+
+Services
+
+Repositories
+
+Controllers
+
+Middleware
+
+Dependency Injection
+
+Logging
+
+Exception Handling
+
+Background Workers
+
+====================================================
+AI MODULE CLEANUP
+====================================================
+
+Do NOT implement AI.
+
+Only ensure the architecture is ready.
+
+Verify module boundaries for:
+
+Detection
+
+Tracking
+
+Recognition
+
+Analytics
+
+Identity
+
+Event Engine
+
+No duplicate AI pipeline may remain.
+
+====================================================
+CAMERA MODULE CLEANUP
+====================================================
+
+Standardize:
+
+RTSP
+
+ONVIF
+
+HTTP API
+
+Recorder
+
+Snapshot
+
+Playback
+
+Frame Queue Interfaces
+
+Camera Diagnostics
+
+Connection Management
+
+Only one official Camera Layer may remain.
+
+====================================================
+TESTING
+====================================================
+
+Run project-wide verification.
+
+Confirm:
+
+No Broken Imports
+
+No Circular Dependencies
+
+No Missing Modules
+
+No Broken Routes
+
+No Broken API References
+
+No Broken UI Components
+
+No Build Errors
+
+No Type Errors
+
+No Lint Errors
+
+====================================================
+DOCUMENTATION
+====================================================
+
+Update project documentation.
+
+Generate:
+
+Updated Folder Structure
+
+Architecture Diagram
+
+Dependency Diagram
+
+Module Dependency Graph
+
+====================================================
+FINAL REPORT
+====================================================
+
+Generate a structured report containing:
+
+Files Removed
+
+Modules Removed
+
+Duplicate Code Removed
+
+Dead Code Removed
+
+Dependencies Removed
+
+Security Issues Fixed
+
+Architecture Improvements
+
+Remaining Technical Debt
+
+Production Readiness Score
+
+====================================================
+FINAL REQUIREMENT
+====================================================
+
+The result must be a completely clean enterprise codebase.
+
+No demo.
+
+No mock.
+
+No placeholder.
+
+No fake AI.
+
+No duplicated architecture.
+
+No dead code.
+
+No temporary code.
+
+No abandoned modules.
+
+The project must become a stable production foundation for implementing the remaining enterprise features in the following phases.
