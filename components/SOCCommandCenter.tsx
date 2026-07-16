@@ -118,82 +118,54 @@ export const SOCCommandCenter: React.FC = () => {
 
     fetchCameras();
 
-    // Seed Alarms
-    setAlarms([
-      {
-        id: 'ALM-902',
-        source: 'CAM-01 (Main Lobby)',
-        cameraId: 'CAM-01',
-        category: 'INTRUSION',
-        severity: 'CRITICAL',
-        timestamp: new Date(Date.now() - 1000 * 60 * 3), // 3 min ago
-        status: 'PENDING',
-        notes: ['Motion detected in restricted corridor']
-      },
-      {
-        id: 'ALM-903',
-        source: 'CAM-03 (Server Entrance)',
-        cameraId: 'CAM-03',
-        category: 'FIRE',
-        severity: 'CRITICAL',
-        timestamp: new Date(Date.now() - 1000 * 60 * 8), // 8 min ago
-        status: 'ACKNOWLEDGED',
-        assignedTo: 'Sardor Rustamov (Lead Supervisor)',
-        notes: ['Optical smoke detector triggered alarm.', 'SOP checklist step 1 and 2 completed.']
-      },
-      {
-        id: 'ALM-904',
-        source: 'CAM-02 (Server Room Inside)',
-        cameraId: 'CAM-02',
-        category: 'PPE_VIOLATION',
-        severity: 'MEDIUM',
-        timestamp: new Date(Date.now() - 1000 * 60 * 15), 
-        status: 'RESOLVED',
-        notes: ['Contractor noticed entering without security helmet.', 'Escorted out of restricted zone.']
+    // Load live security alerts from the API
+    const fetchAlarmsAndPersonnel = async () => {
+      try {
+        const token = authService.getToken?.() || '';
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const alarmsRes = await fetch('/api/security/alerts', { headers });
+        if (alarmsRes.ok) {
+          const data = await alarmsRes.json();
+          const raw: any[] = Array.isArray(data) ? data : (data.alerts || []);
+          setAlarms(raw.map((a: any) => ({
+            id: a.id,
+            source: a.source || a.cameraId || 'Unknown',
+            cameraId: a.cameraId || '',
+            category: a.type || a.category || 'UNKNOWN',
+            severity: a.severity || 'MEDIUM',
+            timestamp: new Date(a.timestamp || Date.now()),
+            status: a.status || 'PENDING',
+            assignedTo: a.assignedTo,
+            notes: Array.isArray(a.notes) ? a.notes : (a.description ? [a.description] : []),
+          })));
+        }
+
+        // Load security personnel from users list filtered by security roles
+        const usersRes = await fetch('/api/users', { headers });
+        if (usersRes.ok) {
+          const usersData = await usersRes.json();
+          const allUsers: any[] = usersData.users || (Array.isArray(usersData) ? usersData : []);
+          const securityRoles = new Set(['GUARD', 'OFFICER', 'SERGEANT', 'SUPERVISOR', 'ADMIN']);
+          const secPersonnel = allUsers
+            .filter((u: any) => securityRoles.has(u.role))
+            .map((u: any) => ({
+              id: u.id,
+              name: u.fullName || u.email,
+              role: u.role,
+              status: 'IDLE' as const,
+              location: u.department || 'Unassigned',
+              radioChannel: 'CH-1',
+              battery: 100,
+            }));
+          if (secPersonnel.length > 0) setPersonnel(secPersonnel);
+        }
+      } catch {
+        // Network unavailable — lists remain empty; operator can still create incidents manually
       }
-    ]);
+    };
 
-    // Seed Incidents
-    setIncidents([
-      {
-        id: 'INC-201',
-        title: 'Server Room Smoke Alarm Detection',
-        category: 'Fire & Safety Outbreak',
-        priority: 'CRITICAL',
-        status: 'INVESTIGATING',
-        creationTime: new Date(Date.now() - 1000 * 60 * 20),
-        assignedTeam: 'Alpha Fire Containment Unit',
-        associatedCameras: ['CAM-03', 'CAM-02'],
-        evidenceFiles: ['Snapshot_1029.jpg', 'Clip_1029_1031.mp4'],
-        sopStepCompleted: 1
-      },
-      {
-        id: 'INC-202',
-        title: 'Unauthorized Parking Lot Trespass Attempt',
-        category: 'Intrusion Detection',
-        priority: 'HIGH',
-        status: 'OPEN',
-        creationTime: new Date(Date.now() - 1000 * 60 * 45),
-        assignedTeam: 'Beta Mobile Patrol',
-        associatedCameras: ['CAM-04'],
-        evidenceFiles: ['LicensePlate_01UZ.jpg'],
-        sopStepCompleted: 0
-      }
-    ]);
-
-    // Seed Security Personnel
-    setPersonnel([
-      { id: 'SEC-101', name: 'Alisher Qodirov', role: 'OFFICER', status: 'DISPATCHED', location: 'Server Room Entrance', radioChannel: 'CH-1A', battery: 92 },
-      { id: 'SEC-102', name: 'Zokir Toshmatov', role: 'GUARD', status: 'ON_PATROL', location: 'South Parking Lot Zone B', radioChannel: 'CH-1B', battery: 84 },
-      { id: 'SEC-103', name: 'Dilshod Solihov', role: 'SERGEANT', status: 'IDLE', location: 'Command Room Hub', radioChannel: 'CH-2A', battery: 99 },
-      { id: 'SEC-104', name: 'Sardorbek Alimov', role: 'GUARD', status: 'IDLE', location: 'Gate Entrance 1', radioChannel: 'CH-1A', battery: 73 }
-    ]);
-
-    // Track initial logs in our SOP state
-    setSopLogs({
-      'INC-201': [true, false, false, false],
-      'INC-202': [false, false, false, false],
-    });
+    fetchAlarmsAndPersonnel();
 
     // Logging initial entrance into SOC console (Auditing)
     const currentUser = authService.getCurrentUser();

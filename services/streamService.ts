@@ -22,21 +22,20 @@ export class StreamService {
     private readonly FRAME_INTERVAL = 1000 / 25;
     private readonly BACKPRESSURE_THRESHOLD = 1024 * 100; // 100KB buffered limit
 
-    private getSocketUrl(): string {
-        if (typeof window === 'undefined') return 'ws://localhost:3000/ws/live-stream';
+    private getSocketUrl(cameraId: string): string {
+        if (typeof window === 'undefined') return `ws://localhost:3000/ws/live-stream/${cameraId}`;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws/live-stream`;
+        const token = localStorage.getItem('sentinel_token') || '';
+        return `${protocol}//${window.location.host}/ws/live-stream/${cameraId}?token=${encodeURIComponent(token)}`;
     }
 
     connect(cameraId: string = 'WEBCAM_CLIENT') {
         if (this.socket) return;
 
-        const dynamicUrl = this.getSocketUrl();
-        this.socket = new WebSocket(`${dynamicUrl}/${cameraId}`);
+        this.socket = new WebSocket(this.getSocketUrl(cameraId));
         this.socket.binaryType = 'arraybuffer';
 
         this.socket.onopen = () => {
-            console.log('Stream Socket Connected');
             this.isConnected = true;
             if (this.activeLoop) this.startStreamingLoop();
         };
@@ -47,18 +46,19 @@ export class StreamService {
                 if (data.type === 'result') {
                     this.notifyListeners(data.tracks, data.heatmap, data.alerts);
                 }
-            } catch (e) {
-                console.error("Invalid WS Message", e);
+            } catch {
+                // Malformed frame message — discard
             }
         };
 
         this.socket.onclose = () => {
-            console.log('Stream Disconnected');
             this.isConnected = false;
             this.activeLoop = false;
         };
 
-        this.socket.onerror = (err) => console.warn('Stream Error', err);
+        this.socket.onerror = () => {
+            // Connection error handled via onclose
+        };
     }
 
     /**

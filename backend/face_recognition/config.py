@@ -106,7 +106,7 @@ class FaceRecognitionConfig(BaseSettings):
     EXIT_ZONES: list = ["Z-EXIT", "Z-PARKING"]
     
     # --- Security ---
-    ENCRYPTION_KEY: str = Field(default="test_key_placeholder", env="BIOMETRIC_ENCRYPTION_KEY") 
+    ENCRYPTION_KEY: str = Field(env="BIOMETRIC_ENCRYPTION_KEY") 
     STORAGE_PATH: str = "./secure_storage/embeddings.bin"
     
     # --- Performance ---

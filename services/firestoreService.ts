@@ -22,17 +22,14 @@ export const authReadyPromise = new Promise<void>((resolve) => {
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    console.log("User is signed in:", user.uid);
     resolveAuthReady();
-  } else {
-    console.log("User is NOT signed in");
   }
+  // No logging of auth state to avoid leaking UID info to the browser console
 });
 
 // Sign in anonymously on boot to establish a secure authenticated session for the security rules
 signInAnonymously(auth)
-  .then((userCredential) => {
-    console.log("Firebase Auth signed in anonymously successfully.", userCredential.user.uid);
+  .then(() => {
     testConnection();
   })
   .catch((err) => {

@@ -94,7 +94,8 @@ class MovementIntelligenceEngine {
   };
 
   private constructor() {
-    this.seedObservations();
+    // Observations are loaded from persistent storage or populated by live camera events.
+    // No synthetic data is seeded at startup.
     this.rebuildAllIntelligence();
   }
 
@@ -103,76 +104,6 @@ class MovementIntelligenceEngine {
       MovementIntelligenceEngine.instance = new MovementIntelligenceEngine();
     }
     return MovementIntelligenceEngine.instance;
-  }
-
-  /**
-   * Seed actual historical observations from MIIE profiles to prevent empty charts.
-   */
-  private seedObservations() {
-    const mmProfiles = multiModalIdentityEngine.getAllIdentities();
-    const cameras = [
-      { id: 'cam_01', name: 'Asosiy Kirish (Sharqiy Darvoza)' },
-      { id: 'cam_02', name: 'Xavfsiz Hudud Koridor (B Blok)' },
-      { id: 'cam_03', name: 'Server Xonasi Kirish' },
-      { id: 'cam_04', name: 'Konferentsiya Zali' },
-      { id: 'cam_05', name: 'G\'arbiy Chiqish Yo\'lagi' }
-    ];
-
-    const baseTime = Date.now() - 24 * 60 * 60 * 1000; // 24 hours ago
-    
-    // Let's create realistic chronological tracking observations
-    if (mmProfiles.length >= 2) {
-      const p1 = mmProfiles[0];
-      const p2 = mmProfiles[1];
-
-      // Repeated Co-occurrences of p1 and p2 at entry gate, corridor, and exit
-      const visits = [
-        { timeOffset: 0, cam: cameras[0], zone: 'zone_entrance' },
-        { timeOffset: 120000, cam: cameras[1], zone: 'zone_corridor' },
-        { timeOffset: 600000, cam: cameras[4], zone: 'zone_exit' }
-      ];
-
-      visits.forEach((v, index) => {
-        // Sightings of Person 1
-        this.observations.push({
-          id: `obs_${Date.now()}_1_${index}`,
-          personId: p1.id,
-          personName: p1.label,
-          role: p1.role,
-          cameraId: v.cam.id,
-          cameraName: v.cam.name,
-          zoneId: v.zone,
-          zoneName: v.zone === 'zone_entrance' ? 'Kirish Nazorati' : v.zone === 'zone_corridor' ? 'Asosiy Koridor' : 'G\'arbiy Chiqish',
-          timestamp: new Date(baseTime + v.timeOffset).toISOString()
-        });
-
-        // Sightings of Person 2 (within 30 seconds - Co-occurrence!)
-        this.observations.push({
-          id: `obs_${Date.now()}_2_${index}`,
-          personId: p2.id,
-          personName: p2.label,
-          role: p2.role,
-          cameraId: v.cam.id,
-          cameraName: v.cam.name,
-          zoneId: v.zone,
-          zoneName: v.zone === 'zone_entrance' ? 'Kirish Nazorati' : v.zone === 'zone_corridor' ? 'Asosiy Koridor' : 'G\'arbiy Chiqish',
-          timestamp: new Date(baseTime + v.timeOffset + 30000).toISOString()
-        });
-      });
-
-      // Let's also record a solo suspicious visit by p1 to the Server Room at night
-      this.observations.push({
-        id: `obs_${Date.now()}_1_server`,
-        personId: p1.id,
-        personName: p1.label,
-        role: p1.role,
-        cameraId: cameras[2].id,
-        cameraName: cameras[2].name,
-        zoneId: 'zone_restricted',
-        zoneName: 'Server Xonasi (Cheklangan Hudud)',
-        timestamp: new Date(baseTime + 18000000).toISOString() // Off-hours 5 AM visit
-      });
-    }
   }
 
   /**

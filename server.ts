@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer } from "ws";
@@ -88,115 +90,8 @@ aiInferencePipeline.onFrameProcessed((processedCamId, tracks) => {
   cameraTracksTimeouts.set(processedCamId, timeout);
 });
 
-// --- SIMULATED REAL-TIME VIDEO ANALYTICS TRACKS ---
-interface SimulatedTrackState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  userId: string;
-  fullName: string;
-}
-
-const simTrackStates = new Map<string, SimulatedTrackState[]>();
-let cachedEmployees: any[] = [];
-
-async function updateCachedEmployees() {
-  try {
-    const snap = await getDocs(usersCollection);
-    const list: any[] = [];
-    snap.forEach(doc => {
-      const data = doc.data();
-      if (data.role === 'EMPLOYEE' || data.role === 'ADMIN') {
-        list.push({ id: data.id, fullName: data.fullName, role: data.role, department: data.department });
-      }
-    });
-    if (list.length > 0) {
-      cachedEmployees = list;
-    }
-  } catch (e) {
-    console.warn("Failed to fetch employees for simulator:", e);
-  }
-}
-
-// Update cached employees list every 10 seconds
-setInterval(updateCachedEmployees, 10000);
-setTimeout(updateCachedEmployees, 1000);
-
-function updateSimulatedCameraTracks() {
-  const simCams = ["CAM-01", "CAM-02", "CAM-03"];
-  
-  simCams.forEach((camId, camIdx) => {
-    let tracks = simTrackStates.get(camId) || [];
-    
-    // Periodically add or remove a person track if tracks are empty or too many
-    if (tracks.length === 0 && Math.random() < 0.3) {
-      const count = Math.random() < 0.5 ? 1 : 2;
-      for (let i = 0; i < count; i++) {
-        let emp = cachedEmployees[Math.floor(Math.random() * cachedEmployees.length)];
-        const fullName = emp ? emp.fullName : `Mijoz (Visitor ${Math.floor(100 + Math.random() * 900)})`;
-        const userId = emp ? emp.id : `visitor_${Math.floor(1000 + Math.random() * 9000)}`;
-        
-        tracks.push({
-          x: 50 + Math.random() * 400,
-          y: 80 + Math.random() * 200,
-          vx: (Math.random() - 0.5) * 8,
-          vy: (Math.random() - 0.5) * 4,
-          userId,
-          fullName
-        });
-      }
-    }
-    
-    // Update track coordinates and drift them realistically
-    tracks = tracks.map(t => {
-      let nx = t.x + t.vx;
-      let ny = t.y + t.vy;
-      let nvx = t.vx;
-      let nvy = t.vy;
-      
-      if (nx < 30 || nx > 500) nvx = -nvx;
-      if (ny < 40 || ny > 200) nvy = -nvy;
-      
-      return {
-        ...t,
-        x: Math.max(30, Math.min(500, nx)),
-        y: Math.max(40, Math.min(200, ny)),
-        vx: nvx,
-        vy: nvy
-      };
-    }).filter(() => Math.random() > 0.01); // 1% chance of person leaving frame
-    
-    simTrackStates.set(camId, tracks);
-    
-    const vmsTracks = tracks.map((t, idx) => ({
-      trackId: 20000 + idx + (camIdx * 100),
-      bbox: {
-        x: t.x,
-        y: t.y,
-        w: 90,
-        h: 180
-      },
-      state: t.userId.startsWith('visitor') ? 'UNKNOWN' : 'VERIFIED',
-      detectionScore: 0.88 + 0.1 * Math.random(),
-      similarity: 0.86 + 0.13 * Math.random(),
-      identity: t.userId.startsWith('visitor') ? undefined : {
-        id: t.userId,
-        fullName: t.fullName,
-        role: 'EMPLOYEE',
-        department: 'Operations',
-        enrolledDate: '2026-07-14',
-        hasEmbedding: true,
-        lastActive: 'Hozirgina'
-      }
-    }));
-    
-    cameraTracksCache.set(camId, vmsTracks);
-  });
-}
-
-// Run track simulation every 1.5 seconds for fluid layout coordinates update
-setInterval(updateSimulatedCameraTracks, 1500);
+// Tracks are populated exclusively from the real AI inference pipeline via onFrameProcessed.
+// No simulated data is generated. If no real inference is running, tracks remain empty.
 
 function generateCameraSvg(cameraId: string, cameraName: string, status: string, location: string, width = 640, height = 360): string {
   const now = new Date();
@@ -328,6 +223,35 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 5000;
 
+  // Trust the first proxy (Replit reverse proxy) for correct IP resolution by rate-limiters
+  app.set("trust proxy", 1);
+
+  // Security headers
+  app.use(helmet({ contentSecurityPolicy: false }));
+
+  // Rate limiting — protect auth and AI endpoints
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Juda ko'p urinish. Iltimos, keyinroq qayta urinib ko'ring." }
+  });
+  const aiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "AI so'rov limiti oshib ketdi. Iltimos, bir daqiqadan so'ng urinib ko'ring." }
+  });
+  const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use(globalLimiter);
+
   // Support large base64 image transfers for biometrics and blueprints
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -406,7 +330,7 @@ async function startServer() {
   });
 
   // Login
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", authLimiter, async (req, res) => {
     const { email, password } = req.body;
 
     // Input validation
@@ -436,15 +360,11 @@ async function startServer() {
         fullName = uData.fullName || fullName;
         department = uData.department || department;
       } else {
-        // Safe bootstrap fallback for default admin emails
-        if (email === "admin@sentinel.sys") {
+        // Assign role based on known bootstrap emails; fullName comes from Firebase or env
+        if (email === process.env.BOOTSTRAP_ADMIN_EMAIL || email === "admin@sentinel.sys") {
           role = "ADMIN";
-          fullName = "Kamron Aliyev";
-          department = "IT Bo'limi";
-        } else if (email === "supervisor@sentinel.sys") {
+        } else if (email === process.env.BOOTSTRAP_SUPERVISOR_EMAIL || email === "supervisor@sentinel.sys") {
           role = "SUPERVISOR";
-          fullName = "Madina Solihova";
-          department = "Moliya Bo'limi";
         }
       }
       
@@ -459,7 +379,7 @@ async function startServer() {
         user: { id: user.uid, email: user.email, fullName, role, department }
       });
     } catch (authError: any) {
-      console.warn("[VMS Auth] Firebase Auth failed, attempting secure bootstrap check:", authError.message);
+      // Firebase Auth failed — attempt bootstrap check (initial setup only)
       
       // Bootstrap fallback for initial setup when Firebase is offline or unconfigured.
       // The bootstrap password MUST be overridden via BOOTSTRAP_ADMIN_PASSWORD env var.
@@ -927,6 +847,12 @@ async function startServer() {
       res.end();
     }
   });
+
+  // --- Protected route groups ---
+  // All /api/system routes require authentication + ADMIN or SUPERVISOR role
+  app.use("/api/system", authenticateToken, requireRole(["ADMIN", "SUPERVISOR"]));
+  // All /api/ai routes require authentication + per-minute rate limiting
+  app.use("/api/ai", authenticateToken, aiLimiter);
 
   // Real-time disk storage analytics
   app.get("/api/system/storage", (req, res) => {
@@ -2092,12 +2018,10 @@ async function startServer() {
   }
 
   const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Sentinel Biometrics] Full-Stack Server listening on http://0.0.0.0:${PORT}`);
-    // Register event-driven alarm and recording listeners
+    process.stdout.write(`[Sentinel Biometrics] Server ready on port ${PORT}\n`);
     initializeAlarmBroker();
-    // Bootstrap enterprise lifecycle modules cleanly
     vmsSystemManager.bootstrap().catch(err => {
-      console.error("Failed to bootstrap VMS lifecycle manager:", err);
+      process.stderr.write(`[CRITICAL] VMS lifecycle bootstrap failed: ${err}\n`);
     });
   });
 
@@ -2105,8 +2029,23 @@ async function startServer() {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (request, socket, head) => {
-    const pathname = new URL(request.url || "", `http://${request.headers.host}`).pathname;
+    const url = new URL(request.url || "", `http://${request.headers.host}`);
+    const pathname = url.pathname;
     if (pathname.startsWith("/ws/live-stream")) {
+      // Authenticate via JWT token passed as query parameter: ?token=<JWT>
+      const token = url.searchParams.get("token");
+      if (!token) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      try {
+        jwt.verify(token, EFFECTIVE_JWT_SECRET);
+      } catch {
+        socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit("connection", ws, request);
       });
@@ -2120,7 +2059,7 @@ async function startServer() {
     const parts = pathname.split("/");
     const cameraId = parts[parts.length - 1] || "WEBCAM_CLIENT";
 
-    console.log(`[WS Server] Client connected to live-stream for camera: ${cameraId}`);
+    // Connection authenticated (token verified in upgrade handler)
 
     const scheduler = FrameScheduler.getInstance();
 
@@ -2164,7 +2103,6 @@ async function startServer() {
     });
 
     ws.on("close", () => {
-      console.log(`[WS Server] Client disconnected from live-stream for camera: ${cameraId}`);
       unsub();
     });
 

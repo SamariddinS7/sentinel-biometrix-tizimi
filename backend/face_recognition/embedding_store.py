@@ -1,5 +1,5 @@
 
-import pickle
+import json
 import os
 import logging
 from cryptography.fernet import Fernet
@@ -27,9 +27,10 @@ class EmbeddingStore:
         return self.embeddings
 
     def save(self):
-        """Encrypts and saves embeddings to disk."""
+        """Serializes embeddings to JSON, encrypts, and saves to disk."""
         try:
-            data = pickle.dumps(self.embeddings)
+            data_dict = {pid: emb.tolist() for pid, emb in self.embeddings.items()}
+            data = json.dumps(data_dict).encode("utf-8")
             encrypted_data = self.cipher.encrypt(data)
             
             # Atomic write to prevent corruption
@@ -56,7 +57,8 @@ class EmbeddingStore:
                 encrypted_data = f.read()
             
             decrypted_data = self.cipher.decrypt(encrypted_data)
-            self.embeddings = pickle.loads(decrypted_data)
+            data_dict = json.loads(decrypted_data.decode("utf-8"))
+            self.embeddings = {pid: np.array(emb, dtype=np.float32) for pid, emb in data_dict.items()}
             logger.info(f"Loaded {len(self.embeddings)} identities from secure storage.")
         except Exception as e:
             logger.error(f"Failed to load secure storage: {e}")

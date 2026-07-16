@@ -1,1 +1,1 @@
-- [VMS Audit Fixes](vms-audit-fixes.md) — audit hujjatidan barcha code-level tuzatishlar bajarildi; infra (Docker/GPU/K8s) qismlari qoldi.
+- [VMS Stabilization](vms-stabilization.md) — Phase 2 complete: sim blocks, pickle RCE, WS auth, RBAC, rate-limit, dead files all fixed; infra secrets remain.

@@ -79,7 +79,7 @@ export class InferencePipeline {
     if (this.isRunning) {
       return;
     }
-    console.log('[AI InferencePipeline] Starting 12-stage sequential AI pipeline orchestrator...');
+    // Pipeline started
     this.isRunning = true;
     this.pipelineWorkerPromise = this.runPipelineWorker();
   }
@@ -91,7 +91,7 @@ export class InferencePipeline {
     if (!this.isRunning) {
       return;
     }
-    console.log('[AI InferencePipeline] Stopping 12-stage sequential AI pipeline orchestrator...');
+    // Pipeline stopping
     this.isRunning = false;
     if (this.pipelineWorkerPromise) {
       await this.pipelineWorkerPromise;

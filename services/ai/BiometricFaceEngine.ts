@@ -82,7 +82,17 @@ export interface EnrolledVectorRecord {
 
 // --- Secure Encrypted Storage Helpers (AES-256-GCM Envelope Encryption) ---
 export class BiometricCryptEngine {
-  private static masterKey: Buffer = crypto.scryptSync(process.env.BIOMETRIC_SECRET_SEED || 'SENTINEL_BIOMETRIC_MASTER_SEED_2026', 'salt', 32);
+  private static _masterKey: Buffer | null = null;
+  private static get masterKey(): Buffer {
+    if (!BiometricCryptEngine._masterKey) {
+      const seed = process.env.BIOMETRIC_SECRET_SEED;
+      if (!seed) {
+        throw new Error('[SECURITY] BIOMETRIC_SECRET_SEED env var is not set. Biometric encryption is unavailable. Set this variable before using biometric storage.');
+      }
+      BiometricCryptEngine._masterKey = crypto.scryptSync(seed, 'sentinel_biometric_kdf_v1', 32);
+    }
+    return BiometricCryptEngine._masterKey;
+  }
 
   public static encrypt(plainText: string): { iv: string; tag: string; cipherText: string } {
     const iv = crypto.randomBytes(12);

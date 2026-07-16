@@ -47,13 +47,13 @@ export const useDetectionEngine = (
         let isWsConnected = false;
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/live-stream/${cameraId}`;
+        const token = localStorage.getItem('sentinel_token') || '';
+        const wsUrl = `${protocol}//${window.location.host}/ws/live-stream/${cameraId}?token=${encodeURIComponent(token)}`;
         
         try {
             ws = new WebSocket(wsUrl);
             ws.onopen = () => {
                 isWsConnected = true;
-                console.log(`[CanvasOverlay WS] Connected for camera ${cameraId}`);
             };
             ws.onmessage = (event) => {
                 try {
