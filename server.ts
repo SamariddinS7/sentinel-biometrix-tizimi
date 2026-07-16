@@ -34,6 +34,11 @@ import { vmsStorageService } from "./services/vmsStorageService";
 import { vmsHealthService } from "./services/vmsHealthService";
 import { vmsSystemManager } from "./services/vmsSystemManager";
 import { movementIntelligenceEngine } from "./services/ai/MovementIntelligenceEngine";
+import { cameraRegistry } from "./services/camera/CameraRegistry";
+import { healthMonitor } from "./services/camera/HealthMonitor";
+import { snapshotManager } from "./services/camera/SnapshotManager";
+import { playbackEngine } from "./services/camera/PlaybackEngine";
+import { streamManager } from "./services/camera/StreamManager";
 
 // Database references
 const usersCollection = collection(db, "users");
