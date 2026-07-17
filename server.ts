@@ -22,7 +22,7 @@ import {
 } from "./services/securityService";
 import { HazardDetectorPlugin } from "./services/ai/plugins/HazardDetectorPlugin";
 import { db, auth } from "./services/firestoreService";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc } from "firebase/firestore";
 import net from "net";
 import crypto from "crypto";
@@ -424,6 +424,69 @@ async function startServer() {
       }
       
       res.status(401).json({ error: "Elektron pochta yoki parol noto'g'ri." });
+    }
+  });
+
+  // Register new user
+  app.post("/api/auth/register", authLimiter, async (req, res) => {
+    const { fullName, email, password, department } = req.body;
+
+    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 3) {
+      res.status(400).json({ error: "To'liq ism kamida 3 harfdan iborat bo'lishi kerak" });
+      return;
+    }
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      res.status(400).json({ error: "Yaroqli email manzil kiritilishi shart" });
+      return;
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      res.status(400).json({ error: "Parol kamida 6 belgidan iborat bo'lishi kerak" });
+      return;
+    }
+
+    try {
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const firebaseUser = userCredential.user;
+
+      // Set display name
+      await updateProfile(firebaseUser, { displayName: fullName.trim() });
+
+      // Persist user metadata to Firestore
+      const userMeta = {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        department: department?.trim() || 'General',
+        role: 'OPERATOR',
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "users", firebaseUser.uid), userMeta);
+
+      // Issue JWT
+      const token = jwt.sign(
+        { id: firebaseUser.uid, email: firebaseUser.email, role: 'OPERATOR', fullName: fullName.trim() },
+        EFFECTIVE_JWT_SECRET,
+        { expiresIn: "12h" }
+      );
+
+      res.status(201).json({
+        token,
+        user: {
+          id: firebaseUser.uid,
+          email: firebaseUser.email,
+          fullName: fullName.trim(),
+          role: 'OPERATOR',
+          department: department?.trim() || 'General',
+        },
+      });
+    } catch (err: any) {
+      if (err.code === 'auth/email-already-in-use') {
+        res.status(409).json({ error: "Bu email manzil allaqachon ro'yxatdan o'tgan." });
+      } else if (err.code === 'auth/weak-password') {
+        res.status(400).json({ error: "Parol juda zaif. Kamida 6 ta belgi kiritilsin." });
+      } else {
+        res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi." });
+      }
     }
   });
 

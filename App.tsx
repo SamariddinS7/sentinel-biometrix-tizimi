@@ -21,6 +21,7 @@ import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsol
 import { PersonIntelligencePlatform } from './components/PersonIntelligencePlatform';
 import { SOCCommandCenter } from './components/SOCCommandCenter';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import { AuthPage } from './components/AuthPage';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
 import { User } from './types';
@@ -239,7 +240,7 @@ const AppContent: React.FC = () => {
       setIsProfileOpen(false);
   };
 
-  if (!isAuthenticated) return <LoginScreen onLogin={handleLogin} />;
+  if (!isAuthenticated) return <AuthPage onLogin={handleLogin} />;
   if (currentView === 'live_feed') return <FaceDetectorView onBack={() => setCurrentView('dashboard')} />
 
   const getViewTitle = () => {

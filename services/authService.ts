@@ -44,6 +44,38 @@ class AuthService {
     return localStorage.getItem('sentinel_token');
   }
 
+  // Real JWT Register via backend
+  async register(fullName: string, email: string, password: string, department?: string): Promise<User> {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, email, password, department }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Ro'yxatdan o'tish amalga oshmadi");
+      localStorage.setItem('sentinel_token', data.token);
+      this.currentUser = {
+        id: data.user.id,
+        fullName: data.user.fullName,
+        email: data.user.email,
+        role: data.user.role as any,
+        department: data.user.department,
+        enrolledDate: new Date().toISOString().slice(0, 10),
+        hasEmbedding: false,
+        lastActive: 'Just now',
+        avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.user.fullName)}&background=0ea5e9&color=fff&size=128`,
+        permissions: ['VIEW_LOGS'],
+      };
+      this.persistUser();
+      this.logAction('AUTH', "User Registered (JWT Secure)", 'SUCCESS');
+      return this.currentUser;
+    } catch (e: any) {
+      this.logAction('AUTH', `Register Failure: ${e.message}`, 'FAILURE');
+      throw e;
+    }
+  }
+
   // Real JWT Login via backend
   async login(email: string, password?: string): Promise<User> {
     try {
