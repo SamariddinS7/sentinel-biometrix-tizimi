@@ -7,50 +7,63 @@ An enterprise AI Video Management System (VMS) with biometrics, face recognition
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS
 - **Backend:** Express 5 (TypeScript, `tsx` runtime)
 - **Database:** Firebase Firestore (config in `firebase-applet-config.json`)
-- **AI:** Google Gemini (`@google/genai`), custom inference pipeline
+- **AI:** Google Gemini (`@google/genai`), YOLOv8n ONNX local inference, custom AI pipeline
 - **3D:** Three.js + React Three Fiber (digital twin views)
-- **Auth:** Firebase Auth (anonymous) + JWT for API routes
+- **Auth:** Firebase Auth + JWT for API routes
 
-## How to run
+## How to run on Replit
+
+The workflow `Start application` is already configured and runs `npm run dev`.
+
+To start it manually:
 
 ```
 npm install
 npm run dev
 ```
 
-The server starts on port **5000** (Express serves both the API and Vite dev middleware).
+The server starts on port **5000**. Express serves both the REST/WebSocket API and the Vite dev middleware from a single process (`server.ts`).
 
-## Environment variables
+## Environment variables / Secrets
+
+Set these as Replit Secrets (never commit values to the repo):
 
 | Variable | Required | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | Optional | Enables AI features. Must start with `AIzaSy`. |
-| `JWT_SECRET` | Optional | Defaults to a built-in fallback value if not set. |
-| `VMS_ENCRYPTION_KEY` | Optional | Used for VMS credential encryption. |
+| `JWT_SECRET` | Recommended | Strong random string (64+ chars). Without it, a per-session random secret is generated — all sessions expire on restart. |
+| `GEMINI_API_KEY` | Optional | From Google AI Studio. Enables Gemini-powered threat analysis. Must start with `AIzaSy`. Without it, rule-based fallbacks are used. |
+| `VMS_ENCRYPTION_KEY` | Optional | AES key for stored VMS credentials. |
+| `BOOTSTRAP_ADMIN_EMAIL` | Optional | Admin account email for email+password login. |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Optional | Admin account password. |
 
-Firebase config is stored in `firebase-applet-config.json` (already included).
+Firebase config is already present in `firebase-applet-config.json` and requires no additional setup for the bundled Firebase project.
 
 ## Login
 
-The app has a login screen at `/`. Use the **"To'g'ridan-to'g'ri kirish (Admin)"** button for direct admin access, or sign in with Firebase credentials.
+The login screen is at `/`. Two options:
+- **"To'g'ridan-to'g'ri kirish (Admin)"** button — direct admin bypass, always available.
+- Email + password — requires `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` to be set, or valid Firebase credentials.
 
 ## Key directories
 
-- `components/` — 32 React UI components
-- `services/` — Application services (auth, camera, AI pipeline, Firestore, etc.)
-- `services/ai/` — AI inference pipeline, face/biometric engines, plugins
+- `components/` — React UI components (camera grid, dashboard, alerts, digital twin, etc.)
+- `services/` — Application services (auth, camera, AI pipeline, Firestore, alarm broker, etc.)
+- `services/ai/` — AI inference pipeline, face/biometric engines, YOLOv8n + ByteTrack, plugins
 - `backend/` — Pure computation modules (area maps, digital twin math, face recognition, security)
-- `server.ts` — Express API gateway + Vite dev server integration
+- `models/` — ONNX model files (`yolov8n.onnx`)
+- `server.ts` — Express API gateway + Vite dev server integration (single entry point)
+- `types.ts` — Shared TypeScript types across frontend and backend
+
+## Architecture notes
+
+- `server.ts` is the single backend entry point — it starts Express, Vite dev middleware, WebSocket broker, and all AI services together.
+- AI services initialize at startup: YOLOv8n loads from `yolov8n.onnx`; Gemini is optional.
+- Firebase Firestore is used for alerts, identities, and audit logs.
+- The WebSocket server handles real-time camera frame relay and AI event streaming.
 
 ## Stabilization status
 
 Architecture stabilization completed 2026-07-16. See `STABILIZATION_REPORT.md` for full details.
-Key changes:
-- Deleted 5 dead patch/update scripts from root
-- Removed all fake/mock data from production code paths (fake camera statuses, fake DB writes, fake ping, hardcoded activity heatmap seed data)
-- Fixed security issues: fake credential bypass in diagnose endpoint, hardcoded admin email pre-fill, CVE in websocket-driver
-- Sidebar CPU/RAM now reads live from `/api/telemetry` instead of hardcoded values
-- TypeScript clean (0 errors)
 
 ## User preferences
 
