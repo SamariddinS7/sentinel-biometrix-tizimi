@@ -139,115 +139,105 @@ export class AppearanceIntelligenceEngine {
   }
 
   /**
-   * Core Inference Proxy: Simulates extraction of 26 visual properties.
-   * Maps 512-dim L2-normalized ReID vectors and pixels into a highly normalized, structured Profile.
+   * Core Appearance Feature Extractor.
+   * When real frame data is supplied, performs HSV colour histogram analysis on the person crop.
+   * Falls back to geometry-only attributes (never fake random values) when no image is available.
    */
   public extractAppearanceFeatures(
     personId: string,
     reidEmbedding: Float32Array,
     boundingBox: BoundingBox,
-    rawPixelsConfidence = 0.92
+    rawPixelsConfidence = 0.92,
+    /** Optional decoded RGB buffer (3 bytes/px) for real colour analysis */
+    frameBuffer?: Buffer,
+    frameWidth?: number,
+    frameHeight?: number,
   ): AppearanceProfile {
     const vector = Array.from(reidEmbedding);
-    const hash = Math.abs(vector.reduce((acc, val, i) => acc + val * (i + 1), 0));
-    
-    // Deterministic mappings using high-entropy vector subdivisions
-    const getMod = (seed: number, mod: number) => Math.floor((hash * seed) % mod);
 
-    const upperColors = ['Dark Charcoal', 'Navy Blue', 'Crimson Red', 'Pure White', 'Forest Green', 'Bright Yellow', 'Orange'];
-    const upperTypes: AppearanceProfile['upperClothingType'][] = ['Jacket', 'Shirt', 'Hoodie', 'Sweater', 'Uniform', 'T-Shirt'];
-    const upperPatterns: AppearanceProfile['upperClothingPattern'][] = ['Solid', 'Striped', 'Plaid', 'Graphic', 'Camouflage'];
+    // Body geometry (always available)
+    const boxHeight = boundingBox.yMax - boundingBox.yMin;
+    const boxWidth  = boundingBox.xMax - boundingBox.xMin;
+    const estimatedHeightCm = Math.floor(155 + boxHeight * 45);
+    const estimatedBodySize: AppearanceProfile['estimatedBodySize'] =
+      estimatedHeightCm > 182 ? 'Tall' : estimatedHeightCm < 162 ? 'Short' : 'Standard';
+    const bodyShape: AppearanceProfile['bodyShape'] =
+      boxWidth / Math.max(boxHeight, 0.01) > 0.42 ? 'Large'
+      : boxWidth / Math.max(boxHeight, 0.01) < 0.32 ? 'Slender'
+      : 'Medium';
+    const lowerType: AppearanceProfile['lowerClothingType'] =
+      boxHeight > 0.65 ? 'Pants' : 'Shorts';
 
-    const lowerColors = ['Blue Jeans', 'Black Pants', 'Gray Shorts', 'Beige Khakis', 'Navy Pants'];
-    const lowerTypes: AppearanceProfile['lowerClothingType'][] = ['Pants', 'Shorts', 'Jeans', 'Skirt', 'Dress'];
-    const lowerPatterns: AppearanceProfile['lowerClothingPattern'][] = ['Solid', 'Striped', 'Plaid', 'Denim', 'Cargo'];
+    // Colour extraction — real HSV analysis when pixel data is present
+    let upperClothingColor = 'Unknown';
+    let lowerClothingColor = 'Unknown';
+    let dominantRGB = { r: 128, g: 128, b: 128 };
+    let secondaryRGB = { r: 64, g: 64, b: 64 };
 
-    const shoeColors: AppearanceProfile['shoes'][] = ['Black', 'White', 'Brown', 'Gray', 'Neon', 'Red', 'Blue'];
-    const hairColors: AppearanceProfile['hairColor'][] = ['Black', 'Brown', 'Blonde', 'Gray', 'Red', 'Bald'];
-    const hairStyles: AppearanceProfile['hairStyle'][] = ['Short', 'Long', 'Medium', 'Shaved', 'Tied'];
-    const bodyShapes: AppearanceProfile['bodyShape'][] = ['Slender', 'Medium', 'Large', 'Athletic'];
-
-    const hasAccessory = (seed: number, threshold = 6) => (getMod(seed, 10) > threshold);
-
-    // Color spaces simulation with analytical HSV/LAB mappings
-    const dominantRGB = {
-      r: getMod(13, 256),
-      g: getMod(17, 256),
-      b: getMod(19, 256)
-    };
-    const secondaryRGB = {
-      r: getMod(23, 256),
-      g: getMod(29, 256),
-      b: getMod(31, 256)
-    };
+    if (frameBuffer && frameWidth && frameHeight &&
+        frameBuffer.length >= frameWidth * frameHeight * 3) {
+      upperClothingColor = this.sampleRegionColor(
+        frameBuffer, frameWidth, frameHeight, boundingBox, 0.10, 0.50);
+      lowerClothingColor = this.sampleRegionColor(
+        frameBuffer, frameWidth, frameHeight, boundingBox, 0.50, 0.90);
+      dominantRGB   = this.sampleRegionRGB(frameBuffer, frameWidth, frameHeight, boundingBox, 0.10, 0.50);
+      secondaryRGB  = this.sampleRegionRGB(frameBuffer, frameWidth, frameHeight, boundingBox, 0.50, 0.90);
+    }
 
     const dominantHSV = this.rgbToHsv(dominantRGB.r, dominantRGB.g, dominantRGB.b);
     const secondaryHSV = this.rgbToHsv(secondaryRGB.r, secondaryRGB.g, secondaryRGB.b);
     const dominantLAB = this.rgbToLab(dominantRGB.r, dominantRGB.g, dominantRGB.b);
     const secondaryLAB = this.rgbToLab(secondaryRGB.r, secondaryRGB.g, secondaryRGB.b);
 
-    const boxHeight = boundingBox.yMax - boundingBox.yMin;
-    const estimatedHeightCm = Math.floor(155 + boxHeight * 45);
-    const estimatedBodySize: AppearanceProfile['estimatedBodySize'] = 
-      estimatedHeightCm > 182 ? 'Tall' : estimatedHeightCm < 162 ? 'Short' : 'Standard';
-
-    const carried: string[] = [];
-    if (hasAccessory(47, 7)) carried.push('Briefcase');
-    if (hasAccessory(53, 8)) carried.push('Water Bottle');
-    if (hasAccessory(59, 9)) carried.push('Document Folder');
-
     const existing = this.appearanceProfiles.get(personId);
     const version = existing ? existing.version + 1 : 1;
     const observationsCount = existing ? existing.observationsCount + 1 : 1;
 
+    // Texture complexity from ReID embedding variance (real computation)
+    let embVariance = 0;
+    const embMean = vector.reduce((a, b) => a + b, 0) / vector.length;
+    for (const v of vector) embVariance += (v - embMean) ** 2;
+    embVariance /= vector.length;
+    const textureComplexityScore = Math.min(1.0, Math.max(0.05, embVariance * 25));
+
     const profile: AppearanceProfile = {
       id: personId,
       lastUpdated: new Date().toISOString(),
-      
-      upperClothingColor: upperColors[getMod(2, upperColors.length)],
-      upperClothingType: upperTypes[getMod(3, upperTypes.length)],
-      upperClothingPattern: upperPatterns[getMod(4, upperPatterns.length)],
-      
-      lowerClothingColor: lowerColors[getMod(5, lowerColors.length)],
-      lowerClothingType: lowerTypes[getMod(6, lowerTypes.length)],
-      lowerClothingPattern: lowerPatterns[getMod(7, lowerPatterns.length)],
-      
-      shoes: shoeColors[getMod(8, shoeColors.length)],
-      
-      hat: hasAccessory(9, 8),
-      helmet: hasAccessory(11, 85), // Hardhats are rarer
-      vest: hasAccessory(13, 8), // Safety vests
-      backpack: hasAccessory(15, 6),
-      bag: hasAccessory(17, 7),
-      suitcase: hasAccessory(21, 9),
-      umbrella: hasAccessory(25, 95),
-      glasses: hasAccessory(29, 6),
-      mask: hasAccessory(31, 8),
-      
-      beard: hasAccessory(33, 8),
-      hairColor: hairColors[getMod(37, hairColors.length)],
-      hairStyle: hairStyles[getMod(39, hairStyles.length)],
+
+      upperClothingColor,
+      upperClothingType: 'T-Shirt',    // Requires dedicated attribute classifier
+      upperClothingPattern: 'Solid',
+
+      lowerClothingColor,
+      lowerClothingType: lowerType,
+      lowerClothingPattern: 'Solid',
+
+      shoes: 'Black',
+
+      hat: false,
+      helmet: false,
+      vest: false,
+      backpack: false,
+      bag: false,
+      suitcase: false,
+      umbrella: false,
+      glasses: false,
+      mask: false,
+
+      beard: false,
+      hairColor: 'Black',
+      hairStyle: 'Short',
       estimatedHeightCm,
       estimatedBodySize,
-      bodyShape: bodyShapes[getMod(41, bodyShapes.length)],
-      
-      carriedObjects: carried,
-      
-      dominantColor: {
-        rgb: dominantRGB,
-        hsv: dominantHSV,
-        lab: dominantLAB,
-        confidence: rawPixelsConfidence
-      },
-      secondaryColor: {
-        rgb: secondaryRGB,
-        hsv: secondaryHSV,
-        lab: secondaryLAB,
-        confidence: rawPixelsConfidence * 0.75
-      },
-      textureComplexityScore: Math.min(1.0, Math.max(0.1, (vector[12] || 0.5) * 2)),
+      bodyShape,
+
+      carriedObjects: [],
+
+      dominantColor:   { rgb: dominantRGB,   hsv: dominantHSV,   lab: dominantLAB,   confidence: frameBuffer ? rawPixelsConfidence : 0.3 },
+      secondaryColor:  { rgb: secondaryRGB,  hsv: secondaryHSV,  lab: secondaryLAB,  confidence: frameBuffer ? rawPixelsConfidence * 0.75 : 0.2 },
+      textureComplexityScore,
       version,
-      observationsCount
+      observationsCount,
     };
 
     // Store and auto-update the historical cluster array
@@ -362,6 +352,96 @@ export class AppearanceIntelligenceEngine {
     }
 
     return results.sort((a, b) => b.score - a.score);
+  }
+
+  // ─── Real HSV colour analysis helpers ────────────────────────────────────────
+
+  /**
+   * Sample pixels from a bounding-box sub-region (yStart..yEnd within box height)
+   * and return the dominant colour name via HSV mapping.
+   */
+  private sampleRegionColor(
+    rgb: Buffer,
+    w: number,
+    h: number,
+    box: BoundingBox,
+    yStart: number,
+    yEnd: number,
+  ): string {
+    const { r, g: gv, b } = this.sampleRegionRGB(rgb, w, h, box, yStart, yEnd);
+    return this.mapRgbToColorName(r, gv, b);
+  }
+
+  /** Return median R,G,B from a bounding-box sub-region of an RGB frame. */
+  private sampleRegionRGB(
+    rgb: Buffer,
+    w: number,
+    h: number,
+    box: BoundingBox,
+    yStart: number,
+    yEnd: number,
+  ): { r: number; g: number; b: number } {
+    const rVals: number[] = [];
+    const gVals: number[] = [];
+    const bVals: number[] = [];
+    const steps = 14;
+    const boxW = box.xMax - box.xMin;
+    const boxH = box.yMax - box.yMin;
+
+    for (let yi = 0; yi < steps; yi++) {
+      for (let xi = 0; xi < steps; xi++) {
+        const xr = box.xMin + boxW * (0.15 + (xi / steps) * 0.70);
+        const yr = box.yMin + boxH * (yStart + (yi / steps) * (yEnd - yStart));
+        const px = Math.min(w - 1, Math.max(0, Math.floor(xr * w)));
+        const py = Math.min(h - 1, Math.max(0, Math.floor(yr * h)));
+        const idx = (py * w + px) * 3;
+        if (idx + 2 < rgb.length) {
+          rVals.push(rgb[idx]);
+          gVals.push(rgb[idx + 1]);
+          bVals.push(rgb[idx + 2]);
+        }
+      }
+    }
+
+    if (rVals.length === 0) return { r: 128, g: 128, b: 128 };
+
+    const median = (arr: number[]) => {
+      const s = [...arr].sort((a, b) => a - b);
+      return s[Math.floor(s.length / 2)];
+    };
+    return { r: median(rVals), g: median(gVals), b: median(bVals) };
+  }
+
+  /** Map R,G,B (0-255) to a human-readable clothing colour name via HSV. */
+  private mapRgbToColorName(r: number, g: number, b: number): string {
+    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const max = Math.max(rn, gn, bn);
+    const min = Math.min(rn, gn, bn);
+    const d = max - min;
+    const v = max;
+    const s = max === 0 ? 0 : d / max;
+
+    if (v < 0.12) return 'Black';
+    if (s < 0.12 && v > 0.82) return 'White';
+    if (s < 0.15) return v < 0.35 ? 'Dark Charcoal' : 'Gray';
+
+    let h = 0;
+    if (d > 0) {
+      switch (max) {
+        case rn: h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6; break;
+        case gn: h = ((bn - rn) / d + 2) / 6; break;
+        case bn: h = ((rn - gn) / d + 4) / 6; break;
+      }
+    }
+    const hDeg = h * 360;
+    if (hDeg < 15 || hDeg >= 345) return v < 0.35 ? 'Dark Red'    : 'Crimson Red';
+    if (hDeg < 45)                 return                             'Orange';
+    if (hDeg < 65)                 return v > 0.55 ? 'Yellow'      : 'Olive';
+    if (hDeg < 150)                return v < 0.30 ? 'Dark Green'  : 'Forest Green';
+    if (hDeg < 195)                return                             'Cyan';
+    if (hDeg < 260)                return (s > 0.5 && v < 0.40) ? 'Navy Blue' : 'Blue';
+    if (hDeg < 290)                return                             'Purple';
+    return                                                             'Pink';
   }
 
   // --- MATHEMATICAL MATH SPACE CONVERSIONS ---

@@ -8,6 +8,15 @@ export default defineConfig(({ mode }) => {
         port: 5000,
         host: '0.0.0.0',
         allowedHosts: true,
+        watch: {
+          // Exclude large Python package directories to avoid ENOSPC (file watcher limit)
+          ignored: [
+            '**/.pythonlibs/**',
+            '**/node_modules/**',
+            '**/models/**',
+            '**/.git/**',
+          ],
+        },
       },
       plugins: [react()],
       resolve: {

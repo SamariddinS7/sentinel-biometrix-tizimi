@@ -282,7 +282,11 @@ export class InferencePipeline {
           position3D: point3D,
           faceEmbedding: faceEmbedding || undefined,
           faceConfidence: recognitionConfidence,
-          timestamp: timestampMs
+          timestamp: timestampMs,
+          // Pass decoded RGB frame so appearance engine can do real HSV colour analysis
+          frameBuffer: Buffer.isBuffer(frame.buffer) ? frame.buffer : Buffer.from(frame.buffer),
+          frameWidth: frame.width,
+          frameHeight: frame.height,
         });
         
         if (fusedIdResult) {

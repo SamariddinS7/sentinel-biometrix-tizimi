@@ -109,6 +109,10 @@ export class IdentityFusionEngine {
     faceEmbedding?: Float32Array;
     faceConfidence?: number;
     timestamp: number;
+    /** Optional: decoded RGB frame buffer (3 bytes/px) for real colour analysis */
+    frameBuffer?: Buffer;
+    frameWidth?: number;
+    frameHeight?: number;
   }): Promise<FusedIdentity> {
     const {
       cameraId,
@@ -118,14 +122,19 @@ export class IdentityFusionEngine {
       position3D,
       faceEmbedding,
       faceConfidence = 0,
-      timestamp
+      timestamp,
+      frameBuffer,
+      frameWidth,
+      frameHeight,
     } = params;
 
     const rawTrackId = `${cameraId}_${trackId}`;
     const timestampIso = new Date(timestamp).toISOString();
 
-    // 1. Extract Appearance attributes from frame crop region deterministically
-    const appearance = this.extractAppearanceAttributes(reidEmbedding, boundingBox);
+    // 1. Extract appearance attributes — uses real HSV colour analysis when frame data is available
+    const appearance = this.extractAppearanceAttributes(
+      reidEmbedding, boundingBox, frameBuffer, frameWidth, frameHeight,
+    );
 
     // 2. Resolve existing Identity mapping or find best match
     let resolvedIdentity: FusedIdentity | null = null;
@@ -180,7 +189,10 @@ export class IdentityFusionEngine {
 
     // Extract fully normalized enterprise 26-attribute profiles in Appearance Intelligence Engine
     try {
-      appearanceIntelligenceEngine.extractAppearanceFeatures(resolvedIdentity.id, reidEmbedding, boundingBox);
+      appearanceIntelligenceEngine.extractAppearanceFeatures(
+        resolvedIdentity.id, reidEmbedding, boundingBox,
+        0.92, frameBuffer, frameWidth, frameHeight,
+      );
     } catch (err) {
       console.error('[IdentityFusionEngine] Failed to sync to Appearance Intelligence Engine:', err);
     }
@@ -285,43 +297,151 @@ export class IdentityFusionEngine {
   }
 
   /**
-   * Deterministic Feature Extraction over the L2-normalized visual embeddings.
-   * Maps pixel representation vectors to categorical clothing colors and structures.
+   * Real HSV colour analysis over an RGB frame crop.
+   * When frame data is provided, samples pixels from the upper and lower body
+   * regions and maps median HSV values to named clothing colours.
+   * Falls back to 'Unknown' labels (never fake random values) when no image is available.
    */
-  private extractAppearanceAttributes(embedding: Float32Array, box: BoundingBox): AppearanceDescriptor {
+  private extractAppearanceAttributes(
+    embedding: Float32Array,
+    box: BoundingBox,
+    frameBuffer?: Buffer,
+    frameWidth?: number,
+    frameHeight?: number,
+  ): AppearanceDescriptor {
     const arr = Array.from(embedding);
-    
-    // Hash-based deterministic indices to provide rich diversity based on raw pixels
-    const valUpper = Math.abs(arr[10] * 100 + arr[20] * 200 + arr[30] * 300) % 9;
-    const valLower = Math.abs(arr[50] * 150 + arr[60] * 250 + arr[70] * 350) % 8;
-    const valType = Math.abs(arr[100] * 120 + arr[110] * 220) % 6;
-    const valShoes = Math.abs(arr[200] * 130 + arr[210] * 230) % 5;
-    const valBackpack = (Math.abs(arr[300] * 105) % 10) > 6;
-    const valHelmet = (Math.abs(arr[350] * 115) % 10) > 8;
-    const valVest = (Math.abs(arr[400] * 125) % 10) > 7;
 
-    const colorsUpper = ['Red', 'Navy Blue', 'Dark Charcoal', 'White', 'Forest Green', 'Crimson', 'Orange', 'Yellow', 'Cyan'];
-    const colorsLower = ['Blue Jeans', 'Black Pants', 'Gray Shorts', 'Beige Khakis', 'Navy Shorts', 'White Skirt', 'Brown Slacks', 'Olive Cargo'];
-    const clothingTypes: Array<AppearanceDescriptor['clothingType']> = ['Pants', 'Shorts', 'Jacket', 'Skirt', 'Dress', 'Uniform'];
-    const shoeColors: Array<AppearanceDescriptor['shoes']> = ['Black', 'White', 'Brown', 'Gray', 'Neon'];
-
-    // Height ratio of bounding box gives clues about real body size
+    // Body size / shape from bounding-box geometry (always available)
     const boxHeight = box.yMax - box.yMin;
-    const bodySize: AppearanceDescriptor['bodySize'] = boxHeight > 0.75 ? 'Tall' : boxHeight < 0.45 ? 'Short' : 'Standard';
-    const bodyShape: AppearanceDescriptor['bodyShape'] = (box.xMax - box.xMin) / boxHeight > 0.42 ? 'Large' : (box.xMax - box.xMin) / boxHeight < 0.32 ? 'Slender' : 'Medium';
+    const boxWidth  = box.xMax - box.xMin;
+    const bodySize: AppearanceDescriptor['bodySize'] =
+      boxHeight > 0.75 ? 'Tall' : boxHeight < 0.45 ? 'Short' : 'Standard';
+    const bodyShape: AppearanceDescriptor['bodyShape'] =
+      boxWidth / Math.max(boxHeight, 0.01) > 0.42
+        ? 'Large'
+        : boxWidth / Math.max(boxHeight, 0.01) < 0.32
+          ? 'Slender'
+          : 'Medium';
 
+    // Clothing type heuristic: tall bounding box → likely Pants; wide → Shorts
+    const clothingTypes: Array<AppearanceDescriptor['clothingType']> =
+      ['Pants', 'Shorts', 'Jacket', 'Skirt', 'Dress', 'Uniform'];
+    const clothingType: AppearanceDescriptor['clothingType'] =
+      boxHeight > 0.65 ? 'Pants' : boxHeight < 0.40 ? 'Shorts' : 'Pants';
+
+    // When real pixel data is available, perform HSV colour analysis
+    if (frameBuffer && frameWidth && frameHeight && frameBuffer.length >= frameWidth * frameHeight * 3) {
+      const upperColor = this.sampleRegionColor(frameBuffer, frameWidth, frameHeight, box, 0.10, 0.50);
+      const lowerColor = this.sampleRegionColor(frameBuffer, frameWidth, frameHeight, box, 0.50, 0.90);
+
+      return {
+        upperClothingColor: upperColor,
+        lowerClothingColor: lowerColor,
+        clothingType,
+        shoes: 'Black', // Foot region too small for reliable colour extraction
+        backpack: false,
+        helmet: false,
+        vest: false,
+        bodySize,
+        bodyShape,
+        appearanceEmbedding: arr,
+      };
+    }
+
+    // No image data — return neutral unknowns (never fake random colours)
     return {
-      upperClothingColor: colorsUpper[Math.floor(valUpper)],
-      lowerClothingColor: colorsLower[Math.floor(valLower)],
-      clothingType: clothingTypes[Math.floor(valType)],
-      shoes: shoeColors[Math.floor(valShoes)],
-      backpack: valBackpack,
-      helmet: valHelmet,
-      vest: valVest,
+      upperClothingColor: 'Unknown',
+      lowerClothingColor: 'Unknown',
+      clothingType,
+      shoes: 'Black',
+      backpack: false,
+      helmet: false,
+      vest: false,
       bodySize,
       bodyShape,
-      appearanceEmbedding: arr
+      appearanceEmbedding: arr,
     };
+  }
+
+  /**
+   * Sample ~200 pixels from a bounding-box sub-region (yStart..yEnd within box)
+   * and return the dominant colour name via HSV mapping.
+   */
+  private sampleRegionColor(
+    rgb: Buffer,
+    w: number,
+    h: number,
+    box: BoundingBox,
+    yStart: number,
+    yEnd: number,
+  ): string {
+    const rVals: number[] = [];
+    const gVals: number[] = [];
+    const bVals: number[] = [];
+    const steps = 14; // 14×14 = 196 sample points
+    const boxW = box.xMax - box.xMin;
+    const boxH = box.yMax - box.yMin;
+
+    for (let yi = 0; yi < steps; yi++) {
+      for (let xi = 0; xi < steps; xi++) {
+        // Avoid extreme edges (belt, collar artefacts)
+        const xr = box.xMin + boxW * (0.15 + (xi / steps) * 0.70);
+        const yr = box.yMin + boxH * (yStart + (yi / steps) * (yEnd - yStart));
+
+        const px = Math.min(w - 1, Math.max(0, Math.floor(xr * w)));
+        const py = Math.min(h - 1, Math.max(0, Math.floor(yr * h)));
+        const idx = (py * w + px) * 3;
+
+        if (idx + 2 < rgb.length) {
+          rVals.push(rgb[idx]);
+          gVals.push(rgb[idx + 1]);
+          bVals.push(rgb[idx + 2]);
+        }
+      }
+    }
+
+    if (rVals.length === 0) return 'Unknown';
+
+    const median = (arr: number[]) => {
+      const s = [...arr].sort((a, b) => a - b);
+      return s[Math.floor(s.length / 2)];
+    };
+
+    return this.rgbToColorName(median(rVals), median(gVals), median(bVals));
+  }
+
+  /** Map R,G,B (0-255) to a human-readable clothing colour name via HSV space. */
+  private rgbToColorName(r: number, g: number, b: number): string {
+    const rn = r / 255, gn = g / 255, bn = b / 255;
+    const max = Math.max(rn, gn, bn);
+    const min = Math.min(rn, gn, bn);
+    const d   = max - min;
+    const v   = max;
+    const s   = max === 0 ? 0 : d / max;
+
+    if (v < 0.12)             return 'Black';
+    if (s < 0.12 && v > 0.82) return 'White';
+    if (s < 0.15)             return v < 0.35 ? 'Dark Charcoal' : 'Gray';
+
+    let h = 0;
+    if (d > 0) {
+      switch (max) {
+        case rn: h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6; break;
+        case gn: h = ((bn - rn) / d + 2) / 6; break;
+        case bn: h = ((rn - gn) / d + 4) / 6; break;
+      }
+    }
+    const hDeg = h * 360;
+
+    if (hDeg < 15 || hDeg >= 345) return v < 0.35 ? 'Dark Red'     : 'Crimson Red';
+    if (hDeg < 45)                 return                              'Orange';
+    if (hDeg < 65)                 return v > 0.55 ? 'Yellow'       : 'Olive';
+    if (hDeg < 150)                return v < 0.30 ? 'Dark Green'   : 'Forest Green';
+    if (hDeg < 195)                return                              'Cyan';
+    if (hDeg < 260)                return (s > 0.5 && v < 0.40)
+                                           ? 'Navy Blue'             : 'Blue';
+    if (hDeg < 290)                return                              'Purple';
+    return                                                              'Pink';
   }
 
   private createNewIdentity(params: {

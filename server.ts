@@ -36,6 +36,8 @@ import { vmsStorageService } from "./services/vmsStorageService";
 import { vmsHealthService } from "./services/vmsHealthService";
 import { vmsSystemManager } from "./services/vmsSystemManager";
 import { movementIntelligenceEngine } from "./services/ai/MovementIntelligenceEngine";
+import { identityFusionEngine } from "./services/ai/IdentityFusionEngine";
+import { appearanceIntelligenceEngine } from "./services/ai/AppearanceIntelligenceEngine";
 import { cameraRegistry } from "./services/camera/CameraRegistry";
 import { healthMonitor } from "./services/camera/HealthMonitor";
 import { snapshotManager } from "./services/camera/SnapshotManager";
@@ -2227,6 +2229,118 @@ async function startServer() {
         timestamp: timestamp || new Date().toISOString()
       });
       res.json({ success: true, observation: obs });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Identity & Search API ────────────────────────────────────────────────
+
+  // GET /api/search/identities — list all fused identities with optional filters
+  app.get("/api/search/identities", authenticateToken, (req, res) => {
+    try {
+      const { status, role, limit } = req.query;
+      let all = identityFusionEngine.getAllIdentities();
+      if (status) all = all.filter((i: any) => i.status === status);
+      if (role)   all = all.filter((i: any) => i.role === role);
+      const n = Math.min(500, parseInt((limit as string) || '100', 10));
+      res.json({ count: all.length, identities: all.slice(0, n) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/search/identity/:id — single identity detail
+  app.get("/api/search/identity/:id", authenticateToken, (req, res) => {
+    const identity = identityFusionEngine.getIdentityById(String(req.params.id));
+    if (!identity) return res.status(404).json({ error: "Identity not found" });
+    res.json(identity);
+  });
+
+  // POST /api/search/appearance — filter by clothing/appearance attributes
+  app.post("/api/search/appearance", authenticateToken, (req, res) => {
+    try {
+      const { upperColor, lowerColor, backpack, helmet, vest, umbrella, suitcase, bodySize } = req.body;
+      const profiles = appearanceIntelligenceEngine.searchByAttributes({
+        upperColor, lowerColor, backpack, helmet, vest, umbrella, suitcase, bodySize
+      });
+      // Enrich results with fused identity data where available
+      const enriched = profiles.map((p: any) => {
+        const identity = identityFusionEngine.getIdentityById(p.profile.id);
+        return { ...p, identity: identity || null };
+      });
+      res.json({ count: enriched.length, results: enriched });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/search/natural-language — free-text person search
+  app.post("/api/search/natural-language", authenticateToken, async (req, res) => {
+    try {
+      const { query: text } = req.body;
+      if (!text || typeof text !== 'string' || text.trim().length < 2) {
+        return res.status(400).json({ error: "Search query text is required" });
+      }
+
+      // If Gemini is available, extract structured attributes from the natural text
+      let structuredQuery: any = { naturalText: text };
+      if (ai) {
+        try {
+          const prompt = `You are parsing a surveillance search query into structured attributes.
+Query: "${text}"
+Extract the following from the query (use null if not mentioned):
+- upperColor: clothing colour of upper body (e.g. "Red", "Blue", "Black", "White", "Gray", "Navy Blue", "Forest Green", "Orange", "Yellow")
+- lowerColor: clothing colour of lower body
+- backpack: true/false/null
+- helmet: true/false/null
+- vest: true/false/null
+- bodySize: "Tall"/"Short"/"Standard"/null
+Reply with ONLY valid JSON, no explanation.`;
+          const result = await ai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          });
+          const raw = result.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+          const cleaned = raw.replace(/```json|```/g, '').trim();
+          const parsed = JSON.parse(cleaned);
+          structuredQuery = { naturalText: text, ...parsed };
+        } catch {
+          // Gemini unavailable or parse failed — fall back to keyword matching
+        }
+      }
+
+      const profiles = appearanceIntelligenceEngine.searchByAttributes(structuredQuery);
+      const enriched = profiles.map((p: any) => {
+        const identity = identityFusionEngine.getIdentityById(p.profile.id);
+        return { ...p, identity: identity || null };
+      });
+      res.json({ count: enriched.length, results: enriched, parsedQuery: structuredQuery });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/search/appearance-profiles — all appearance profiles (ADMIN/SUPERVISOR only)
+  app.get("/api/search/appearance-profiles", authenticateToken, requireRole(['ADMIN', 'SUPERVISOR']), (req, res) => {
+    try {
+      const profiles = appearanceIntelligenceEngine.getAllProfiles();
+      res.json({ count: profiles.length, profiles });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/identities/merge — merge two identities (ADMIN only)
+  app.post("/api/identities/merge", authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+    try {
+      const { primaryId, secondaryId } = req.body;
+      if (!primaryId || !secondaryId) {
+        return res.status(400).json({ error: "primaryId and secondaryId are required" });
+      }
+      const operator = (req as any).user?.email || 'system';
+      const ok = await identityFusionEngine.requestMerge(primaryId, secondaryId, operator);
+      res.json({ success: ok });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

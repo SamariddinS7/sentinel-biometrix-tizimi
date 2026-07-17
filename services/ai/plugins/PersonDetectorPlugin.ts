@@ -93,10 +93,10 @@ export class PersonDetectorPlugin extends BaseAiPlugin {
       }
     }
 
+    // onnxruntime-node v1.27+ uses 'cpu' / 'cuda' (lowercase) provider names.
+    // Passing no executionProviders lets the runtime auto-select the best available backend.
     const providers: string[] =
-      device.type === 'CUDA'
-        ? ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        : ['CPUExecutionProvider'];
+      device.type === 'CUDA' ? ['cuda', 'cpu'] : ['cpu'];
 
     this.session = await this.ort.InferenceSession.create(MODEL_FILE, {
       executionProviders: providers,
