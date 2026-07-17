@@ -1,0 +1,518 @@
+You are implementing the Enterprise Person Detection & Tracking Engine of the Enterprise AI Video Management System (AI VMS).
+
+This module is the foundation of every AI feature in the system.
+
+No other AI module may bypass this engine.
+
+Every future AI module depends on this engine.
+
+This implementation must follow every previously approved architecture, plugin system, security model, coding standards, testing strategy and production rules.
+
+This is NOT a demo.
+
+This is NOT a prototype.
+
+This is NOT research software.
+
+Everything must be production-ready.
+
+====================================================
+MISSION
+====================================================
+
+Create one unified Person Detection & Tracking Engine.
+
+Every camera in the system must use this engine.
+
+Every future AI module must consume its output.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never implement:
+
+Fake Detection
+
+Placeholder Detection
+
+Motion Detection as Person Detection
+
+Random Detection
+
+Mock AI
+
+Fake Tracking
+
+Random Track IDs
+
+Temporary AI
+
+Demo AI
+
+Every detection must originate from a real AI model.
+
+====================================================
+MODEL SELECTION POLICY
+====================================================
+
+Before implementation:
+
+Evaluate all actively maintained production-ready open-source object detection models.
+
+Compare according to:
+
+Accuracy
+
+Latency
+
+GPU Performance
+
+CPU Performance
+
+Long-Term Maintenance
+
+Documentation
+
+Community Support
+
+Memory Usage
+
+Model Size
+
+Inference Stability
+
+License Compatibility
+
+Enterprise Deployment
+
+Supported Frameworks
+
+Do NOT select a model because it is popular.
+
+Choose the best production-ready model.
+
+The architecture must remain model-independent.
+
+====================================================
+TRACKER SELECTION POLICY
+====================================================
+
+Evaluate production trackers.
+
+Compare:
+
+Tracking Accuracy
+
+Occlusion Recovery
+
+Crowd Performance
+
+Crossing Performance
+
+Speed
+
+Memory Usage
+
+GPU Support
+
+Maintenance
+
+Documentation
+
+Choose the best production tracker.
+
+====================================================
+ARCHITECTURE
+====================================================
+
+Pipeline:
+
+Frame Queue
+
+↓
+
+Image Preprocessing
+
+↓
+
+Person Detection
+
+↓
+
+Detection Validation
+
+↓
+
+Tracking
+
+↓
+
+Track Management
+
+↓
+
+Event Generation
+
+↓
+
+Event Bus
+
+↓
+
+Future AI Modules
+
+No module may bypass this pipeline.
+
+====================================================
+PERSON DETECTION
+====================================================
+
+Detect humans regardless of:
+
+Front View
+
+Back View
+
+Side View
+
+Running
+
+Walking
+
+Standing
+
+Sitting
+
+Crouching
+
+Partially Occluded
+
+Night Vision
+
+IR Cameras
+
+Different Resolutions
+
+Low FPS
+
+The detector must recognize a human body even if the face is not visible.
+
+====================================================
+NON-PERSON FILTERING
+====================================================
+
+Never track:
+
+Trees
+
+Leaves
+
+Shadows
+
+Reflections
+
+Rain
+
+Snow
+
+Moving Lights
+
+Camera Shake
+
+Animals (unless future module)
+
+Vehicles (handled separately)
+
+Noise
+
+Only detections classified as Person continue.
+
+====================================================
+DETECTION VALIDATION
+====================================================
+
+Validate:
+
+Confidence
+
+Bounding Box
+
+Aspect Ratio
+
+Minimum Size
+
+Maximum Size
+
+Visibility
+
+Temporal Consistency
+
+Reject unstable detections.
+
+====================================================
+TRACKING
+====================================================
+
+Tracking begins ONLY after validated person detection.
+
+Every Track ID belongs to exactly one detected person.
+
+Support:
+
+Persistent IDs
+
+Occlusion Recovery
+
+Track Recovery
+
+Track Merge
+
+Track Split
+
+Track Confidence
+
+Track Age
+
+Track History
+
+Track Metadata
+
+====================================================
+MULTI CAMERA READY
+====================================================
+
+Prepare interfaces for:
+
+Cross Camera Tracking
+
+Identity Fusion
+
+Movement Intelligence
+
+Digital Twin
+
+Person Profile
+
+These modules are implemented later.
+
+====================================================
+EVENTS
+====================================================
+
+Generate:
+
+PersonDetected
+
+PersonUpdated
+
+PersonLost
+
+TrackStarted
+
+TrackUpdated
+
+TrackEnded
+
+DetectionRejected
+
+DetectionRecovered
+
+====================================================
+FRAME SYNCHRONIZATION
+====================================================
+
+Maintain synchronization between:
+
+Frame Queue
+
+Detection Queue
+
+Tracking Queue
+
+Rendering Queue
+
+Event Queue
+
+No stale frames.
+
+No duplicated processing.
+
+====================================================
+GPU RUNTIME
+====================================================
+
+Evaluate and select the most suitable runtime.
+
+Candidates include:
+
+ONNX Runtime
+
+TensorRT
+
+OpenVINO
+
+PyTorch
+
+CUDA
+
+CPU Fallback
+
+Support runtime abstraction.
+
+====================================================
+PLUGIN ARCHITECTURE
+====================================================
+
+The detector must be replaceable.
+
+The tracker must be replaceable.
+
+Future AI models must be installable without modifying core code.
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+1000+ Cameras
+
+GPU Inference
+
+CPU Fallback
+
+Async Processing
+
+Worker Pools
+
+Frame Queue
+
+Batch Inference
+
+Low Latency
+
+No duplicate inference.
+
+====================================================
+API
+====================================================
+
+Expose:
+
+Current Tracks
+
+Current Persons
+
+Track History
+
+Detection History
+
+Statistics
+
+Health
+
+Performance Metrics
+
+====================================================
+DATABASE
+====================================================
+
+Store:
+
+Detection History
+
+Track History
+
+Track Metadata
+
+Statistics
+
+Performance Metrics
+
+No face data in this module.
+
+====================================================
+TESTING
+====================================================
+
+Implement production tests.
+
+Verify:
+
+Single Person
+
+Multiple Persons
+
+Crowds
+
+Occlusions
+
+Back View
+
+Side View
+
+Front View
+
+Person Stops Moving
+
+Person Starts Moving
+
+Low FPS
+
+Poor Lighting
+
+RTSP Streams
+
+Playback
+
+Video Wall
+
+Digital Twin Integration
+
+Stress Test
+
+Regression Test
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Evaluate production object detection models.
+
+2. Evaluate production tracking models.
+
+3. Compare alternatives.
+
+4. Explain why every technology is selected.
+
+5. Design the complete Detection Engine architecture.
+
+6. Design the Tracking Engine architecture.
+
+7. Design Event integration.
+
+8. Design API integration.
+
+9. Design testing strategy.
+
+Only after architecture approval begin implementation.
+
+Never use demo implementations.
+
+Never use fake detections.
+
+Never use motion detection as person detection.
+
+Never generate simulated tracking.
+
+Every detection must originate from real production AI inference.
+
+This Detection & Tracking Engine becomes the only official source of person detection for the entire Enterprise AI Video Management System.
+Muhim tavsiya
+
+Bu promptni yakuniy shaklga keltirish uchun bitta qoida qo'shishni tavsiya qilaman:
+
+Har bir AI modelni to'g'ridan-to'g'ri kamera oqimiga ulash taqiqlanadi. Barcha video oqimlar avval yagona Frame Queue orqali o'tishi, so'ng Detection Engine tomonidan qayta ishlanishi va faqat undan keyin boshqa AI modullari (Face Recognition, Fire Detection, OCR, PPE, Vehicle Detection va boshqalar) ushbu natijalardan foydalanishi kerak. Bir xil RTSP oqimini bir nechta modul tomonidan alohida dekodlash yoki alohida inferens qilishga yo'l qo'yilmaydi.
