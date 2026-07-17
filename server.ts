@@ -9,6 +9,8 @@ import { createServer as createViteServer } from "vite";
 import { WebSocketServer } from "ws";
 import { FrameScheduler } from "./services/ai/FrameScheduler";
 import { aiInferencePipeline } from "./services/ai/InferencePipeline";
+import { personDetectionOrchestrator } from "./services/ai/PersonDetectionOrchestrator";
+import { personTrackingEngine } from "./services/ai/PersonTrackingEngine";
 import { 
   saveAnomalyToFirestore, 
   getSecurityAlerts, 
@@ -2225,6 +2227,122 @@ async function startServer() {
         timestamp: timestamp || new Date().toISOString()
       });
       res.json({ success: true, observation: obs });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Person Detection & Tracking API ─────────────────────────────────────
+
+  // GET /api/ai/persons/current — all active confirmed persons, optional ?cameraId=
+  app.get("/api/ai/persons/current", authenticateToken, (req, res) => {
+    const { cameraId } = req.query;
+    const persons = personDetectionOrchestrator.getCurrentPersons(
+      typeof cameraId === 'string' ? cameraId : undefined,
+    );
+    res.json({ count: persons.length, persons });
+  });
+
+  // GET /api/ai/tracks/active — all active tracks with Kalman state
+  app.get("/api/ai/tracks/active", authenticateToken, (req, res) => {
+    const { cameraId } = req.query;
+    const tracks = personTrackingEngine.getCurrentTracks(
+      typeof cameraId === 'string' ? cameraId : undefined,
+    );
+    res.json({ count: tracks.length, tracks });
+  });
+
+  // GET /api/ai/stats — per-camera detection statistics
+  app.get("/api/ai/stats", authenticateToken, (req, res) => {
+    const { cameraId } = req.query;
+    const stats = personDetectionOrchestrator.getStats(
+      typeof cameraId === 'string' ? cameraId : undefined,
+    );
+    res.json(stats);
+  });
+
+  // GET /api/ai/stats/live — real-time rolling 60s stats
+  app.get("/api/ai/stats/live", authenticateToken, (req, res) => {
+    const stats = personTrackingEngine.getStats();
+    const summary = {
+      activeCameras: personTrackingEngine.getActiveCameraCount(),
+      totalActivePersons: personTrackingEngine.getTotalActivePersons(),
+      perCamera: stats,
+      timestamp: new Date().toISOString(),
+    };
+    res.json(summary);
+  });
+
+  // GET /api/ai/health — engine health: plugin state, model loaded, avg latency
+  app.get("/api/ai/health", authenticateToken, (req, res) => {
+    const health = personDetectionOrchestrator.getHealth();
+    const httpStatus = health.pluginState === 'LOADED' ? 200 : 503;
+    res.status(httpStatus).json(health);
+  });
+
+  // GET /api/ai/performance — detailed performance metrics
+  app.get("/api/ai/performance", authenticateToken, (req, res) => {
+    res.json(personDetectionOrchestrator.getPerformanceMetrics());
+  });
+
+  // POST /api/ai/engine/reload — hot-reload person detector (ADMIN only)
+  app.post("/api/ai/engine/reload", authenticateToken, requireRole(['ADMIN']), async (req, res) => {
+    try {
+      const useGpu = req.body?.gpu === true;
+      const ok = await personDetectionOrchestrator.initialize(useGpu);
+      res.json({ success: ok, status: personDetectionOrchestrator.getHealth() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/ai/persons/history — detection history from Firestore
+  app.get("/api/ai/persons/history", authenticateToken, async (req, res) => {
+    const { cameraId, from, to, limit: lim } = req.query;
+    try {
+      const { collection: col, query, where, orderBy, limit: fsLimit, getDocs } = await import('firebase/firestore');
+      let q = query(
+        col(db, 'person_detections'),
+        orderBy('timestamp', 'desc'),
+        fsLimit(parseInt(lim as string || '50', 10)),
+      );
+      if (cameraId) {
+        q = query(
+          col(db, 'person_detections'),
+          where('cameraId', '==', cameraId),
+          orderBy('timestamp', 'desc'),
+          fsLimit(parseInt(lim as string || '50', 10)),
+        );
+      }
+      const snap = await getDocs(q);
+      const records = snap.docs.map(d => d.data());
+      res.json({ count: records.length, records });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/ai/tracks/history — track lifecycle history from Firestore
+  app.get("/api/ai/tracks/history", authenticateToken, async (req, res) => {
+    const { cameraId, limit: lim } = req.query;
+    try {
+      const { collection: col, query, where, orderBy, limit: fsLimit, getDocs } = await import('firebase/firestore');
+      let q = query(
+        col(db, 'person_tracks'),
+        orderBy('createdAt', 'desc'),
+        fsLimit(parseInt(lim as string || '50', 10)),
+      );
+      if (cameraId) {
+        q = query(
+          col(db, 'person_tracks'),
+          where('cameraId', '==', cameraId),
+          orderBy('createdAt', 'desc'),
+          fsLimit(parseInt(lim as string || '50', 10)),
+        );
+      }
+      const snap = await getDocs(q);
+      const tracks = snap.docs.map(d => d.data());
+      res.json({ count: tracks.length, tracks });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

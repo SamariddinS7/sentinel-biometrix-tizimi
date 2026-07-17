@@ -103,3 +103,46 @@
 | Documentation | 10/10 | `replit.md` up to date. Architecture documented in `VMS_ARCHITECTURE.md`. This report generated. |
 
 **The codebase is a clean, stable foundation ready for the next implementation phase.**
+
+---
+
+## Phase 4 — Enterprise Person Detection & Tracking Engine (2026-07-17)
+
+### Completed
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `onnxruntime-node` v1.21.x | ✅ Installed | MIT licence, Microsoft-maintained, CPU EP default |
+| `PersonDetectorPlugin` | ✅ Created | YOLOv8n ONNX inference, letterbox preprocessing (bilinear), NMS, class 0 filter |
+| `PersonTrackingEngine` | ✅ Created | ScalarKalman (pos+vel), KalmanBoxTracker (4×Kalman), KalmanByteTracker (2-stage ByteTrack) |
+| `PersonDetectionOrchestrator` | ✅ Created | Singleton wiring plugin → validator → tracker; full public API |
+| `InferencePipeline` | ✅ Modified | Stage 1+2 replaced with orchestrator; `detectMotionBlobs` removed; `Math.random()` trackId fixed |
+| Server routes | ✅ Added | 9 routes: persons/current, persons/history, tracks/active, tracks/history, stats, stats/live, health, performance, engine/reload |
+| Detection validation | ✅ 7-gate | confidence, bounds, aspect ratio [0.3–6.0], area [0.003–0.92], height >0.02, width >0.01 |
+| ByteTrack | ✅ 2-stage | High-conf (≥0.5) vs all tracks @ IoU≥0.5; low-conf (0.1–0.5) vs unmatched @ IoU≥0.35 |
+| Track lifecycle | ✅ | Tentative→Confirmed @frame 3; Ended @30 missed frames |
+| Events emitted | ✅ 8 types | PersonDetected, PersonUpdated, PersonLost, TrackStarted, TrackUpdated, TrackEnded, DetectionRejected, DetectionRecovered |
+| Firestore writes | ✅ | `person_detections/`, `person_tracks/` (non-blocking, catch-swallowed) |
+| Tests | ✅ 16/16 | All pass: validation gates, lifecycle, occlusion, ByteTrack BYTE stage, Kalman, crowd×20, events, orchestrator API, graceful no-model |
+| TypeScript | ✅ 0 errors | `npx tsc --noEmit` clean |
+
+### Model placement
+`yolov8n.onnx` must be placed at `models/weights/yolov8n.onnx`. The plugin auto-downloads from Ultralytics at startup but the CDN redirect requires network access that may be restricted in the Replit sandbox. Alternatively, download manually:
+```
+curl -L https://github.com/ultralytics/assets/releases/download/v8.2.0/yolov8n.onnx \
+     -o models/weights/yolov8n.onnx
+```
+Without the model file, the system starts cleanly and returns empty detections — no crash, no fake data.
+
+### Production Readiness Score (updated)
+
+**75 / 100**
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| Security | 14/20 | No hardcoded secrets. RBAC enforced on engine/reload route. |
+| Code Quality | 15/20 | TypeScript clean. detectMotionBlobs removed. Math.random() trackId removed. |
+| Architecture | 14/20 | Clean orchestrator pattern. Single responsibility per module. |
+| Data Integrity | 17/20 | All person detections originate from ONNX inference only. Firestore writes non-blocking. |
+| Testing | 8/10 | 16/16 Phase 4 tests + 16/16 Phase 3 pipeline tests. |
+| Documentation | 7/10 | STABILIZATION_REPORT.md updated. |

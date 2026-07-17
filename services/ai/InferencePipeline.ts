@@ -4,13 +4,11 @@ import { FrameScheduler } from './FrameScheduler';
 import { VideoFrame, BoundingBox } from './interfaces';
 import jpeg from 'jpeg-js';
 import { 
-  YoloDetector, 
-  ByteTrackTracker, 
   TrackedObject, 
-  DetectionResult, 
   TargetObjectClass,
   TrackState 
 } from './DetectionTrackingEngine';
+import { personDetectionOrchestrator } from './PersonDetectionOrchestrator';
 import { 
   BiometricFaceEngine, 
   SecureFaceDatabase, 
@@ -31,12 +29,7 @@ export class InferencePipeline {
   private modelManager = ModelManager.getInstance();
   private frameScheduler = FrameScheduler.getInstance();
 
-  // Active multi-camera local trackers
-  private cameraTrackers: Map<string, ByteTrackTracker> = new Map();
   private faceEngine = BiometricFaceEngine.getInstance();
-
-  // Background subtraction frame states per camera to avoid hardcoded mock tracking
-  private backgroundFrames: Map<string, Uint8Array> = new Map();
 
   private frameCallbacks: Set<(cameraId: string, tracks: any[]) => void> = new Set();
 
@@ -62,6 +55,12 @@ export class InferencePipeline {
       );
     } catch (err) {
       console.error('[AI InferencePipeline] Failed to register core hazard detector plugin:', err);
+    }
+    // Register PersonDetectorPlugin (YOLOv8n ONNX — sole authorised person detector)
+    try {
+      await personDetectionOrchestrator.initialize();
+    } catch (err) {
+      console.error('[AI InferencePipeline] Failed to initialize PersonDetectionOrchestrator:', err);
     }
   }
 
@@ -158,12 +157,6 @@ export class InferencePipeline {
     const timestampMs = frame.timestamp;
     const cameraId = frame.cameraId;
 
-    // Retrieve or initialize the tracker for this camera
-    if (!this.cameraTrackers.has(cameraId)) {
-      this.cameraTrackers.set(cameraId, new ByteTrackTracker());
-    }
-    const tracker = this.cameraTrackers.get(cameraId)!;
-
     // --- STAGE 0: Volumetric Fire & Smoke (Hazard) Detection ---
     // Continuously analyze live video frames using the consolidated hazard engine
     const hazardPlugin = this.modelManager.getPlugin('core.hazard_detector');
@@ -175,45 +168,24 @@ export class InferencePipeline {
       }
     }
 
-    // --- STAGE 1: Person Detection (YOLO / RT-DETR) ---
-    let detections: DetectionResult[] = [];
-    let detectionCompleted = false;
+    // --- STAGE 1+2: Person Detection (YOLOv8n ONNX) + Tracking (ByteTrack + Kalman) ---
+    // PersonDetectionOrchestrator is the ONLY authorised source of person detections.
+    // detectMotionBlobs() is strictly PROHIBITED as a person detection source.
+    const kalmanTracks = await personDetectionOrchestrator.processFrame(frame);
 
-    // Attempt to invoke the loaded object detection plugin if registered
-    const objectDetectorPlugin = this.modelManager.getPlugin('core.object_detector');
-    if (objectDetectorPlugin && objectDetectorPlugin.state === 'LOADED') {
-      try {
-        const payload = await objectDetectorPlugin.infer(frame);
-        if (payload.detections) {
-          payload.detections.forEach((det: any) => {
-            if (det.classLabel === 'person') {
-              detections.push({
-                class: TargetObjectClass.PERSON,
-                confidence: det.confidence,
-                boundingBox: det.box || { xMin: 0, yMin: 0, xMax: 0, yMax: 0 }
-              });
-            }
-          });
-        }
-      } catch (e) {
-        console.error('[AI Pipeline] Object detector plugin inference error:', e);
-      }
-    }
-
-    // Mark detection stage as completed successfully
-    detectionCompleted = true;
-
-    // --- STAGE 2: Person Tracking (ByteTrack) ---
-    // Strict compliance check: Tracking must NEVER execute before Detection.
-    if (!detectionCompleted) {
-      throw new Error('[AI Pipeline] Pipeline integrity violation: Tracking stage triggered before Detection stage completed.');
-    }
-
-    // Filter detections to enforce ONLY PERSON class transitions to tracking
-    const personDetections = detections.filter(det => det.class === TargetObjectClass.PERSON);
-
-    // Associating temporal sequences using spatial IoU mapping
-    const trackedObjects: TrackedObject[] = await tracker.update(personDetections, timestampMs, undefined, cameraId);
+    // Convert confirmed KalmanBoxTrackers → TrackedObject[] for stages 3–12 (ReID, face, etc.)
+    const trackedObjects: TrackedObject[] = kalmanTracks
+      .filter(t => t.isConfirmed)
+      .map(t => ({
+        trackId: t.trackId,
+        class: TargetObjectClass.PERSON,
+        confidence: t.lastConfidence,
+        boundingBox: t.getBbox(),
+        motionVector: t.getMotionVector(),
+        state: TrackState.TRACKING,
+        framesActiveCount: t.totalFrames,
+        lastSeenTimestampMs: frame.timestamp,
+      }));
 
     const activeTracksForFrame: any[] = [];
 
@@ -347,7 +319,9 @@ export class InferencePipeline {
       // Spatial containment and reporting is now unified and orchestrated by the Identity Fusion Engine
 
       // Map to TrackedFace DTO format expected by client
-      const numericTrackId = parseInt(obj.trackId.replace(/\D/g, '')) || Math.floor(Math.random() * 10000) + 1;
+      // Derive stable numeric client ID from track ID string (e.g. "cam1_trk_42" → 42)
+      const numericTrackId = parseInt(obj.trackId.split('_trk_').pop() ?? '0', 10) ||
+        (Math.abs(obj.trackId.split('').reduce((h: number, c: string) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % 99999) + 1;
       const mappedTrack = {
         trackId: numericTrackId,
         bbox: {
@@ -422,145 +396,6 @@ export class InferencePipeline {
 
   // ==========================================
   // COMPUTER VISION ALGORITHMIC CORE (MATHS)
-  // ==========================================
-
-  /**
-   * Real background-subtraction blob detection.
-   * Compares subsequent pixel frames and groups differences to extract bounding boxes.
-   */
-  private detectMotionBlobs(frameBuffer: Uint8Array, width: number, height: number, cameraId: string): DetectionResult[] {
-    const detections: DetectionResult[] = [];
-    if (!this.backgroundFrames.has(cameraId)) {
-      this.backgroundFrames.set(cameraId, new Uint8Array(frameBuffer));
-      return [];
-    }
-    const background = this.backgroundFrames.get(cameraId)!;
-    if (background.length !== frameBuffer.length) {
-      this.backgroundFrames.set(cameraId, new Uint8Array(frameBuffer));
-      return [];
-    }
-
-    // Compute absolute pixel differences over a 16x16 downscaled grid
-    const gridCols = 16;
-    const gridRows = 16;
-    const cellWidth = Math.floor(width / gridCols);
-    const cellHeight = Math.floor(height / gridRows);
-    const diffGrid = new Float32Array(gridCols * gridRows);
-
-    for (let r = 0; r < gridRows; r++) {
-      for (let c = 0; c < gridCols; c++) {
-        let diffSum = 0;
-        let pixelCount = 0;
-        const startX = c * cellWidth;
-        const startY = r * cellHeight;
-
-        for (let y = startY; y < startY + cellHeight; y += 4) {
-          for (let x = startX; x < startX + cellWidth; x += 4) {
-            const idx = (y * width + x) * 3;
-            if (idx + 2 < frameBuffer.length) {
-              const rDiff = Math.abs(frameBuffer[idx] - background[idx]);
-              const gDiff = Math.abs(frameBuffer[idx + 1] - background[idx + 1]);
-              const bDiff = Math.abs(frameBuffer[idx + 2] - background[idx + 2]);
-              diffSum += (rDiff + gDiff + bDiff) / 3;
-              pixelCount++;
-            }
-          }
-        }
-        diffGrid[r * gridCols + c] = pixelCount > 0 ? diffSum / pixelCount : 0;
-      }
-    }
-
-    // Threshold grid cells to isolate active motion
-    const sensitivityThreshold = 12;
-    const activeCells = new Uint8Array(gridCols * gridRows);
-    let activeCellCount = 0;
-    for (let i = 0; i < diffGrid.length; i++) {
-      if (diffGrid[i] > sensitivityThreshold) {
-        activeCells[i] = 1;
-        activeCellCount++;
-      } else {
-        activeCells[i] = 0;
-      }
-    }
-
-    // 1. Global Motion Filter (Camera Shake & Global Lighting Changes)
-    const globalMotionRatio = activeCellCount / activeCells.length;
-    if (globalMotionRatio > 0.35) {
-      // Reject global noise entirely to prevent false tracks from shake or light flashes
-      return [];
-    }
-
-    // Connected Components Labeling (Breadth-First Search) to construct spatial blobs
-    const visited = new Uint8Array(gridCols * gridRows);
-    const bfs = (startR: number, startC: number) => {
-      const queue: Array<[number, number]> = [[startR, startC]];
-      visited[startR * gridCols + startC] = 1;
-      let minC = startC, maxC = startC;
-      let minR = startR, maxR = startR;
-
-      while (queue.length > 0) {
-        const [currR, currC] = queue.shift()!;
-        const neighbors = [
-          [currR - 1, currC],
-          [currR + 1, currC],
-          [currR, currC - 1],
-          [currR, currC + 1]
-        ];
-        for (const [nr, nc] of neighbors) {
-          if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols) {
-            const idx = nr * gridCols + nc;
-            if (activeCells[idx] && !visited[idx]) {
-              visited[idx] = 1;
-              queue.push([nr, nc]);
-              if (nc < minC) minC = nc;
-              if (nc > maxC) maxC = nc;
-              if (nr < minR) minR = nr;
-              if (nr > maxR) maxR = nr;
-            }
-          }
-        }
-      }
-      return { minC, maxC, minR, maxR };
-    };
-
-    for (let r = 0; r < gridRows; r++) {
-      for (let c = 0; c < gridCols; c++) {
-        const idx = r * gridCols + c;
-        if (activeCells[idx] && !visited[idx]) {
-          const bbox = bfs(r, c);
-          const xMin = bbox.minC / gridCols;
-          const xMax = (bbox.maxC + 1) / gridCols;
-          const yMin = bbox.minR / gridRows;
-          const yMax = (bbox.maxR + 1) / gridRows;
-
-          const widthVal = xMax - xMin;
-          const heightVal = yMax - yMin;
-          const aspect = heightVal / widthVal;
-          const area = widthVal * heightVal;
-
-          // 2. Human Aspect Ratio and Size Filters
-          // A standing person has an upright aspect ratio (typically height is 1.15 to 3.8 times of width)
-          // Area must be sensible (not too tiny or too huge) to filter out oscillations and flickering lights.
-          if (aspect >= 1.15 && aspect <= 3.8 && area >= 0.02 && area <= 0.65) {
-            detections.push({
-              class: TargetObjectClass.PERSON,
-              confidence: 0.88 + 0.1 * Math.random(),
-              boundingBox: { xMin, yMin, xMax, yMax }
-            });
-          }
-        }
-      }
-    }
-
-    // Slowly update background frame for adaptive illumination tolerance
-    const adaptationRate = 0.04;
-    for (let i = 0; i < frameBuffer.length; i++) {
-      background[i] = Math.round(background[i] * (1 - adaptationRate) + frameBuffer[i] * adaptationRate);
-    }
-
-    return detections;
-  }
-
   /**
    * Executes genuine visual appearance extractor (ReID) via ONNX plugin.
    */
