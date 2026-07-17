@@ -16,6 +16,10 @@ import { vmsAuditService } from '../services/vmsAuditService';
 import { authService } from '../services/authService';
 import { movementIntelligenceEngine } from '../services/ai/MovementIntelligenceEngine';
 import { multiModalIdentityEngine } from '../services/ai/MultiModalIdentityEngine';
+import { IdentityCard } from './IdentityCard';
+import { PersonTimeline } from './PersonTimeline';
+import { PersonSearchModal } from './PersonSearchModal';
+import type { PersonProfile } from '../services/personIntel/types/PersonProfile';
 
 // Interfaces for SOC structures
 interface Alarm {
@@ -55,7 +59,10 @@ interface Personnel {
 
 export const SOCCommandCenter: React.FC = () => {
   // Navigation & UI States
-  const [activeTab, setActiveTab] = useState<'VIDEO_WALL' | 'INCIDENTS' | 'RESOURCES' | 'DIAGNOSTICS'>('VIDEO_WALL');
+  const [activeTab, setActiveTab] = useState<'VIDEO_WALL' | 'INCIDENTS' | 'RESOURCES' | 'DIAGNOSTICS' | 'PERSON_INTEL'>('VIDEO_WALL');
+  // Person Intel state
+  const [intelPerson, setIntelPerson] = useState<PersonProfile | null>(null);
+  const [showPersonSearch, setShowPersonSearch] = useState(false);
   const [selectedSite, setSelectedSite] = useState<string>('Tashkent Campus HQ');
   const [isLockdownMode, setIsLockdownMode] = useState<boolean>(false);
   const [isBuzzerActive, setIsBuzzerActive] = useState<boolean>(false);
@@ -704,6 +711,13 @@ export const SOCCommandCenter: React.FC = () => {
             >
               <Cpu size={14} /> Decoder & AI Diagnostics
             </button>
+            <button
+              onClick={() => setActiveTab('PERSON_INTEL')}
+              className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5
+                ${activeTab === 'PERSON_INTEL' ? 'bg-brand-primary text-white shadow' : 'text-text-muted hover:text-text-secondary'}`}
+            >
+              <ScanFace size={14} /> Person Intel
+            </button>
           </div>
 
           {/* TAB 1: Real-time Video Wall */}
@@ -1120,9 +1134,101 @@ export const SOCCommandCenter: React.FC = () => {
             </div>
           )}
 
+          {/* TAB 4: Person Intelligence */}
+          {activeTab === 'PERSON_INTEL' && (
+            <div className="bg-app-panel border border-border rounded-xl p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ScanFace className="w-4 h-4 text-teal-400" />
+                  <span className="font-semibold text-sm text-white">Live Person Investigation</span>
+                </div>
+                <button
+                  onClick={() => setShowPersonSearch(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-teal-500/20 border border-teal-500/40 text-teal-400 hover:bg-teal-500/30 transition-colors"
+                >
+                  <Search size={12} /> Search Person
+                </button>
+              </div>
+
+              {!intelPerson ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-600">
+                  <ScanFace className="w-12 h-12 mb-3 opacity-20" />
+                  <p className="text-sm font-medium mb-1">No person selected for investigation</p>
+                  <p className="text-xs text-gray-700 mb-4">Search by name, ID, appearance, or natural language</p>
+                  <button
+                    onClick={() => setShowPersonSearch(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm transition-colors"
+                  >
+                    <Search size={14} /> Open Person Search
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Person card */}
+                  <IdentityCard
+                    profile={intelPerson}
+                    selected
+                    onSelect={() => {}}
+                    onInvestigate={() => setShowPersonSearch(true)}
+                    onWatchlist={async () => {
+                      await fetch(`/api/persons/${intelPerson.personId}/watchlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                    }}
+                  />
+
+                  {/* Quick stats */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-2 text-center">
+                      <div className="text-sm font-bold text-blue-400">{intelPerson.totalDetections ?? 0}</div>
+                      <div className="text-[9px] text-gray-500">Detections</div>
+                    </div>
+                    <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-2 text-center">
+                      <div className="text-sm font-bold text-teal-400">{intelPerson.totalRecognitions ?? 0}</div>
+                      <div className="text-[9px] text-gray-500">Recognised</div>
+                    </div>
+                    <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-2 text-center">
+                      <div className="text-sm font-bold text-purple-400">{intelPerson.cameraHistory?.length ?? 0}</div>
+                      <div className="text-[9px] text-gray-500">Cameras</div>
+                    </div>
+                  </div>
+
+                  {/* Live timeline */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1.5">
+                      <Clock size={12} /> Recent Activity
+                    </div>
+                    <PersonTimeline
+                      personId={intelPerson.personId}
+                      maxHeight="320px"
+                      showFilters={false}
+                    />
+                  </div>
+
+                  {/* Change subject */}
+                  <button
+                    onClick={() => setIntelPerson(null)}
+                    className="w-full text-xs py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    Clear subject
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
 
       </div>
+
+      {/* Person Search Modal */}
+      <PersonSearchModal
+        open={showPersonSearch}
+        onClose={() => setShowPersonSearch(false)}
+        onSelect={(profile) => {
+          setIntelPerson(profile);
+          setActiveTab('PERSON_INTEL');
+          setShowPersonSearch(false);
+        }}
+      />
 
     </div>
   );
