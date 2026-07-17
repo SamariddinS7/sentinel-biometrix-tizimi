@@ -164,5 +164,30 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isValidId(recordingId) && recordingId == incoming().id;
       allow delete: if isSignedIn() && isValidId(recordingId);
     }
+
+    // ── Person Intelligence Platform ────────────────────────────────────────
+    match /personProfiles/{personId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(personId);
+      allow delete: if isSignedIn();
+    }
+
+    match /personTimeline/{personId}/entries/{entryId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(entryId);
+      allow delete: if isSignedIn();
+    }
+
+    match /personRelationships/{relationId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(relationId);
+      allow delete: if isSignedIn();
+    }
+
+    match /personReports/{reportId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(reportId);
+      allow delete: if isSignedIn();
+    }
   }
 }

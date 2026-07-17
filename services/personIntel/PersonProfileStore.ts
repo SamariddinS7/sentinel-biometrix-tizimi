@@ -196,7 +196,7 @@ class PersonProfileStoreService {
     await this.updateField(personId, { notes: combined });
     await vmsAuditService.log({
       userId: operator, userName: operator, action: 'PERSON_NOTE_ADDED',
-      module: 'PersonProfileStore', ipAddress: '127.0.0.1', status: 'INFO',
+      module: 'PersonProfileStore', ipAddress: '127.0.0.1', status: 'SUCCESS',
       details: `Note added to profile ${personId}.`,
     });
   }

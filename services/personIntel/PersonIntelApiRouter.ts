@@ -9,7 +9,7 @@
  * Report generation: OPERATOR+
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { personProfileStore }       from './PersonProfileStore';
 import { personTimelineEngine }     from './PersonTimelineEngine';
 import { personInvestigationEngine } from './PersonInvestigationEngine';
@@ -100,7 +100,7 @@ personIntelApiRouter.post('/', async (req: Request, res: Response) => {
 
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_MANUALLY_ENROLLED',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Person ${personId} (${fullName}) manually enrolled.`,
   });
 
@@ -136,7 +136,7 @@ personIntelApiRouter.post('/search', async (req: Request, res: Response) => {
   const results = await personSearchEngine.search(searchQuery);
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_SEARCH',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Search (${searchQuery.mode}): "${searchQuery.text ?? ''}" → ${results.length} results.`,
   });
   ok(res, { results, count: results.length, mode: searchQuery.mode });
@@ -151,7 +151,7 @@ personIntelApiRouter.post('/search/face', async (req: Request, res: Response) =>
   const results = await personInvestigationEngine.findByFace(descriptor, threshold ?? 0.65);
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'FACE_SEARCH',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Face search → ${results.length} results.`,
   });
   ok(res, { results, count: results.length });
@@ -207,7 +207,7 @@ personIntelApiRouter.get('/:id', async (req: Request, res: Response) => {
 
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_PROFILE_ACCESSED',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Profile ${personId} (${profile.fullName}) accessed.`,
   });
 
@@ -215,9 +215,10 @@ personIntelApiRouter.get('/:id', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 11. PATCH /api/persons/:id — update notes / custom attributes
+// 11. PATCH /api/persons/:id — update notes / custom attributes (Supervisor+)
 // ─────────────────────────────────────────────────────────────────────────────
 personIntelApiRouter.patch('/:id', async (req: Request, res: Response) => {
+  if (!isSupervisorOrAdmin(req)) return fail(res, 403, 'Supervisor or Admin required');
   const personId = String(req.params.id);
   const { notes, customAttributes, fullName, department, position } = req.body ?? {};
   const fields: Record<string, unknown> = {};
@@ -230,7 +231,7 @@ personIntelApiRouter.patch('/:id', async (req: Request, res: Response) => {
   await personProfileStore.updateField(personId, fields as any);
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_PROFILE_UPDATED',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Profile ${personId} updated. Fields: ${Object.keys(fields).join(', ')}.`,
   });
   ok(res, { updated: true, personId, fields: Object.keys(fields) });
@@ -292,14 +293,14 @@ personIntelApiRouter.get('/:id/replay', async (req: Request, res: Response) => {
 personIntelApiRouter.get('/:id/evidence', async (req: Request, res: Response) => {
   const personId = String(req.params.id);
   const { since, eventType, limit } = req.query as Record<string, string>;
-  const evidence = personInvestigationEngine.getEvidence(personId, {
+  const evidence = await personInvestigationEngine.getEvidence(personId, {
     since,
     eventType,
     limit: limit ? parseInt(limit, 10) : 50,
   });
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_EVIDENCE_ACCESSED',
-    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
+    module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'SUCCESS',
     details: `Evidence accessed for person ${personId}. ${evidence.length} records.`,
   });
   ok(res, { evidence, count: evidence.length, personId });
@@ -400,4 +401,13 @@ personIntelApiRouter.post('/:id/watchlist', async (req: Request, res: Response) 
   });
 
   ok(res, { watchlisted: true, personId });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Router-level error handler (Express 5 forwards async rejections here)
+// ─────────────────────────────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+personIntelApiRouter.use((err: Error, req: Request, res: Response, _next: NextFunction): void => {
+  console.error('[PersonIntelApiRouter] Unhandled error:', err?.message ?? err);
+  res.status(500).json({ success: false, error: 'Internal server error', detail: err?.message });
 });

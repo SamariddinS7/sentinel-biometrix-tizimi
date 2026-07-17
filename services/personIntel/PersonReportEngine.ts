@@ -92,7 +92,7 @@ class PersonReportEngineService {
       userId:   operator, userName: operator,
       action:   'PERSON_REPORT_GENERATED',
       module:   'PersonReportEngine',
-      ipAddress: '127.0.0.1', status: 'INFO',
+      ipAddress: '127.0.0.1', status: 'SUCCESS',
       details:  `${type} ${period} report generated for ${personId} (${profile.fullName}).`,
     });
 

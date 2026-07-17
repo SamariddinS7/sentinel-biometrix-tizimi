@@ -50,8 +50,8 @@ class PersonTimelineEngineService {
 
   public start(): void {
     // ── VMS event bus subscription ──────────────────────────────────────────
-    this.unsubscribeVms = vmsEventService.subscribeToAll((eventType: string, source: string, payload: Record<string, unknown>) => {
-      this.handleVmsEvent(eventType, source, payload).catch(() => {});
+    this.unsubscribeVms = vmsEventService.subscribeToAll((event) => {
+      this.handleVmsEvent(event.type, event.source, event.payload as Record<string, unknown>).catch(() => {});
     });
 
     // ── Analytics platform subscription ─────────────────────────────────────

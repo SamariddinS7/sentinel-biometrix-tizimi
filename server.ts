@@ -33,6 +33,10 @@ import dns from "dns";
 import { analyticsApiRouter, evidenceApiRouter } from "./services/analytics/AnalyticsApiRouter";
 import { initAnalyticsPlatform } from "./services/analytics/AnalyticsPlatformBootstrap";
 
+// Person Intelligence Platform
+import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
+import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
+
 // VMS Enterprise Core Services
 import { vmsEventService } from "./services/vmsEventService";
 import { vmsAuditService } from "./services/vmsAuditService";
@@ -2470,6 +2474,9 @@ Reply with ONLY valid JSON, no explanation.`;
   app.use("/api/analytics", authenticateToken, analyticsApiRouter);
   app.use("/api/evidence",  authenticateToken, evidenceApiRouter);
 
+  // ── Person Intelligence Platform API ──────────────────────────────────────
+  app.use("/api/persons", authenticateToken, personIntelApiRouter);
+
   // --- Vite Middleware Integration ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2490,6 +2497,9 @@ Reply with ONLY valid JSON, no explanation.`;
     initializeAlarmBroker();
     initAnalyticsPlatform().catch(err => {
       process.stderr.write(`[WARN] Analytics platform bootstrap failed: ${err}\n`);
+    });
+    initPersonIntelPlatform().catch(err => {
+      process.stderr.write(`[WARN] Person Intelligence Platform bootstrap failed: ${err}\n`);
     });
     vmsSystemManager.bootstrap().catch(err => {
       process.stderr.write(`[CRITICAL] VMS lifecycle bootstrap failed: ${err}\n`);
