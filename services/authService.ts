@@ -52,8 +52,11 @@ class AuthService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fullName, email, password, department }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Ro'yxatdan o'tish amalga oshmadi");
+      // Safely parse body — server might send empty body or plain text on rare errors
+      const text = await response.text();
+      let data: any = {};
+      try { data = text ? JSON.parse(text) : {}; } catch { /* non-JSON body */ }
+      if (!response.ok) throw new Error(data.error ?? `Ro'yxatdan o'tish amalga oshmadi (${response.status})`);
       localStorage.setItem('sentinel_token', data.token);
       this.currentUser = {
         id: data.user.id,

@@ -449,10 +449,11 @@ async function startServer() {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const firebaseUser = userCredential.user;
 
-      // Set display name
-      await updateProfile(firebaseUser, { displayName: fullName.trim() });
+      // Set display name (best-effort — non-blocking)
+      updateProfile(firebaseUser, { displayName: fullName.trim() }).catch(() => {});
 
-      // Persist user metadata to Firestore
+      // Persist user metadata to Firestore — fire-and-forget so Firestore
+      // permission issues never block or break the HTTP response.
       const userMeta = {
         fullName: fullName.trim(),
         email: email.trim(),
@@ -460,9 +461,11 @@ async function startServer() {
         role: 'OPERATOR',
         createdAt: new Date().toISOString(),
       };
-      await setDoc(doc(db, "users", firebaseUser.uid), userMeta);
+      setDoc(doc(db, "users", firebaseUser.uid), userMeta).catch((e) => {
+        console.warn('[Register] Firestore profile write failed (non-fatal):', e?.code ?? e?.message);
+      });
 
-      // Issue JWT
+      // Issue JWT immediately — auth user exists even if Firestore write is pending
       const token = jwt.sign(
         { id: firebaseUser.uid, email: firebaseUser.email, role: 'OPERATOR', fullName: fullName.trim() },
         EFFECTIVE_JWT_SECRET,
@@ -480,10 +483,13 @@ async function startServer() {
         },
       });
     } catch (err: any) {
+      console.error('[Register] Firebase Auth error:', err?.code, err?.message);
       if (err.code === 'auth/email-already-in-use') {
         res.status(409).json({ error: "Bu email manzil allaqachon ro'yxatdan o'tgan." });
       } else if (err.code === 'auth/weak-password') {
         res.status(400).json({ error: "Parol juda zaif. Kamida 6 ta belgi kiritilsin." });
+      } else if (err.code === 'auth/operation-not-allowed') {
+        res.status(503).json({ error: "Email/parol orqali ro'yxatdan o'tish hozircha yoqilmagan." });
       } else {
         res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi." });
       }
