@@ -20,6 +20,7 @@ import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligen
 import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
 import { PersonIntelligencePlatform } from './components/PersonIntelligencePlatform';
 import { SOCCommandCenter } from './components/SOCCommandCenter';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
 import { User } from './types';
@@ -27,7 +28,7 @@ import {
   LayoutDashboard, Users, FileText, Settings, Search, Bell, Menu, X, Shield, 
   ChevronDown, Camera, Video, LogOut, User as UserIcon, Lock, HelpCircle, 
   KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, PenTool, Moon, Sun,
-  Activity, Terminal, ShieldAlert, Layers, Eye, Network, Fingerprint
+  Activity, Terminal, ShieldAlert, Layers, Eye, Network, Fingerprint, TrendingUp
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './services/i18n';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
@@ -170,7 +171,7 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState(!!authService.getCurrentUser()); 
   
-  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' | 'soc_center'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' | 'soc_center' | 'analytics'>('dashboard');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
@@ -256,6 +257,7 @@ const AppContent: React.FC = () => {
           case 'alarm_center': return 'Tizim Favqulodda Vaziyatlar Markazi';
           case 'person_intelligence': return 'Shaxslar Intellektual Tizimi';
           case 'soc_center': return 'SOC Unified Command Center';
+          case 'analytics': return 'Enterprise Analytics Platform';
           default: return '';
       }
   };
@@ -393,6 +395,12 @@ const AppContent: React.FC = () => {
 
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Monitoring & Audit</p>
+            <SidebarItem 
+              icon={TrendingUp} 
+              label="Enterprise Analytics" 
+              active={currentView === 'analytics'} 
+              onClick={() => { setCurrentView('analytics'); setIsSidebarOpen(false); }} 
+            />
             <SidebarItem 
               icon={Shield} 
               label="SOC Command Center" 
@@ -581,6 +589,7 @@ const AppContent: React.FC = () => {
                       {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
                       {currentView === 'person_intelligence' && <PersonIntelligencePlatform />}
                       {currentView === 'soc_center' && <SOCCommandCenter />}
+                      {currentView === 'analytics' && <AnalyticsDashboard />}
                   </motion.div>
                 </AnimatePresence>
             </div>

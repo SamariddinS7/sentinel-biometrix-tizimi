@@ -1,0 +1,684 @@
+You are implementing the Enterprise Person Intelligence & Investigation Platform of the Enterprise AI Video Management System (AI VMS).
+
+This module is responsible for maintaining the complete lifecycle, history and investigation capabilities of every observed person.
+
+This platform becomes the central source of truth for every detected individual.
+
+It must integrate with:
+
+Camera Layer
+
+Detection Engine
+
+Tracking Engine
+
+Identity Intelligence
+
+Analytics Engine
+
+Event Engine
+
+Evidence Manager
+
+Recording Service
+
+Digital Twin
+
+SOC Command Center
+
+Alarm Center
+
+Notification System
+
+This is NOT a demo.
+
+This is NOT a prototype.
+
+Everything must be production-ready.
+
+====================================================
+MISSION
+====================================================
+
+Maintain one persistent profile for every person.
+
+Every observation must automatically enrich the person's profile.
+
+Every movement.
+
+Every appearance.
+
+Every recognition.
+
+Every incident.
+
+Every AI event.
+
+Everything belongs to one profile.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never generate:
+
+Fake Profiles
+
+Mock Histories
+
+Placeholder Timeline
+
+Random Statistics
+
+Fake Visits
+
+Fake Routes
+
+Random Incidents
+
+Fake Relationships
+
+Every record must originate from real AI events.
+
+====================================================
+PERSON PROFILE
+====================================================
+
+Maintain:
+
+Persistent Person ID
+
+Full Name
+
+Employee ID
+
+Department
+
+Organization
+
+Position
+
+Status
+
+Face Gallery
+
+Appearance Gallery
+
+Embeddings
+
+Profile Photo
+
+Contact Information (optional)
+
+Documents (optional)
+
+Notes
+
+Custom Attributes
+
+Registration History
+
+Profile Versioning
+
+====================================================
+FACE MANAGEMENT
+====================================================
+
+Support:
+
+Multiple Faces
+
+Embedding Versioning
+
+Quality Score
+
+Face History
+
+Face Replacement
+
+Face Merge
+
+Face Archive
+
+====================================================
+APPEARANCE HISTORY
+====================================================
+
+Maintain:
+
+Upper Clothing
+
+Lower Clothing
+
+Colors
+
+Shoes
+
+Helmet
+
+Vest
+
+Bag
+
+Accessories
+
+Appearance Embeddings
+
+Appearance Timeline
+
+Appearance Changes
+
+====================================================
+MOVEMENT HISTORY
+====================================================
+
+Store:
+
+Building
+
+Campus
+
+Floor
+
+Room
+
+Zone
+
+Camera
+
+Timestamp
+
+Entry
+
+Exit
+
+Duration
+
+Travel Path
+
+Visited Locations
+
+Movement Timeline
+
+Cross Camera Movement
+
+====================================================
+CAMERA HISTORY
+====================================================
+
+Maintain:
+
+First Seen
+
+Last Seen
+
+Detection Count
+
+Recognition Count
+
+Most Visited Cameras
+
+Visit Frequency
+
+Current Camera
+
+Previous Camera
+
+====================================================
+TIMELINE
+====================================================
+
+Create chronological timeline.
+
+Include:
+
+Detection
+
+Tracking
+
+Recognition
+
+Movement
+
+Analytics
+
+Alarm
+
+Incident
+
+Evidence
+
+Manual Notes
+
+Operator Actions
+
+====================================================
+RELATIONSHIP ANALYSIS
+====================================================
+
+Support evidence-based analysis only.
+
+Detect:
+
+Repeated Co-occurrence
+
+Group Entry
+
+Group Exit
+
+Repeated Route Similarity
+
+Repeated Zone Visits
+
+Repeated Unknown Companion
+
+Movement Correlation
+
+Meeting Pattern
+
+Time Correlation
+
+Camera Correlation
+
+Building Correlation
+
+Do not infer personal relationships.
+
+Results must be based only on observed evidence.
+
+====================================================
+INVESTIGATION
+====================================================
+
+Support:
+
+Person Timeline
+
+Movement Replay
+
+Cross Camera Investigation
+
+Face Search
+
+Appearance Search
+
+Similarity Search
+
+Route Search
+
+Incident Search
+
+Evidence Search
+
+Time Range Search
+
+Camera Search
+
+Natural Language Search
+
+====================================================
+INCIDENT HISTORY
+====================================================
+
+Attach:
+
+Fire Events
+
+Hazard Events
+
+PPE Violations
+
+Unauthorized Entry
+
+Restricted Area
+
+Loitering
+
+Intrusion
+
+Alarm
+
+Vehicle Association
+
+Analytics Events
+
+Evidence
+
+====================================================
+EVIDENCE
+====================================================
+
+Store:
+
+Snapshots
+
+Video Clips
+
+AI Metadata
+
+Detection Metadata
+
+Recognition Metadata
+
+Camera Metadata
+
+Export History
+
+Chain of Custody
+
+====================================================
+REPORTS
+====================================================
+
+Generate:
+
+Movement Report
+
+Attendance Report
+
+Visit Report
+
+Incident Report
+
+Investigation Report
+
+Evidence Report
+
+Recognition Report
+
+Behavior Summary
+
+Daily
+
+Weekly
+
+Monthly
+
+====================================================
+SEARCH ENGINE
+====================================================
+
+Support:
+
+Face Search
+
+Image Search
+
+Appearance Search
+
+Person Search
+
+Timeline Search
+
+Evidence Search
+
+Movement Search
+
+Similarity Search
+
+Hybrid Search
+
+Natural Language Search
+
+====================================================
+STATISTICS
+====================================================
+
+Generate:
+
+Visit Frequency
+
+Average Stay
+
+Movement Distance
+
+Most Visited Areas
+
+Most Active Hours
+
+Recognition Accuracy
+
+Incident Count
+
+Camera Usage
+
+====================================================
+DIGITAL TWIN
+====================================================
+
+Update:
+
+Current Position
+
+Historical Movement
+
+Current Zone
+
+Current Camera
+
+Investigation Mode
+
+====================================================
+SOC COMMAND CENTER
+====================================================
+
+Support:
+
+Live Investigation
+
+Timeline
+
+Person Card
+
+Evidence Viewer
+
+Movement Replay
+
+Cross Camera Search
+
+====================================================
+DATABASE
+====================================================
+
+Normalize:
+
+Person
+
+Face
+
+Appearance
+
+Movement
+
+Timeline
+
+Relationship Evidence
+
+Incidents
+
+Evidence
+
+Reports
+
+Statistics
+
+Never duplicate person records.
+
+====================================================
+API
+====================================================
+
+Expose:
+
+Profile API
+
+Movement API
+
+Timeline API
+
+Investigation API
+
+Search API
+
+Evidence API
+
+Statistics API
+
+====================================================
+SECURITY
+====================================================
+
+Protect:
+
+Biometric Data
+
+Movement History
+
+Evidence
+
+Reports
+
+Profiles
+
+Support:
+
+RBAC
+
+Audit Logging
+
+Encrypted Storage
+
+Fine-Grained Permissions
+
+====================================================
+AUDIT
+====================================================
+
+Log:
+
+Profile Updates
+
+Evidence Access
+
+Investigation Access
+
+Exports
+
+Report Generation
+
+Profile Merge
+
+Manual Changes
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+Millions of Profiles
+
+Millions of Events
+
+Millions of Timeline Records
+
+Cross Camera Queries
+
+Distributed Search
+
+GPU Search
+
+Vector Search
+
+====================================================
+PLUGIN ARCHITECTURE
+====================================================
+
+Support future plugins.
+
+Examples:
+
+Behavior Intelligence
+
+Risk Scoring
+
+Attendance
+
+Visitor Management
+
+Future Analytics
+
+====================================================
+TESTING
+====================================================
+
+Implement:
+
+Profile Validation
+
+Timeline Validation
+
+Movement Validation
+
+Relationship Validation
+
+Evidence Validation
+
+Search Validation
+
+Performance Tests
+
+Regression Tests
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Evaluate existing implementation.
+
+2. Reuse existing modules.
+
+3. Design the Person Intelligence architecture.
+
+4. Design Investigation Engine.
+
+5. Design Timeline Engine.
+
+6. Design Relationship Analysis.
+
+7. Design APIs.
+
+8. Design Database.
+
+9. Design Search Engine.
+
+10. Design testing strategy.
+
+Only after architecture approval begin implementation.
+
+Never use demo implementations.
+
+Never generate fake profiles.
+
+Never create placeholder histories.
+
+Never simulate investigation data.
+
+Every profile must originate from real production AI events.
+
+This module becomes the central investigation and identity platform of the Enterprise AI Video Management System.
+🔥 Muhim tavsiya (7-promptni yanada kuchaytirish)
+
+Men yana bitta majburiy qoida qo'shishni tavsiya qilaman:
+
+INVESTIGATION CONSISTENCY POLICY
+
+The Investigation Platform must never infer facts that are not supported by recorded evidence.
+
+Every timeline entry, movement path, co-occurrence, association, incident and report must reference actual observations recorded by the system.
+
+Whenever confidence is insufficient, the platform must present the result as an observation or possible correlation rather than a confirmed fact.
+
+Every investigation result must include links to the supporting evidence (video clips, snapshots, AI metadata, timestamps and camera identifiers) to allow operator verification.

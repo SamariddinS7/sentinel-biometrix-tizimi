@@ -29,6 +29,10 @@ import crypto from "crypto";
 import os from "os";
 import dns from "dns";
 
+// Analytics Platform
+import { analyticsApiRouter, evidenceApiRouter } from "./services/analytics/AnalyticsApiRouter";
+import { initAnalyticsPlatform } from "./services/analytics/AnalyticsPlatformBootstrap";
+
 // VMS Enterprise Core Services
 import { vmsEventService } from "./services/vmsEventService";
 import { vmsAuditService } from "./services/vmsAuditService";
@@ -2462,6 +2466,10 @@ Reply with ONLY valid JSON, no explanation.`;
     }
   });
 
+  // ── Analytics Platform API ─────────────────────────────────────────────────
+  app.use("/api/analytics", authenticateToken, analyticsApiRouter);
+  app.use("/api/evidence",  authenticateToken, evidenceApiRouter);
+
   // --- Vite Middleware Integration ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2480,6 +2488,9 @@ Reply with ONLY valid JSON, no explanation.`;
   const server = app.listen(PORT, "0.0.0.0", () => {
     process.stdout.write(`[Sentinel Biometrics] Server ready on port ${PORT}\n`);
     initializeAlarmBroker();
+    initAnalyticsPlatform().catch(err => {
+      process.stderr.write(`[WARN] Analytics platform bootstrap failed: ${err}\n`);
+    });
     vmsSystemManager.bootstrap().catch(err => {
       process.stderr.write(`[CRITICAL] VMS lifecycle bootstrap failed: ${err}\n`);
     });
