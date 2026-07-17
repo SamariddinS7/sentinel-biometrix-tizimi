@@ -1,0 +1,545 @@
+You are implementing the Enterprise Analytics & Safety Intelligence Platform of the Enterprise AI Video Management System (AI VMS).
+
+This module is responsible for all AI-based analytics that operate after the Person Detection & Identity Intelligence Platform.
+
+This module must integrate with:
+
+Camera Layer
+
+Frame Queue
+
+Detection Engine
+
+Tracking Engine
+
+Identity Intelligence
+
+Person Profile
+
+Movement Intelligence
+
+Digital Twin
+
+Event Engine
+
+Evidence Manager
+
+Alarm Center
+
+SOC Command Center
+
+This is NOT a demo.
+
+This is NOT a prototype.
+
+Everything must be production-ready.
+
+====================================================
+MISSION
+====================================================
+
+Create one unified Enterprise Analytics Platform.
+
+Every analytics module must be implemented as an independent plugin.
+
+The core Analytics Engine must never depend on a specific AI model.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never generate:
+
+Fake detections
+
+Mock analytics
+
+Placeholder AI
+
+Random confidence
+
+Hardcoded alarms
+
+Hardcoded statistics
+
+Simulated reports
+
+Fake OCR
+
+Fake License Plates
+
+Fake Fire Detection
+
+Every result must originate from real AI inference.
+
+====================================================
+MODEL SELECTION POLICY
+====================================================
+
+Before implementation:
+
+Evaluate production-ready open-source models.
+
+Compare:
+
+Accuracy
+
+Latency
+
+GPU Performance
+
+CPU Performance
+
+Memory Usage
+
+Long-term Maintenance
+
+Community Support
+
+Documentation
+
+Enterprise Stability
+
+License Compatibility
+
+Choose the most suitable production technologies.
+
+The architecture must remain model-independent.
+
+====================================================
+ANALYTICS MODULES
+====================================================
+
+Implement as independent plugins.
+
+Support:
+
+OCR
+
+License Plate Recognition
+
+Vehicle Detection
+
+Vehicle Classification
+
+Vehicle Counting
+
+Fire Detection
+
+Smoke Detection
+
+Explosion Detection
+
+Gas Leak Detection (camera-capable only)
+
+Electrical Spark Detection
+
+Flood Detection
+
+Water Leak Detection
+
+Hazard Zone Violation
+
+Chemical Spill Detection (camera-capable only)
+
+PPE Detection
+
+Helmet Detection
+
+Safety Vest Detection
+
+Safety Glasses Detection
+
+Gloves Detection
+
+Safety Shoes Detection
+
+Mask Detection
+
+Crowd Detection
+
+Crowd Density
+
+Occupancy Detection
+
+Queue Detection
+
+Abandoned Object
+
+Removed Object
+
+Loitering
+
+Intrusion
+
+Line Crossing
+
+Zone Detection
+
+Wrong Direction
+
+People Counting
+
+Heatmap
+
+Behavior Analysis
+
+Future Analytics Plugins
+
+====================================================
+EVENT ENGINE
+====================================================
+
+Generate standardized events.
+
+Examples:
+
+FireDetected
+
+SmokeDetected
+
+VehicleDetected
+
+VehicleEntered
+
+VehicleExited
+
+PlateRecognized
+
+OCRCompleted
+
+CrowdDetected
+
+OccupancyUpdated
+
+PPEViolation
+
+HelmetMissing
+
+MaskMissing
+
+QueueDetected
+
+LoiteringDetected
+
+IntrusionDetected
+
+HazardDetected
+
+AbandonedObjectDetected
+
+RemovedObjectDetected
+
+AnalyticsCompleted
+
+Every event must contain:
+
+Timestamp
+
+Camera
+
+Location
+
+Confidence
+
+AI Model Version
+
+Evidence Reference
+
+Bounding Boxes
+
+Track ID (when available)
+
+====================================================
+ALARM CENTER
+====================================================
+
+Automatically create alarms.
+
+Support:
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Alarm Assignment
+
+Alarm Escalation
+
+Alarm Resolution
+
+Alarm History
+
+Alarm Timeline
+
+====================================================
+EVIDENCE
+====================================================
+
+Automatically generate evidence.
+
+Store:
+
+Snapshot
+
+Video Clip
+
+AI Metadata
+
+Bounding Boxes
+
+Confidence
+
+Model Version
+
+Track ID
+
+Camera
+
+Timestamp
+
+Location
+
+====================================================
+REPORTING
+====================================================
+
+Generate:
+
+OCR Reports
+
+Vehicle Reports
+
+Traffic Reports
+
+Fire Reports
+
+Safety Reports
+
+Crowd Reports
+
+PPE Reports
+
+Hazard Reports
+
+Analytics Reports
+
+Trend Analysis
+
+Daily
+
+Weekly
+
+Monthly
+
+====================================================
+SEARCH
+====================================================
+
+Support:
+
+OCR Search
+
+License Plate Search
+
+Vehicle Search
+
+Person Search
+
+Fire Search
+
+Incident Search
+
+Analytics Search
+
+Evidence Search
+
+====================================================
+DATABASE
+====================================================
+
+Normalize storage.
+
+Separate:
+
+Analytics Results
+
+Vehicle Data
+
+OCR Results
+
+Fire Events
+
+Hazard Events
+
+PPE Events
+
+Crowd Statistics
+
+Heatmaps
+
+Reports
+
+Evidence
+
+====================================================
+API
+====================================================
+
+Expose:
+
+Analytics API
+
+Reports API
+
+Vehicle API
+
+OCR API
+
+Fire API
+
+Statistics API
+
+Evidence API
+
+====================================================
+PLUGIN ARCHITECTURE
+====================================================
+
+Every analytics module must be installable, removable and upgradable independently.
+
+No analytics module may modify the core engine.
+
+====================================================
+GPU RUNTIME
+====================================================
+
+Support:
+
+ONNX Runtime
+
+TensorRT
+
+OpenVINO
+
+CUDA
+
+CPU Fallback
+
+Batch Inference
+
+Async Workers
+
+Worker Pool
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+1000+ Cameras
+
+Real-Time Analytics
+
+Distributed Workers
+
+GPU Clusters
+
+Batch Processing
+
+Frame Scheduling
+
+Low Latency
+
+No duplicate inference.
+
+====================================================
+SECURITY
+====================================================
+
+Protect:
+
+Analytics Results
+
+Reports
+
+Evidence
+
+Vehicle Information
+
+OCR Results
+
+Operator Permissions
+
+RBAC
+
+Audit Logging
+
+====================================================
+TESTING
+====================================================
+
+Implement:
+
+Analytics Accuracy Tests
+
+OCR Validation
+
+Vehicle Validation
+
+Fire Validation
+
+Crowd Validation
+
+PPE Validation
+
+Regression Tests
+
+Stress Tests
+
+Performance Tests
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Evaluate production AI models.
+
+2. Compare alternatives.
+
+3. Select the most suitable technologies.
+
+4. Explain every selection.
+
+5. Design the Analytics Engine architecture.
+
+6. Design plugin interfaces.
+
+7. Design Event integration.
+
+8. Design Alarm integration.
+
+9. Design APIs.
+
+10. Design database schema.
+
+11. Design testing strategy.
+
+Only after architecture approval begin implementation.
+
+Never use demo implementations.
+
+Never simulate AI.
+
+Never create placeholder analytics.
+
+Every analytics result must originate from real production AI inference.
+
+The Enterprise Analytics Platform becomes the only official analytics engine of the Enterprise AI Video Management System.

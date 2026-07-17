@@ -6,8 +6,19 @@ import { vmsEventService, VmsEventType } from '../../vmsEventService';
 
 export interface HazardSubDetectorConfig {
   enabled: boolean;
-  sensitivity: number; // 0.0 to 1.0
+  sensitivity: number;   // 0.0 to 1.0
   alarmDelaySec: number; // Duration of continuous trigger before escalating to alarm
+  /** True when the hazard can be detected by analysing standard RGB camera frames. */
+  cameraCapable?: boolean;
+  /**
+   * True when the hazard REQUIRES an external sensor (electrochemical gas sensor,
+   * thermal camera, multispectral imager, CBRN detector, etc.).
+   * Standard RGB IP cameras cannot reliably detect these phenomena.
+   * Use receiveSensorAlert() to inject validated sensor readings.
+   */
+  sensorIntegrationReady?: boolean;
+  /** List of sensor / camera types that can reliably detect this hazard. */
+  sensorTypes?: string[];
   criticalZones?: Array<{ name: string; polygon: Array<{ x: number; y: number }> }>;
 }
 
@@ -36,26 +47,121 @@ export class HazardDetectorPlugin extends BaseAiPlugin {
 
   public hazardConfig: HazardPluginConfig = {
     threshold: 0.5,
-    fire: { enabled: true, sensitivity: 0.7, alarmDelaySec: 2 },
-    smoke: { enabled: true, sensitivity: 0.65, alarmDelaySec: 3 },
-    gasLeak: { enabled: false, sensitivity: 0.8, alarmDelaySec: 2 },
-    explosion: { enabled: true, sensitivity: 0.9, alarmDelaySec: 0 }, // Instant alarm
-    electricalSpark: { enabled: true, sensitivity: 0.75, alarmDelaySec: 1 },
-    flood: { enabled: false, sensitivity: 0.7, alarmDelaySec: 5 },
-    waterLeak: { enabled: false, sensitivity: 0.6, alarmDelaySec: 10 },
-    hazardZoneViolation: { enabled: true, sensitivity: 0.8, alarmDelaySec: 2 },
-    chemicalSpill: { enabled: false, sensitivity: 0.75, alarmDelaySec: 4 }
+    // ── Camera-capable hazards ────────────────────────────────────────────────
+    fire: {
+      enabled: true, sensitivity: 0.7, alarmDelaySec: 2,
+      cameraCapable: true,
+    },
+    smoke: {
+      enabled: true, sensitivity: 0.65, alarmDelaySec: 3,
+      cameraCapable: true,
+    },
+    explosion: {
+      enabled: true, sensitivity: 0.9, alarmDelaySec: 0, // Instant alarm
+      cameraCapable: true,
+    },
+    electricalSpark: {
+      enabled: true, sensitivity: 0.75, alarmDelaySec: 1,
+      cameraCapable: true,
+    },
+    flood: {
+      enabled: true, sensitivity: 0.7, alarmDelaySec: 5,
+      cameraCapable: true,
+    },
+    waterLeak: {
+      enabled: true, sensitivity: 0.6, alarmDelaySec: 10,
+      cameraCapable: true,
+    },
+    hazardZoneViolation: {
+      enabled: true, sensitivity: 0.8, alarmDelaySec: 2,
+      cameraCapable: true,
+    },
+    // ── Sensor Integration Required hazards ───────────────────────────────────
+    // Standard RGB IP cameras CANNOT reliably detect gas leaks or chemical spills.
+    // These sub-detectors require external sensor hardware or thermal/multispectral
+    // cameras. Enable them and feed readings via receiveSensorAlert().
+    gasLeak: {
+      enabled: true, sensitivity: 0.8, alarmDelaySec: 2,
+      cameraCapable: false,
+      sensorIntegrationReady: true,
+      sensorTypes: [
+        'electrochemical_gas_sensor',
+        'NDIR_infrared_sensor',
+        'thermal_camera',
+        'multispectral_camera',
+        'PID_photoionisation_detector',
+      ],
+    },
+    chemicalSpill: {
+      enabled: true, sensitivity: 0.75, alarmDelaySec: 4,
+      cameraCapable: false,
+      sensorIntegrationReady: true,
+      sensorTypes: [
+        'chemical_point_sensor',
+        'thermal_camera',
+        'multispectral_camera',
+        'CBRN_detector',
+        'hyperspectral_imager',
+      ],
+    },
   };
 
   private modelFilePath = path.join(process.cwd(), 'models', 'weights', 'hazard_multi_class.onnx');
   private hasNativeBindings = false;
 
-  // Active detection counters to evaluate alarm Escalation Timers and prevent flapping
-  // Map key: `${cameraId}_${hazardType}` -> { firstSeen: number, lastSeen: number, count: number }
+  // Active detection counters for alarm escalation timers (anti-flapping)
+  // Key: `${cameraId}_${hazardType}` → { firstSeen, lastSeen, count }
   private triggerTrackers: Map<string, { firstSeen: number; lastSeen: number; count: number }> = new Map();
-  
-  // Commissioned states for dry-testing (used to physically verify alarm, recording, and dashboard paths)
+
+  // Commissioned states for dry-testing (QA commissioning runs)
   private static commissionedHazards: Map<string, Set<string>> = new Map();
+
+  /**
+   * Sensor Integration Ready API
+   *
+   * Injects a validated alert from an external sensor (gas sensor, thermal camera,
+   * CBRN detector, etc.) for hazard types that are NOT camera-capable.
+   *
+   * Call this from your sensor gateway / MQTT bridge when a sensor threshold is exceeded.
+   *
+   * @param hazardType  - 'gasLeak' | 'chemicalSpill'
+   * @param cameraId    - Camera associated with the sensor's physical location
+   * @param confidence  - Sensor reading normalised to [0.0, 1.0]
+   * @param sensorMeta  - Raw sensor payload (concentration ppm, sensor type, etc.)
+   */
+  public receiveSensorAlert(
+    hazardType: 'gasLeak' | 'chemicalSpill',
+    cameraId  : string,
+    confidence: number,
+    sensorMeta: Record<string, unknown> = {},
+  ): void {
+    const cfg = this.hazardConfig[hazardType] as HazardSubDetectorConfig;
+    if (!cfg?.enabled || !cfg.sensorIntegrationReady) return;
+    if (confidence < cfg.sensitivity) return;
+
+    const key   = `sensor_${cameraId}_${hazardType}`;
+    const now   = Date.now();
+    const entry = this.sensorAlerts.get(key);
+    if (entry) {
+      entry.lastSeen    = now;
+      entry.confidence  = Math.max(entry.confidence, confidence);
+      entry.meta        = { ...entry.meta, ...sensorMeta };
+    } else {
+      this.sensorAlerts.set(key, { firstSeen: now, lastSeen: now, confidence, meta: sensorMeta });
+    }
+    console.log(
+      `[HazardDetector] Sensor alert received: ${hazardType} on camera ${cameraId} ` +
+      `(confidence: ${(confidence * 100).toFixed(1)}%, sensorTypes: ${cfg.sensorTypes?.join(', ')})`,
+    );
+  }
+
+  /** Active sensor alerts injected via receiveSensorAlert() */
+  private sensorAlerts: Map<string, {
+    firstSeen : number;
+    lastSeen  : number;
+    confidence: number;
+    meta      : Record<string, unknown>;
+  }> = new Map();
 
   /**
    * Set or toggle a test hazard trigger for commissioning/QA verification

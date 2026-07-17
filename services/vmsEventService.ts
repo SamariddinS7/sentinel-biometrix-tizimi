@@ -1,6 +1,7 @@
 import { getLocalCache, setLocalCache } from './firestoreService';
 
 export type VmsEventType =
+  // ── System ──────────────────────────────────────────────────────────
   | 'CAMERA_CONNECTED'
   | 'CAMERA_DISCONNECTED'
   | 'AI_DETECTION_FINISHED'
@@ -11,15 +12,47 @@ export type VmsEventType =
   | 'USER_LOGOUT'
   | 'SYSTEM_ERROR'
   | 'STORAGE_WARNING'
+  // ── Hazard / Safety (camera-capable) ────────────────────────────────
   | 'HAZARD_DETECTED'
   | 'FIRE_DETECTED'
   | 'SMOKE_DETECTED'
-  | 'GAS_LEAK_DETECTED'
   | 'EXPLOSION_DETECTED'
   | 'SPARK_DETECTED'
   | 'FLOOD_DETECTED'
   | 'WATER_LEAK_DETECTED'
-  | 'CHEMICAL_SPILL_DETECTED';
+  // ── Hazard / Safety (sensor integration ready) ──────────────────────
+  | 'GAS_LEAK_DETECTED'
+  | 'CHEMICAL_SPILL_DETECTED'
+  // ── PPE / Safety compliance ──────────────────────────────────────────
+  | 'PPE_VIOLATION'
+  | 'HELMET_MISSING'
+  | 'MASK_MISSING'
+  // ── Vehicle & Traffic ────────────────────────────────────────────────
+  | 'VEHICLE_DETECTED'
+  | 'VEHICLE_ENTERED'
+  | 'VEHICLE_EXITED'
+  | 'PLATE_RECOGNIZED'
+  // ── OCR ─────────────────────────────────────────────────────────────
+  | 'OCR_COMPLETED'
+  // ── Crowd & Occupancy ────────────────────────────────────────────────
+  | 'CROWD_DETECTED'
+  | 'OCCUPANCY_UPDATED'
+  | 'QUEUE_DETECTED'
+  | 'HEATMAP_UPDATED'
+  | 'PEOPLE_COUNT_UPDATED'
+  // ── Behaviour & Spatial ──────────────────────────────────────────────
+  | 'LOITERING_DETECTED'
+  | 'INTRUSION_DETECTED'
+  | 'LINE_CROSSED'
+  | 'ZONE_ENTERED'
+  | 'ZONE_EXITED'
+  | 'WRONG_DIRECTION_DETECTED'
+  | 'ABANDONED_OBJECT_DETECTED'
+  | 'REMOVED_OBJECT_DETECTED'
+  | 'BEHAVIOR_ANALYZED'
+  // ── Analytics meta ───────────────────────────────────────────────────
+  | 'ANALYTICS_COMPLETED'
+  | 'ANALYTICS_ALARM_CREATED';
 
 export interface VmsEvent<T = any> {
   id: string;
