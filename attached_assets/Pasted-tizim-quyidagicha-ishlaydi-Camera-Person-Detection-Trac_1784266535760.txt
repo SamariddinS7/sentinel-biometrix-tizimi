@@ -1,0 +1,638 @@
+tizim quyidagicha ishlaydi:
+
+Camera
+      │
+      ▼
+Person Detection
+      │
+      ▼
+Tracking
+      │
+      ▼
+ReID
+      │
+      ▼
+Face Visibility
+      │
+      ▼
+Face Detection
+      │
+      ▼
+Face Quality
+      │
+      ▼
+Face Alignment
+      │
+      ▼
+Face Embedding
+      │
+      ▼
+Face Recognition
+      │
+      ▼
+Appearance Intelligence
+      │
+      ▼
+Identity Fusion
+      │
+      ▼
+Person Profile
+      │
+      ▼
+Movement History
+      │
+      ▼
+Event Bus
+PROMPT 5 — Enterprise Identity Intelligence Platform (Face Recognition + ReID + Identity Fusion)
+You are implementing the Enterprise Identity Intelligence Platform of the Enterprise AI Video Management System (AI VMS).
+
+This module is responsible for maintaining one persistent identity for every observed person across the entire surveillance platform.
+
+This is the core intelligence layer of the system.
+
+Everything must follow the previously approved architecture.
+
+This is NOT a demo.
+
+This is NOT research.
+
+This is NOT a proof of concept.
+
+Everything must be production-ready.
+
+====================================================
+MISSION
+====================================================
+
+Maintain exactly one identity for every observed person.
+
+One Person
+
+↓
+
+One Persistent Identity
+
+↓
+
+Unlimited Cameras
+
+↓
+
+Unlimited Time
+
+↓
+
+Unlimited Observations
+
+↓
+
+One Person Profile
+
+No duplicate identities may exist.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never generate:
+
+Fake Recognition
+
+Placeholder Recognition
+
+Mock Face Detection
+
+Random Similarity
+
+Random Embeddings
+
+Random Confidence
+
+Fake Person Profiles
+
+Fake History
+
+Fake Timeline
+
+Every identity decision must originate from real AI inference.
+
+====================================================
+MODEL SELECTION POLICY
+====================================================
+
+Before implementation evaluate production-ready open-source models.
+
+Compare according to:
+
+Recognition Accuracy
+
+Inference Latency
+
+GPU Performance
+
+CPU Performance
+
+Community Support
+
+Maintenance
+
+License Compatibility
+
+Model Size
+
+Memory Usage
+
+Long-Term Stability
+
+Documentation
+
+The architecture must remain model independent.
+
+====================================================
+FACE DETECTION
+====================================================
+
+Evaluate production models.
+
+Support:
+
+Multiple Faces
+
+Partial Faces
+
+Different Angles
+
+Masks
+
+Glasses
+
+Caps
+
+Low Light
+
+IR Cameras
+
+Future Thermal Cameras
+
+====================================================
+FACE QUALITY
+====================================================
+
+Evaluate:
+
+Blur
+
+Brightness
+
+Resolution
+
+Pose
+
+Occlusion
+
+Sharpness
+
+Quality Score
+
+Faces below quality threshold must not be recognized.
+
+====================================================
+FACE ALIGNMENT
+====================================================
+
+Normalize:
+
+Rotation
+
+Scale
+
+Perspective
+
+Pose
+
+Before embedding extraction.
+
+====================================================
+FACE EMBEDDING
+====================================================
+
+Generate production embeddings.
+
+Support:
+
+Embedding Versioning
+
+Embedding History
+
+Multiple Embeddings
+
+Automatic Updates
+
+Secure Storage
+
+====================================================
+FACE RECOGNITION
+====================================================
+
+Possible outcomes:
+
+Known Person
+
+Unknown Person
+
+Multiple Candidates
+
+Low Confidence
+
+Recognition Failed
+
+Never force recognition.
+
+====================================================
+PERSON RE-IDENTIFICATION
+====================================================
+
+Evaluate production ReID models.
+
+Support:
+
+Cross Camera ReID
+
+Persistent Identity
+
+Appearance Embeddings
+
+Occlusion Recovery
+
+Long-Term Tracking
+
+Cross Building Tracking
+
+====================================================
+APPEARANCE INTELLIGENCE
+====================================================
+
+Extract:
+
+Upper Clothing
+
+Lower Clothing
+
+Dominant Colors
+
+Secondary Colors
+
+Patterns
+
+Shoes
+
+Helmet
+
+Vest
+
+Bag
+
+Backpack
+
+Accessories
+
+Estimated Height
+
+Estimated Body Shape
+
+Appearance Embeddings
+
+Appearance History
+
+====================================================
+IDENTITY FUSION
+====================================================
+
+Fuse:
+
+Face Recognition
+
+ReID
+
+Appearance
+
+Tracking
+
+Movement
+
+Historical Observations
+
+Camera Context
+
+Time Context
+
+Zone Context
+
+Each identity decision must include:
+
+Overall Confidence
+
+Face Score
+
+ReID Score
+
+Appearance Score
+
+Movement Score
+
+Historical Score
+
+Temporal Score
+
+No modality may dominate.
+
+====================================================
+PERSON PROFILE
+====================================================
+
+One Profile.
+
+Unlimited:
+
+Faces
+
+Embeddings
+
+Movement
+
+Camera History
+
+Recognition History
+
+Appearance History
+
+Timeline
+
+Evidence
+
+Incidents
+
+Statistics
+
+====================================================
+MOVEMENT HISTORY
+====================================================
+
+Store:
+
+Building
+
+Floor
+
+Room
+
+Zone
+
+Camera
+
+Timestamp
+
+Track
+
+Travel Path
+
+Duration
+
+Visit History
+
+====================================================
+SEARCH ENGINE
+====================================================
+
+Support:
+
+Face Search
+
+Image Search
+
+Appearance Search
+
+Similarity Search
+
+Natural Language Search
+
+Person Search
+
+Timeline Search
+
+====================================================
+VECTOR SEARCH
+====================================================
+
+Evaluate production vector databases.
+
+Examples:
+
+FAISS
+
+Qdrant
+
+Milvus
+
+Choose the most suitable production architecture.
+
+====================================================
+DATABASE
+====================================================
+
+Normalize:
+
+Person
+
+Face
+
+Embedding
+
+Appearance
+
+Recognition
+
+Movement
+
+Timeline
+
+Evidence
+
+Statistics
+
+Identity
+
+====================================================
+DIGITAL TWIN
+====================================================
+
+Update:
+
+Current Position
+
+Identity
+
+Confidence
+
+Movement
+
+Recognition
+
+====================================================
+EVENT BUS
+====================================================
+
+Generate:
+
+FaceDetected
+
+FaceRecognized
+
+UnknownPerson
+
+IdentityCreated
+
+IdentityUpdated
+
+IdentityMerged
+
+IdentityRecovered
+
+RecognitionFailed
+
+AppearanceUpdated
+
+MovementUpdated
+
+====================================================
+SECURITY
+====================================================
+
+Protect:
+
+Embeddings
+
+Recognition Results
+
+Movement History
+
+Appearance Data
+
+Person Profiles
+
+Encrypt biometric data.
+
+Enforce RBAC.
+
+Log every access.
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+1000+ Cameras
+
+Millions of Persons
+
+Millions of Embeddings
+
+GPU
+
+CUDA
+
+TensorRT
+
+ONNX Runtime
+
+CPU Fallback
+
+Batch Inference
+
+Async Workers
+
+====================================================
+PLUGIN SYSTEM
+====================================================
+
+Every model must be replaceable.
+
+Future models must be installable without changing core architecture.
+
+====================================================
+TESTING
+====================================================
+
+Implement:
+
+Recognition Accuracy
+
+ReID Validation
+
+Embedding Validation
+
+Appearance Validation
+
+Identity Consistency
+
+Cross Camera Tests
+
+Unknown Person Tests
+
+Performance Tests
+
+Regression Tests
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Evaluate production face recognition models.
+
+2. Evaluate production ReID models.
+
+3. Evaluate vector database alternatives.
+
+4. Explain every technology selection.
+
+5. Design the Identity Intelligence architecture.
+
+6. Design Identity Fusion.
+
+7. Design Person Profile integration.
+
+8. Design APIs.
+
+9. Design Database.
+
+10. Design testing strategy.
+
+Only after architecture approval begin implementation.
+
+Never use fake AI.
+
+Never simulate recognition.
+
+Never create placeholder identities.
+
+Every identity must originate from real production AI inference.
+
+This module becomes the single source of truth for every observed person in the Enterprise AI Video Management System.
+⚠️ Muhim tavsiya (5-promptni yanada kuchaytirish)
+
+Men bu promptga yana quyidagi majburiy qoidani qo'shishni tavsiya qilaman:
+
+IDENTITY CONSISTENCY POLICY
+
+The system must never create a new identity simply because the face is temporarily unavailable.
+
+If the face is hidden, turned away, partially occluded or outside the camera view, the system must continue tracking the same person using Person Re-Identification, appearance features and movement continuity.
+
+When a recognizable face becomes available later, it must be associated with the existing persistent identity instead of creating a new profile.
+
+The platform must maintain one persistent identity across all cameras and all observation sessions unless there is strong evidence that the observed individual is different.
+
+Bu qoida sizning dasturingizni oddiy Face Recognition tizimidan Enterprise Identity Intelligence Platform darajasiga olib chiqadi
