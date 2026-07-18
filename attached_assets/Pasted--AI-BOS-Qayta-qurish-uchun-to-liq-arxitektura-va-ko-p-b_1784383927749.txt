@@ -1,0 +1,364 @@
+# AI-BOS — Qayta qurish uchun to'liq arxitektura va ko'p bosqichli rivojlantirish promptlari
+
+> Maqsad: mavjud "AI-BOS" prototipini (ikki parallel backend, autentifikatsiyasiz admin endpointlar, hujjat-kod nomuvofiqligi) real ishlaydigan, sotiladigan, kengaytiriladigan startup mahsulotiga aylantirish.
+
+---
+
+## QISM 1 — MAQSADLI (TARGET) ARXITEKTURA
+
+### 1.1 Strategik qaror: bitta stack
+
+Hozirgi holatda ikkita backend bor (Node/Express va Python/FastAPI) — bu resurslarni ikkiga bo'lib, hech birini yetuklikka olib bormaydi. Birinchi va eng muhim qaror: **bittasini tanlash**.
+
+**Tavsiya: Node.js/TypeScript yagona backend sifatida qoladi**, chunki:
+- Hozir haqiqatda ishlayotgan qism shu (real API-key auth, rate-limit, Telegram bot, Gemini integratsiyasi bor).
+- Frontend allaqachon TypeScript — til birligi debug va development tezligini oshiradi.
+- AI orkestratsiyasi (Gemini, keyinchalik Claude/OpenAI) uchun Node yetarli.
+
+Python/FastAPI qismi **arxivlanadi** (alohida branch yoki `archive/` papkaga ko'chiriladi), lekin agar kelajakda og'ir data-science/ML (pandas, PyTorch, forecasting modellari) kerak bo'lsa — u alohida **mikroservis** sifatida (masalan `ml-service/`) faqat aniq vazifa uchun qaytarilishi mumkin, asosiy backend sifatida emas.
+
+### 1.2 Yuqori darajadagi arxitektura (Layered)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CLIENT LAYER                                                │
+│  React 19 + Vite + TS + Tailwind + Zustand                  │
+│  (Dashboard, Finance, CRM, HR, Admin, Agents, Workflows)     │
+└───────────────────────────┬───────────────────────────────────┘
+                             │ HTTPS (JWT / API-Key)
+┌───────────────────────────▼───────────────────────────────────┐
+│  API GATEWAY LAYER (Express middleware)                      │
+│  - AuthN (JWT sessiya / API-key xizmatlararo)                │
+│  - AuthZ (RBAC: Owner, Admin, Manager, Viewer, AI_Agent)     │
+│  - Rate limiting, input validation (zod), request logging   │
+└───────────────────────────┬───────────────────────────────────┘
+                             │
+┌───────────────────────────▼───────────────────────────────────┐
+│  ORCHESTRATION LAYER                                          │
+│  - WorkflowEngine (biznes-jarayonlarni bog'lash)              │
+│  - AIOrchestrator (qaysi LLM, qaysi kontekst, fallback)      │
+│  - Guardrails (PII filtri, prompt injection himoyasi)        │
+└───────┬───────────────────────────────────────────────┬───────┘
+        │                                               │
+┌───────▼────────────────────┐          ┌───────────────▼───────┐
+│  BUSINESS LOGIC LAYER       │          │  INTELLIGENCE LAYER    │
+│  FinanceService             │          │  DataAggregator        │
+│  CRMService, HRService      │◄────────►│  InsightsEngine        │
+│  InventoryService            │          │  ForecastingService    │
+└───────┬─────────────────────┘          └───────────────┬───────┘
+        │                                                 │
+┌───────▼─────────────────────────────────────────────────▼───────┐
+│  DATA LAYER                                                      │
+│  PostgreSQL (asosiy, ACID) + Redis (kesh/navbat)                │
+│  Prisma yoki Drizzle ORM (type-safe, migratsiyalar bilan)        │
+└───────────────────────────┬───────────────────────────────────────┘
+                             │
+┌───────────────────────────▼───────────────────────────────────────┐
+│  OBSERVABILITY & RESILIENCE LAYER                                 │
+│  Structured logs, Prometheus metrics, health/readiness,           │
+│  Circuit breaker (real, sinov qilingan), audit_logs jadvali       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 1.3 Maqsadli papka tuzilishi
+
+```
+ai-bos/
+├── apps/
+│   ├── web/                     # React frontend (Vite)
+│   │   ├── src/
+│   │   │   ├── pages/
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   ├── services/        # API client (fetch wrapperlari)
+│   │   │   └── store/            # Zustand slices
+│   │   └── vite.config.ts
+│   │
+│   └── api/                     # Express backend (yagona backend)
+│       ├── src/
+│       │   ├── modules/
+│       │   │   ├── finance/      # controller + service + repository
+│       │   │   ├── crm/
+│       │   │   ├── hr/
+│       │   │   ├── analytics/
+│       │   │   └── marketing/
+│       │   ├── intelligence/     # AIOrchestrator, aggregator, insights
+│       │   ├── workflows/        # WorkflowEngine
+│       │   ├── admin/            # RBAC, audit, policy, model registry
+│       │   ├── middleware/       # auth.ts, rbac.ts, rateLimit.ts, errorHandler.ts
+│       │   ├── observability/    # logger.ts, metrics.ts
+│       │   ├── db/               # Prisma schema, migrations, seed
+│       │   └── server.ts
+│       └── package.json
+│
+├── packages/
+│   ├── shared-types/             # Frontend+Backend umumiy TS tiplar
+│   └── config/                   # umumiy eslint/tsconfig
+│
+├── infra/
+│   ├── docker/                   # bitta, haqiqatan ishlaydigan compose fayl
+│   ├── k8s/                      # keyinchalik, MVPdan keyin
+│   └── env/.env.example          # bitta, to'liq, izohli
+│
+├── docs/
+│   ├── ARCHITECTURE.md           # doim kod bilan sinxron yuritiladi
+│   ├── API.md                    # avtomatik generatsiya (OpenAPI)
+│   └── ROADMAP.md
+│
+├── .github/workflows/            # CI: lint, test, build har PRda
+└── package.json                  # npm workspaces bilan monorepo
+```
+
+**Muhim:** `docs/ARCHITECTURE.md` har safar kod o'zgarganda yangilanishi shart — aks holda hozirgi holatdagi kabi hujjat va kod bir-biridan uzoqlashadi (bu eng katta ishonch muammosi bo'lgan).
+
+### 1.4 Xavfsizlik modeli (haqiqiy, ishlaydigan)
+
+- **AuthN**: foydalanuvchilar uchun JWT (access + refresh token), xizmatlararo/tashqi integratsiyalar uchun API-key (hozirgi kabi, lekin barcha route'larga majburiy).
+- **AuthZ (RBAC)**: `Owner > Admin > Manager > Viewer > AI_Agent` — har bir endpoint uchun middleware orqali majburiy tekshirish, "keyin qo'shamiz" degan narsa bo'lmasligi kerak.
+- **Audit log**: har bir yozuv operatsiyasi (POST/PUT/DELETE) va har bir AI so'rovi `audit_logs` jadvaliga yoziladi (kim, qachon, nima, natija).
+- **Sirlarni boshqarish**: `.env` fayllar hech qachon commit qilinmaydi; production'da Doppler/Vault yoki hosting provayder secret manager.
+- **Ma'lumotlar bazasi**: hech qanday `.db`/`.sqlite` fayl reponing o'ziga commit qilinmaydi (`.gitignore`ga qo'shiladi).
+
+### 1.5 AI orkestratsiya modeli
+
+- **Bitta `AIOrchestrator` klass** — qaysi model (Gemini/Claude/OpenAI), qaysi promt shabloni, qaysi kontekst ishlatilishini markazlashtiradi.
+- **Ishonch balli (confidence score)** har bir javobga biriktiriladi; past ishonchda — foydalanuvchiga ogohlantirish yoki inson tasdig'i so'raladi.
+- **Guardrails**: har bir promtdan oldin PII (shaxsiy ma'lumot) filtri, har bir javobdan keyin validatsiya.
+- **Fallback**: asosiy provayder ishlamasa — zaxira provayderga yoki oldindan tayyorlangan shablon javobga o'tish (bu — hozirgi kodda faqat izoh sifatida bor, real ishlamaydi; qayta qurishda **real** qilinishi kerak).
+
+### 1.6 MVP uchun nima kerak EMAS (keyingi bosqichlarga qoldiriladi)
+
+- Kubernetes, multi-region, GPU klasterlari — bular faqat haqiqiy mijozlar va yuk paydo bo'lganda kerak bo'ladi.
+- To'liq A/B test infratuzilmasi — dastlab oddiy versiya yetarli.
+- Har ikkala backend (Python) — arxivlanadi, kerak bo'lsa keyin qaytariladi.
+
+---
+
+## QISM 2 — KO'P BOSQICHLI RIVOJLANTIRISH PROMPTLARI
+
+Quyidagi promptlarni **ketma-ket**, har birini alohida (Claude Code, Cursor yoki shunga o'xshash coding-agent'ga) berish tavsiya etiladi. Har bir bosqich oldingisi tugagach boshlanadi — birdaniga hammasini berish agentni chalg'itadi va sifatni pasaytiradi.
+
+---
+
+### PROMPT 1 — Audit va konsolidatsiya rejasi
+
+```
+Bu repo (AI-BOS) ichida ikkita parallel backend bor: Node/Express (server.ts, src/)
+va Python/FastAPI (backend/). Vazifang:
+
+1. Ikkala backendni ham chuqur o'qi va har birida qaysi funksiyalar REAL ishlashini
+   (mock/stub emas) alohida jadvalda ko'rsat.
+2. Frontend (src/pages, src/services) qaysi backend bilan haqiqatda gaplashayotganini
+   aniqla (fetch/axios chaqiruvlarini kuzatib).
+3. Python/FastAPI qismidagi qaysi biznes-mantiq (masalan PnLService, KPIService)
+   Node tarafida hali yo'q va ko'chirilishi kerakligini ro'yxatla.
+4. `archive/python-backend/` papkasini yarat va backend/ papkasini o'sha yerga
+   ko'chir (o'chirma, faqat arxivla) — commit xabarida sababini yoz.
+5. Yakunda: "Konsolidatsiya audit hisoboti" nomli markdown fayl yoz
+   (docs/CONSOLIDATION_AUDIT.md), unda nima ko'chirilgani, nima yo'qolmagani
+   aniq ko'rsatilgan bo'lsin.
+
+Kod o'zgartirishdan oldin HECH NIMANI o'chirma — faqat ko'chir va hujjatla.
+```
+
+---
+
+### PROMPT 2 — Monorepo poydevorini qurish
+
+```
+Loyihani npm workspaces asosida monorepo qilib qayta tashkil et:
+- apps/web/ — hozirgi frontend (src/, vite.config.ts, index.html shu yerga)
+- apps/api/ — hozirgi Express backend (server.ts va src/routes, src/lib shu yerga,
+  lekin controller/service/repository qatlamlariga ajratilgan holda)
+- packages/shared-types/ — frontend va backend orasida umumiy TypeScript
+  interfeyslar (masalan CRM, Finance, User tiplari)
+
+Talablar:
+1. Root package.json'da "workspaces" maydonini sozla.
+2. Har bir app o'zining package.json, tsconfig.json'iga ega bo'lsin, lekin
+   umumiy qoidalar packages/config'dan meros olinsin.
+3. Root darajada bitta buyruq bilan ikkalasini ham ishga tushirish imkonini
+   ber ("npm run dev" -> concurrently orqali web+api).
+4. Hech qanday funksional o'zgarish qilma — faqat fayllarni ko'chirish va
+   import yo'llarini to'g'irlash.
+5. Ko'chirishdan keyin "npm run build" ikkala app uchun ham xatosiz
+   ishlashini tekshir va natijani chat'da ko'rsat.
+```
+
+---
+
+### PROMPT 3 — Autentifikatsiya va RBAC'ni butun ilova bo'ylab majburiy qilish
+
+```
+Hozirgi apiGatewayMiddleware faqat /api/v1 yo'llarida API-key tekshiradi,
+qolgan (masalan /admin/*, /finance/*) endpointlar himoyalanmagan bo'lishi mumkin.
+
+Vazifa:
+1. src/middleware/auth.ts'ni ko'rib chiq va uni KENGAYTIR:
+   - Foydalanuvchi sessiyalari uchun JWT (access 15 daq, refresh 7 kun)
+   - Xizmatlararo chaqiruvlar uchun mavjud API-key mexanizmi
+2. src/middleware/rbac.ts nomli yangi middleware yarat:
+   rollar: OWNER, ADMIN, MANAGER, VIEWER, AI_AGENT
+   Har bir route uchun minimal talab qilinadigan rolni belgilash imkonini
+   beruvchi requireRole(['ADMIN']) kabi funksiya yoz.
+3. src/routes/ ichidagi HAR BIR route faylini o'qi va har bir endpointga
+   mos requireAuth + requireRole qo'sh (ayniqsa admin.ts, settings.ts,
+   integrations.ts — bularda hozir hech qanday tekshiruv yo'q bo'lishi mumkin).
+4. Testlar yoz (vitest): himoyasiz so'rov 401, noto'g'ri rol bilan so'rov
+   403 qaytarishini tekshiruvchi.
+5. O'zgartirilgan har bir route faylini alohida ro'yxatla va nima
+   qo'shilganini qisqacha izohla.
+```
+
+---
+
+### PROMPT 4 — Ma'lumotlar bazasi qatlamini mustahkamlash
+
+```
+Hozir better-sqlite3 ishlatiladi va settings.db repo'ga commit qilingan.
+
+Vazifa:
+1. settings.db faylini git tarixidan olib tashla (git filter-repo yoki
+   BFG bilan) va .gitignore'ga db fayllarini qo'sh.
+2. Prisma ORM'ni o'rnat va PostgreSQL'ga o'tish uchun schema.prisma yoz —
+   mavjud jadvallarni (ApiKeys, CRM, Finance va h.k.) hozirgi
+   src/lib/db/settings.ts'dan chiqarib, Prisma model sifatida qayta yoz.
+3. Development uchun docker-compose'da Postgres konteynerini qo'sh.
+4. Migratsiya skriptlari (prisma migrate) orqali versiyalash joriy et.
+5. Ma'lumotlarni SQLite'dan yangi Postgres'ga ko'chiradigan bir martalik
+   migratsiya skripti yoz (agar ishlab chiqarish ma'lumoti mavjud bo'lsa).
+6. Barcha service/repository qatlamlarini yangi ORM'ga moslashtir, testlarni
+   yangila.
+```
+
+---
+
+### PROMPT 5 — AIOrchestrator'ni markazlashtirish
+
+```
+Hozir Gemini chaqiruvlari server.ts, src/lib/ai/agent.ts va boshqa
+fayllarda tarqoq holda yozilgan.
+
+Vazifa:
+1. apps/api/src/intelligence/AIOrchestrator.ts yarat — barcha LLM
+   chaqiruvlari FAQAT shu klass orqali o'tsin.
+2. Provayder abstraksiyasi qil: AIProvider interfeysi (generateText,
+   generateStructured, transcribeAudio), Gemini uchun GeminiProvider
+   implementatsiyasi.
+3. Fallback mexanizmini REAL qil: agar asosiy provayder xato bersa yoki
+   3 soniyadan ko'p javob bermasa, zaxira provayder yoki oldindan
+   belgilangan xato-xabar qaytarilsin (hozirgi kabi faqat izoh emas).
+4. Har bir AI chaqiruvi audit_logs jadvaliga yozilsin: promt (PII
+   tozalangan holda), javob, model nomi, latency, confidence.
+5. PII sanitizatsiya funksiyasini yoz va har bir promtdan oldin ishga
+   tushir (email, telefon, TIN kabi naqshlarni aniqlash va maskalash).
+6. Eski tarqoq chaqiruvlarni (server.ts, agent.ts ichidagi) yangi
+   orchestrator orqali ishlaydigan qilib almashtir.
+```
+
+---
+
+### PROMPT 6 — Biznes modullarini to'ldirish (Finance birinchi)
+
+```
+Python backend'dagi PnLService va CashflowService mantig'ini (archive/
+papkasidan) Node/TypeScript'ga qayta yoz, lekin Prisma bilan ishlaydigan
+holda.
+
+Vazifa:
+1. apps/api/src/modules/finance/ ichida: pnl.service.ts,
+   cashflow.service.ts, finance.controller.ts, finance.routes.ts yarat.
+2. Har bir service uchun unit test yoz (hech bo'lmaganda: bo'sh davr,
+   faqat kirim, faqat chiqim, aralash holatlar).
+3. Frontend'dagi Finance.tsx sahifasini yangi endpointlarga ulang,
+   loading/error holatlarini qo'sh.
+4. OpenAPI (swagger) hujjatini avtomatik generatsiya qiladigan sozlama
+   qo'sh (masalan zod-to-openapi), docs/API.md'ni shundan generatsiya qil.
+```
+
+---
+
+### PROMPT 7 — Kuzatuv (observability) va real resilience
+
+```
+Hozirgi CircuitBreaker/SelfHealing servislar (agar Node tarafida bo'lsa)
+haqiqatda sinovdan o'tganini tekshir, aks holda qayta yoz.
+
+Vazifa:
+1. Structured logger (pino yoki winston) joriy et — har bir so'rov
+   uchun request_id, latency, status.
+2. Prometheus /metrics endpointi qo'sh (prom-client kutubxonasi bilan):
+   so'rovlar soni, latency histogrammasi, xatolar soni.
+3. CircuitBreaker klassini yoz va real ishlatib ko'r: masalan AI provayder
+   3 marta ketma-ket xato bersa, 30 soniyaga "ochiq" holatga o'tsin va
+   fallback javob qaytarsin. Bunga aynan shu holatni simulyatsiya
+   qiluvchi test yoz.
+4. /health, /readiness, /liveness endpointlarini DB va AI provayder
+   holatini haqiqatda tekshiradigan qilib yoz (hozirgidek faqat
+   statik "ok" qaytarmasin).
+```
+
+---
+
+### PROMPT 8 — Test qamrovi va CI/CD
+
+```
+Vazifa:
+1. .github/workflows/ci.yml yarat: har bir PR'da lint, typecheck,
+   unit test (vitest), build ishga tushsin.
+2. Har bir modul (finance, crm, hr, intelligence) uchun kamida
+   70% test qamrovini maqsad qil, coverage hisobotini CI'da chiqar.
+3. E2E test (Playwright) qo'sh: login -> dashboard -> bitta modulni
+   ochish -> asosiy amalni bajarish ssenariysi.
+4. main branch'ga to'g'ridan-to'g'ri push taqiqlansin — faqat PR orqali,
+   CI o'tgandan keyin merge qilinsin (buni README/CONTRIBUTING.md'da
+   qoidalashtir).
+```
+
+---
+
+### PROMPT 9 — Deploy konfiguratsiyasini haqiqiy ilova bilan moslashtirish
+
+```
+Hozirgi docker-compose.yml Python/Postgres uchun yozilgan, lekin haqiqiy
+ilova Express/SQLite(keyin Postgres) bo'ladi.
+
+Vazifa:
+1. infra/docker/docker-compose.yml'ni yangidan yoz: apps/api,
+   apps/web (nginx orqali static build), Postgres, Redis xizmatlari
+   bilan, health-check'lar bilan.
+2. Ikkita Dockerfile (api.Dockerfile, web.Dockerfile) multi-stage build
+   bilan yoz (kichik final image uchun).
+3. .env.example'ni bitta, to'liq, har bir o'zgaruvchi nima uchunligi
+   izohlangan holda yangila (hozirgi ikkita chalkash .env.example
+   o'rniga).
+4. Bitta buyruq bilan (docker-compose up --build) butun tizim mahalliy
+   ishga tushishini tekshir va natijani hisobot qil.
+```
+
+---
+
+### PROMPT 10 — Hujjatlarni kod bilan sinxronlashtirish
+
+```
+Vazifa:
+1. docs/ARCHITECTURE.md'ni HOZIRGI (bosqich 1-9dan keyingi) real kod
+   holatiga mos qilib to'liq qayta yoz — hali amalga oshirilmagan
+   narsalarni "Rejalashtirilgan" deb aniq belgilab qo'y, "mavjud" deb
+   yozma.
+2. README.md'dagi "Tech Stack" va "Quick Start" bo'limlarini yangi
+   monorepo tuzilishiga moslashtir.
+3. LICENSE faylini qo'sh (yoki README'dan litsenziya da'vosini olib
+   tashla, agar litsenziya hali tanlanmagan bo'lsa).
+4. docs/ROADMAP.md'ni "Nima allaqachon ishlayapti" va "Nima keyingi
+   navbatda" ikki bo'limga ajratib qayta yoz — investor/hamkorlar uchun
+   ishonchli bo'lishi uchun bu MUHIM.
+```
+
+---
+
+## Qanday ishlatish kerak
+
+1. Har bir promptni **navbat bilan**, alohida sessiyada bering — bosqichni tekshirib, natijadan qanoatlansangiz keyingisiga o'ting.
+2. Har bosqichdan keyin `git commit` qiling — orqaga qaytish imkoniyati doim bo'lsin.
+3. 3, 4, 5-promptlar (xavfsizlik, DB, AI orkestratsiya) — eng muhimlari; agar vaqt cheklangan bo'lsa, aynan shu uchtasini birinchi navbatda bajaring, qolganlarini keyinroq qilsa ham bo'ladi.
