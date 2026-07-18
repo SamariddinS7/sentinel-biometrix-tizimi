@@ -51,6 +51,93 @@ const Field: React.FC<{
 const inputCls =
   'w-full bg-app-primary border border-border text-text-primary text-sm rounded-lg pl-10 pr-4 py-3 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary outline-none transition-all placeholder:text-text-muted';
 
+// ── Left panel animated background ───────────────────────────────────────────
+
+const ORBS = [
+  { w: 320, h: 320, top: '55%', left: '60%', delay: 0,    dur: 7  },
+  { w: 180, h: 180, top: '15%', left: '75%', delay: 1.5,  dur: 9  },
+  { w: 120, h: 120, top: '72%', left: '20%', delay: 3,    dur: 11 },
+  { w: 90,  h: 90,  top: '30%', left: '5%',  delay: 2,    dur: 8  },
+];
+
+const RINGS = [0, 1, 2, 3];
+
+const PanelBackground: React.FC = () => (
+  <div className="absolute inset-0 overflow-hidden pointer-events-none select-none" aria-hidden>
+    {/* Soft floating orbs */}
+    {ORBS.map((o, i) => (
+      <motion.div
+        key={i}
+        className="absolute rounded-full"
+        style={{
+          width: o.w,
+          height: o.h,
+          top: o.top,
+          left: o.left,
+          translateX: '-50%',
+          translateY: '-50%',
+          background: 'radial-gradient(circle, rgba(0,153,255,0.08) 0%, transparent 70%)',
+        }}
+        animate={{ scale: [1, 1.18, 1], opacity: [0.5, 1, 0.5] }}
+        transition={{ duration: o.dur, delay: o.delay, repeat: Infinity, ease: 'easeInOut' }}
+      />
+    ))}
+
+    {/* Radar pulse rings — centred lower-right */}
+    <div className="absolute" style={{ bottom: '12%', right: '8%' }}>
+      {RINGS.map((r) => (
+        <motion.div
+          key={r}
+          className="absolute rounded-full border border-brand-primary/25"
+          style={{ inset: 0, width: 48, height: 48 }}
+          animate={{ scale: [1, 5 + r * 2], opacity: [0.6, 0] }}
+          transition={{
+            duration: 3.2,
+            delay: r * 0.8,
+            repeat: Infinity,
+            ease: [0.2, 0.8, 0.4, 1],
+          }}
+        />
+      ))}
+      {/* Solid core dot */}
+      <motion.div
+        className="w-12 h-12 rounded-full bg-brand-primary/20 border border-brand-primary/40 flex items-center justify-center"
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <div className="w-2 h-2 rounded-full bg-brand-primary/70" />
+      </motion.div>
+    </div>
+
+    {/* Horizontal scan line */}
+    <motion.div
+      className="absolute left-0 right-0 h-px"
+      style={{ background: 'linear-gradient(90deg, transparent, rgba(0,153,255,0.18), transparent)' }}
+      animate={{ top: ['20%', '85%', '20%'] }}
+      transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+    />
+
+    {/* Small floating dots */}
+    {[...Array(6)].map((_, i) => (
+      <motion.div
+        key={i}
+        className="absolute w-1 h-1 rounded-full bg-brand-primary/40"
+        style={{ top: `${15 + i * 13}%`, left: `${10 + (i % 3) * 30}%` }}
+        animate={{
+          y: [0, -18, 0],
+          opacity: [0.3, 0.8, 0.3],
+        }}
+        transition={{
+          duration: 4 + i * 0.7,
+          delay: i * 0.6,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+    ))}
+  </div>
+);
+
 // ── Feature list (left panel) ─────────────────────────────────────────────────
 
 const FEATURES = [
@@ -168,6 +255,7 @@ export const AuthPage: React.FC<Props> = ({ onLogin }) => {
 
       {/* ── Left branding panel (hidden on small screens) ─────────────────── */}
       <div className="hidden lg:flex flex-col justify-between w-[45%] xl:w-[40%] border-r border-border relative p-12">
+        <PanelBackground />
         {/* Logo */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center shadow-lg shadow-brand-primary/30">
