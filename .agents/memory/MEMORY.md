@@ -4,3 +4,4 @@
 - [VMS Identity Intelligence Gap Fixes](vms-identity-gaps.md) — FAISS, YOLOv8n model, real HSV colour extraction, search API; onnxruntime provider naming, vite watch exclusions.
 - [VMS Enterprise Analytics Platform](vms-phase5-analytics-platform.md) — 8 plugins (fire, PPE, vehicle/LPR, OCR, behavior, object-state, crowd, heatmap); alarm broker, report engine, search index, 17-route API, AnalyticsDashboard.
 - [VMS Person Intelligence Platform](vms-person-intel-platform.md) — 5-phase build: bootstrap wiring, API audit fixes, 3 new UI components, platform rebuild, SOC integration. PersonProfile field names, API shapes, VmsEventCallback pattern.
+- [VMS SOC Unified Command Center](vms-soc-unified-command.md) — SOCCommandCenter rebuilt as 17-module shell; SOCEventTimeline + SOCOverview created; icon typing rule; NotificationCenter wrapper pattern.

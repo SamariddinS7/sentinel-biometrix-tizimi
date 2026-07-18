@@ -8,6 +8,15 @@
       "department": "IT",
       "role": "OPERATOR",
       "createdAt": "2026-07-18T05:59:32.286Z"
+    },
+    {
+      "id": "51133fb6-52d2-4bde-9d69-2312527f8c79",
+      "fullName": "sam",
+      "email": "sam@gmail.com",
+      "passwordHash": "$2b$12$rbhY8p0Qe0OX/TCJJ6.Rku2ezWHAJrKcpeo0dGe3ng0IW.6f2k0fa",
+      "department": "it",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-18T06:00:54.638Z"
     }
   ]
 }
