@@ -17,6 +17,15 @@
       "department": "it",
       "role": "OPERATOR",
       "createdAt": "2026-07-18T06:00:54.638Z"
+    },
+    {
+      "id": "95ba2672-8e7c-423c-b2f4-7e7cd875c52f",
+      "fullName": "wfqw",
+      "email": "asdfghj@gmail.com",
+      "passwordHash": "$2b$12$VGUM8q.urM7hD03hGrtze.rQR4z61613GsB1aX7cODHRTwvDH3yU.",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-18T14:28:15.556Z"
     }
   ]
 }
