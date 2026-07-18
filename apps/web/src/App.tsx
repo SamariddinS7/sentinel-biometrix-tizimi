@@ -9,7 +9,7 @@ import { AttendanceLogViewer } from './components/AttendanceLogViewer';
 import { CamerasView } from './components/CamerasView';
 import { AIChatView } from './components/AIChatView';
 import { AreaMapView } from './components/AreaMapView';
-import { DigitalTwinBuilder } from './components/DigitalTwinBuilder'; 
+import { DigitalTwinBuilder } from './components/DigitalTwinBuilder';
 import { ProfileModal } from './components/ProfileModal';
 import { SupportModal } from './components/SupportModal';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -20,9 +20,6 @@ import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligen
 import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
 import { PersonIntelligencePlatform } from './components/PersonIntelligencePlatform';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
-import { DigitalTwinView } from './components/DigitalTwinView';
-import { SOCOverview } from './components/soc/SOCOverview';
-import { SOCVideoWall } from './components/soc/SOCVideoWall';
 import { SOCEventTimeline } from './components/soc/SOCEventTimeline';
 import { SOCIncidentCenter } from './components/soc/SOCIncidentCenter';
 import { SOCInvestigationCenter } from './components/soc/SOCInvestigationCenter';
@@ -188,7 +185,7 @@ const AppContent: React.FC = () => {
     'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' |
     'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' |
     'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' |
-    'analytics' | 'soc_overview' | 'video_wall' | 'digital_twin' | 'event_timeline' |
+    'analytics' | 'event_timeline' |
     'incident_center' | 'investigation' | 'evidence_manager' | 'resources' |
     'multi_site' | 'reports' | 'health_monitor'
   >('dashboard');
@@ -277,9 +274,6 @@ const AppContent: React.FC = () => {
           case 'alarm_center':      return 'Alarmlar Markazi';
           case 'person_intelligence': return 'Shaxslar Intellektual Tizimi';
           case 'analytics':         return 'Enterprise Analytics Platform';
-          case 'soc_overview':      return 'SOC Umumiy Ko\'rinish';
-          case 'video_wall':        return 'Video Devor';
-          case 'digital_twin':      return 'Raqamli Egizak Ko\'rinish';
           case 'event_timeline':    return 'AI Hodisalar Vaqt Chizig\'i';
           case 'incident_center':   return 'Hodisalar Markazi';
           case 'investigation':     return 'Tekshiruv Markazi';
@@ -353,16 +347,13 @@ const AppContent: React.FC = () => {
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Asosiy</p>
             <SidebarItem icon={LayoutDashboard} label={t('nav.dashboard')} active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
-            <SidebarItem icon={LayoutGrid}      label="SOC Umumiy Ko'rinish" active={currentView === 'soc_overview'} onClick={() => { setCurrentView('soc_overview'); setIsSidebarOpen(false); }} />
           </div>
 
           {/* KUZATUV */}
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Kuzatuv</p>
             <SidebarItem icon={Video}   label={t('nav.cameras')}   active={currentView === 'cameras'}      onClick={() => { setCurrentView('cameras');      setIsSidebarOpen(false); }} />
-            <SidebarItem icon={Monitor} label="Video Devor"         active={currentView === 'video_wall'}   onClick={() => { setCurrentView('video_wall');   setIsSidebarOpen(false); }} />
             <SidebarItem icon={MapIcon} label={t('nav.areaMap')}    active={currentView === 'map'}          onClick={() => { setCurrentView('map');          setIsSidebarOpen(false); }} />
-            <SidebarItem icon={Cpu}     label="Raqamli Egizak"      active={currentView === 'digital_twin'} onClick={() => { setCurrentView('digital_twin'); setIsSidebarOpen(false); }} />
             <SidebarItem icon={Camera}  label={t('nav.liveDetector')} active={false}                        onClick={() => { setCurrentView('live_feed');    setIsSidebarOpen(false); }} />
           </div>
 
@@ -563,9 +554,6 @@ const AppContent: React.FC = () => {
                       {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
                       {currentView === 'person_intelligence' && <PersonIntelligencePlatform />}
                       {currentView === 'analytics'         && <AnalyticsDashboard />}
-                      {currentView === 'soc_overview'      && <SOCOverview />}
-                      {currentView === 'video_wall'        && <SOCVideoWall />}
-                      {currentView === 'digital_twin'      && <DigitalTwinView />}
                       {currentView === 'event_timeline'    && <SOCEventTimeline />}
                       {currentView === 'incident_center'   && <SOCIncidentCenter />}
                       {currentView === 'investigation'     && <SOCInvestigationCenter />}
