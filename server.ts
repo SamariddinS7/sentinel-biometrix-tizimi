@@ -23,7 +23,7 @@ import {
 import { HazardDetectorPlugin } from "./services/ai/plugins/HazardDetectorPlugin";
 import { db, auth } from "./services/firestoreService";
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc, query, where } from "firebase/firestore";
 import net from "net";
 import crypto from "crypto";
 import os from "os";
@@ -63,6 +63,39 @@ const camerasCollection = collection(db, "cameras");
 const logsCollection = collection(db, "logs");
 const anomaliesCollection = collection(db, "anomalies");
 const recordingsCollection = collection(db, "recordings");
+
+// ── Local user store (JSON file, bcrypt passwords) ────────────────────────────
+// Used when Firebase Auth Email/Password provider is not enabled.
+import fs from "fs";
+const LOCAL_USERS_FILE = path.join(process.cwd(), ".data", "users.json");
+
+interface LocalUser {
+  id: string;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+  department: string;
+  role: string;
+  createdAt: string;
+}
+
+function readLocalUsers(): LocalUser[] {
+  try {
+    const raw = fs.readFileSync(LOCAL_USERS_FILE, "utf8");
+    return JSON.parse(raw).users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalUsers(users: LocalUser[]): void {
+  fs.mkdirSync(path.dirname(LOCAL_USERS_FILE), { recursive: true });
+  fs.writeFileSync(LOCAL_USERS_FILE, JSON.stringify({ users }, null, 2), "utf8");
+}
+
+function findLocalUser(email: string): LocalUser | undefined {
+  return readLocalUsers().find(u => u.email === email.toLowerCase().trim());
+}
 
 // JWT_SECRET must be set via environment variable. No hardcoded fallback allowed.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -401,8 +434,28 @@ async function startServer() {
         user: { id: user.uid, email: user.email, fullName, role, department }
       });
     } catch (authError: any) {
-      // Firebase Auth failed — attempt bootstrap check (initial setup only)
-      
+      // Firebase Auth failed — try local file-based user store next
+      const normalizedEmail = email.trim().toLowerCase();
+      const localUser = findLocalUser(normalizedEmail);
+
+      if (localUser && localUser.passwordHash && await bcrypt.compare(password, localUser.passwordHash)) {
+        const token = jwt.sign(
+          { id: localUser.id, email: localUser.email, role: localUser.role, fullName: localUser.fullName },
+          EFFECTIVE_JWT_SECRET,
+          { expiresIn: "12h" }
+        );
+        return res.json({
+          token,
+          user: {
+            id: localUser.id,
+            email: localUser.email,
+            fullName: localUser.fullName,
+            role: localUser.role,
+            department: localUser.department,
+          }
+        });
+      }
+
       // Bootstrap fallback for initial setup when Firebase is offline or unconfigured.
       // The bootstrap password MUST be overridden via BOOTSTRAP_ADMIN_PASSWORD env var.
       const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
@@ -448,54 +501,53 @@ async function startServer() {
     }
 
     try {
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      const firebaseUser = userCredential.user;
+      const normalizedEmail = email.trim().toLowerCase();
 
-      // Set display name (best-effort — non-blocking)
-      updateProfile(firebaseUser, { displayName: fullName.trim() }).catch(() => {});
+      // Check for duplicate email in local user store
+      if (findLocalUser(normalizedEmail)) {
+        res.status(409).json({ error: "Bu email manzil allaqachon ro'yxatdan o'tgan." });
+        return;
+      }
 
-      // Persist user metadata to Firestore — fire-and-forget so Firestore
-      // permission issues never block or break the HTTP response.
-      const userMeta = {
+      // Hash password with bcrypt (12 rounds)
+      const passwordHash = await bcrypt.hash(password, 12);
+      const userId = crypto.randomUUID();
+
+      // Persist user to local JSON store
+      const users = readLocalUsers();
+      const newUser: LocalUser = {
+        id: userId,
         fullName: fullName.trim(),
-        email: email.trim(),
+        email: normalizedEmail,
+        passwordHash,
         department: department?.trim() || 'General',
         role: 'OPERATOR',
         createdAt: new Date().toISOString(),
       };
-      setDoc(doc(db, "users", firebaseUser.uid), userMeta).catch((e) => {
-        console.warn('[Register] Firestore profile write failed (non-fatal):', e?.code ?? e?.message);
-      });
+      users.push(newUser);
+      writeLocalUsers(users);
 
-      // Issue JWT immediately — auth user exists even if Firestore write is pending
+      // Issue JWT
       const token = jwt.sign(
-        { id: firebaseUser.uid, email: firebaseUser.email, role: 'OPERATOR', fullName: fullName.trim() },
+        { id: userId, email: normalizedEmail, role: 'OPERATOR', fullName: fullName.trim() },
         EFFECTIVE_JWT_SECRET,
         { expiresIn: "12h" }
       );
 
+      console.log(`[Register] New user created: ${normalizedEmail} (${userId})`);
       res.status(201).json({
         token,
         user: {
-          id: firebaseUser.uid,
-          email: firebaseUser.email,
+          id: userId,
+          email: normalizedEmail,
           fullName: fullName.trim(),
           role: 'OPERATOR',
           department: department?.trim() || 'General',
         },
       });
     } catch (err: any) {
-      console.error('[Register] Firebase Auth error:', err?.code, err?.message);
-      if (err.code === 'auth/email-already-in-use') {
-        res.status(409).json({ error: "Bu email manzil allaqachon ro'yxatdan o'tgan." });
-      } else if (err.code === 'auth/weak-password') {
-        res.status(400).json({ error: "Parol juda zaif. Kamida 6 ta belgi kiritilsin." });
-      } else if (err.code === 'auth/operation-not-allowed') {
-        res.status(503).json({ error: "Email/parol orqali ro'yxatdan o'tish hozircha yoqilmagan." });
-      } else {
-        res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi." });
-      }
+      console.error('[Register] Error:', err?.code, err?.message);
+      res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi." });
     }
   });
 

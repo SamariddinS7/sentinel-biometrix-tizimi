@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": "00569704-af8a-4448-baca-e9584bd9c154",
+      "fullName": "Test Foydalanuvchi",
+      "email": "test@test.com",
+      "passwordHash": "$2b$12$XzJZFgwykzcTLCNyrGWacuC/BzGnAxpd.43dIhVzy1rbOMjNJQmq2",
+      "department": "IT",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-18T05:59:32.286Z"
+    }
+  ]
+}
