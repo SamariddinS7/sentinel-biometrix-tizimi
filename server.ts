@@ -40,6 +40,17 @@ import { incidentService } from "./services/incidentService";
 import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
 import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
 
+// Enterprise Infrastructure Services
+import { requestLoggingMiddleware, getLogger } from "./services/infrastructure/logger";
+import { metricsHandler, cameraConnectionsActive, wsConnectionsActive, wsMessagesTotal, aiDetectionsTotal } from "./services/infrastructure/metrics";
+import { livenessHandler, readinessHandler, statusHandler, registerHealthChecker } from "./services/infrastructure/healthcheck";
+import { cacheService } from "./services/infrastructure/cache";
+import { messageBusService } from "./services/infrastructure/messagebus";
+import { storageService } from "./services/infrastructure/storage";
+import { db as pgDb } from "./services/infrastructure/database";
+
+const infraLog = getLogger('server');
+
 // VMS Enterprise Core Services
 import { vmsEventService } from "./services/vmsEventService";
 import { vmsAuditService } from "./services/vmsAuditService";
@@ -306,6 +317,18 @@ async function startServer() {
     legacyHeaders: false,
   });
   app.use(globalLimiter);
+
+  // Enterprise structured request logging (after rate-limiter so aborted requests are logged)
+  app.use(requestLoggingMiddleware);
+
+  // ── Kubernetes / load-balancer health probes (no auth required) ───────────
+  app.get('/health/live',   livenessHandler);
+  app.get('/health/ready',  readinessHandler);
+  app.get('/health/status', statusHandler);
+
+  // ── Prometheus metrics scrape endpoint ────────────────────────────────────
+  // Restrict to internal network in production (via nginx/k8s NetworkPolicy)
+  app.get('/metrics', metricsHandler);
 
   // Support large base64 image transfers for biometrics and blueprints
   app.use(express.json({ limit: "50mb" }));

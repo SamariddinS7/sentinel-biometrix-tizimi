@@ -1,0 +1,48 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sentinel-vms
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    # CPU utilisation
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    # Memory utilisation
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+    # Active WebSocket connections (custom metric via Prometheus adapter)
+    - type: Pods
+      pods:
+        metric:
+          name: vms_websocket_connections_active
+        target:
+          type: AverageValue
+          averageValue: "200"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300     # 5 min cooldown before scaling down
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120

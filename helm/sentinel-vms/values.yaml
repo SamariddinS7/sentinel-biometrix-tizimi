@@ -1,0 +1,226 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sentinel AI VMS — Default Helm Values
+# Override via: helm install -f values.prod.yaml sentinel-vms ./helm/sentinel-vms
+# ═══════════════════════════════════════════════════════════════════════════════
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/org/sentinel-vms
+  pullPolicy: Always
+  tag: ""           # Defaults to Chart.appVersion
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+  metricsPort: 9090
+  sessionAffinity: ClientIP
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  hosts:
+    - host: vms.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sentinel-vms-tls
+      hosts:
+        - vms.example.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+
+# GPU node scheduling (set to true for GPU inference nodes)
+gpuEnabled: false
+gpuResources:
+  limits:
+    nvidia.com/gpu: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 75
+
+persistence:
+  enabled: true
+  storageClass: "standard"
+  accessMode: ReadWriteMany
+  size: 20Gi
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  PORT: "5000"
+  METRICS_PORT: "9090"
+  POSTGRES_POOL_MAX: "20"
+  POSTGRES_SSL: "true"
+  STORAGE_FORCE_PATH_STYLE: "true"
+  NATS_REPLICAS: "3"
+
+# Secrets — reference existing k8s Secret (do not set values here)
+existingSecret: "sentinel-vms-secrets"
+
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 24
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+
+# Bitnami PostgreSQL subchart
+postgresql:
+  enabled: true
+  auth:
+    username: sentinel
+    database: sentinel_vms
+    existingSecret: postgresql-credentials
+    secretKeys:
+      adminPasswordKey: postgresql-password
+      userPasswordKey: postgresql-password
+  primary:
+    persistence:
+      size: 100Gi
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 8Gi
+    extendedConfiguration: |
+      max_connections = 200
+      shared_buffers = 2GB
+      effective_cache_size = 6GB
+      maintenance_work_mem = 512MB
+      work_mem = 32MB
+      wal_level = replica
+      max_wal_senders = 5
+      hot_standby = on
+  readReplicas:
+    replicaCount: 1
+    persistence:
+      size: 100Gi
+
+# Bitnami Redis subchart
+redis:
+  enabled: true
+  architecture: sentinel         # High-availability mode
+  sentinel:
+    enabled: true
+    masterSet: mymaster
+    quorum: 2
+  auth:
+    existingSecret: redis-credentials
+  master:
+    persistence:
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+# NATS JetStream subchart
+nats:
+  enabled: true
+  nats:
+    jetstream:
+      enabled: true
+      fileStorage:
+        enabled: true
+        size: 50Gi
+    cluster:
+      enabled: true
+      replicas: 3
+  natsbox:
+    enabled: false
+
+# Bitnami MinIO subchart
+minio:
+  enabled: true
+  auth:
+    existingSecret: minio-credentials
+  persistence:
+    size: 500Gi
+    storageClass: "standard"
+  resources:
+    requests:
+      memory: 1Gi
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  scrapeTimeout: 10s
+  labels:
+    release: kube-prometheus-stack

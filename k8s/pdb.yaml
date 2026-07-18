@@ -1,0 +1,63 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+spec:
+  # Always keep at least 2 pods running during voluntary disruptions
+  # (node drains, rolling updates, etc.)
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: sentinel-vms
+---
+# Network policy: restrict ingress/egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sentinel-vms-netpol
+  namespace: sentinel-vms
+spec:
+  podSelector:
+    matchLabels:
+      app: sentinel-vms
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from nginx ingress only
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 5000
+    # Allow Prometheus scraping from monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+  egress:
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Allow access to internal services in same namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: sentinel-vms
+    # Allow HTTPS for external AI APIs (Gemini, etc.)
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - port: 443

@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+  labels:
+    app: sentinel-vms
+    version: "3.0.4"
+  annotations:
+    kubernetes.io/change-cause: "Initial enterprise deployment"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: sentinel-vms
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0      # Zero-downtime: always keep full capacity
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: sentinel-vms
+        version: "3.0.4"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sentinel-vms
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Graceful shutdown: drain WebSocket connections before SIGKILL
+      terminationGracePeriodSeconds: 30
+
+      # Anti-affinity: spread pods across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [sentinel-vms]
+                topologyKey: kubernetes.io/hostname
+
+      # Topology spread across availability zones
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: sentinel-vms
+
+      initContainers:
+        # Wait for PostgreSQL to be ready before starting
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres-primary -U sentinel -d sentinel_vms; do
+                echo "Waiting for PostgreSQL..."; sleep 2;
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sentinel-vms-secrets
+                  key: POSTGRES_URL
+
+      containers:
+        - name: sentinel-vms
+          image: ghcr.io/org/sentinel-vms:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+
+          envFrom:
+            - configMapRef:
+                name: sentinel-vms-config
+            - secretRef:
+                name: sentinel-vms-secrets
+
+          # Liveness: process alive
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # Readiness: ready to serve traffic
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+
+          # Startup: allow longer startup for AI model loading
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 24   # 24 * 5s = 2 minutes startup budget
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "4000m"
+              memory: "8Gi"
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # app writes to .data/
+            capabilities:
+              drop: [ALL]
+
+          volumeMounts:
+            - name: app-data
+              mountPath: /app/.data
+
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: sentinel-vms-data
+
+      imagePullSecrets:
+        - name: ghcr-credentials
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sentinel-vms-data
+  namespace: sentinel-vms
+spec:
+  accessModes: [ReadWriteMany]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+  annotations:
+    description: "Service account for Sentinel VMS pods"

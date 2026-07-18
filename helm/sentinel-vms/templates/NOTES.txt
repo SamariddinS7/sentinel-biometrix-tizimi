@@ -1,0 +1,36 @@
+Sentinel AI VMS {{ .Chart.AppVersion }} has been deployed.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ SENTINEL AI VMS — ENTERPRISE DEPLOYMENT NOTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Release:   {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Version:   {{ .Chart.AppVersion }}
+Date:      {{ now | date "2006-01-02 15:04:05 UTC" }}
+
+┌─ ACCESS ──────────────────────────────────────┐
+{{- range .Values.ingress.hosts }}
+  Application: https://{{ .host }}
+{{- end }}
+└───────────────────────────────────────────────┘
+
+┌─ HEALTH CHECK ────────────────────────────────┐
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl rollout status deployment/{{ include "sentinel-vms.fullname" . }} -n {{ .Release.Namespace }}
+└───────────────────────────────────────────────┘
+
+┌─ LOGS ────────────────────────────────────────┐
+  kubectl logs -f -l app={{ include "sentinel-vms.name" . }} -n {{ .Release.Namespace }} --max-log-requests 5
+└───────────────────────────────────────────────┘
+
+┌─ FIRST RUN CHECKLIST ─────────────────────────┐
+  ☐ Verify sentinel-vms-secrets secret is populated
+  ☐ Confirm TLS certificate is issued (cert-manager)
+  ☐ Test /health/status endpoint returns status:ok
+  ☐ Verify Grafana dashboards are loading
+  ☐ Confirm backup CronJob is scheduled
+  ☐ Run initial smoke test suite
+└───────────────────────────────────────────────┘
+
+IMPORTANT: Review docs/SECURITY.md before going live.

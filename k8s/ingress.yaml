@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+  labels:
+    app: sentinel-vms
+  annotations:
+    # nginx ingress controller
+    kubernetes.io/ingress.class: "nginx"
+    # TLS — cert-manager issues Let's Encrypt certs automatically
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Security headers
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    # WebSocket support for live camera feeds
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Permissions-Policy: camera=*, microphone=()";
+    # Rate limiting at ingress level
+    nginx.ingress.kubernetes.io/limit-connections: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    # Restrict /metrics to internal only
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location /metrics {
+        deny all;
+      }
+spec:
+  tls:
+    - hosts:
+        - vms.example.com
+      secretName: sentinel-vms-tls
+  rules:
+    - host: vms.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sentinel-vms
+                port:
+                  name: http

@@ -1,0 +1,491 @@
+You are implementing the Enterprise DevSecOps, Infrastructure and Production Platform of the Enterprise AI Video Management System (AI VMS).
+
+This platform is responsible for deployment, scalability, security, monitoring, resilience and lifecycle management of the entire system.
+
+It must integrate with every previously approved subsystem.
+
+This is NOT a demo.
+
+This is NOT a prototype.
+
+Everything must be production-ready.
+
+====================================================
+MISSION
+====================================================
+
+Design and implement a secure, scalable and highly available enterprise platform capable of operating continuously in production environments.
+
+The platform must support single-site, multi-site and cloud/hybrid deployments without changing application logic.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never use:
+
+Mock infrastructure
+
+Placeholder services
+
+Fake monitoring
+
+Hardcoded secrets
+
+Default passwords
+
+Disabled security checks
+
+Temporary certificates
+
+Development-only configurations in production
+
+====================================================
+ARCHITECTURE
+====================================================
+
+Support:
+
+Modular Services
+
+Microservices (where appropriate)
+
+Well-defined Service APIs
+
+API Gateway
+
+Service Discovery
+
+Configuration Management
+
+Horizontal Scaling
+
+Vertical Scaling
+
+Stateless Services where possible
+
+====================================================
+CONTAINERIZATION
+====================================================
+
+Support:
+
+Docker
+
+Docker Compose
+
+Kubernetes
+
+Helm Charts
+
+Container Health Checks
+
+Graceful Shutdown
+
+Rolling Updates
+
+Blue-Green Deployment
+
+Canary Deployment
+
+====================================================
+GPU INFRASTRUCTURE
+====================================================
+
+Support:
+
+CUDA
+
+TensorRT
+
+ONNX Runtime
+
+OpenVINO
+
+GPU Scheduling
+
+GPU Resource Isolation
+
+Multi-GPU
+
+Inference Worker Pools
+
+CPU Fallback
+
+====================================================
+MESSAGE BUS
+====================================================
+
+Evaluate production messaging technologies.
+
+Examples:
+
+Kafka
+
+RabbitMQ
+
+NATS
+
+Redis Streams
+
+Select the most appropriate architecture.
+
+Support:
+
+Event Routing
+
+Retry Policies
+
+Dead Letter Queues
+
+Ordering Guarantees
+
+Backpressure Handling
+
+====================================================
+DATABASE
+====================================================
+
+Support:
+
+PostgreSQL
+
+Time-Series Storage (if required)
+
+Vector Database
+
+Database Replication
+
+Read Replicas
+
+Automatic Backups
+
+Point-in-Time Recovery
+
+Migration Framework
+
+====================================================
+CACHE
+====================================================
+
+Support:
+
+Redis
+
+Distributed Cache
+
+Session Cache
+
+Inference Cache
+
+Rate Limiting
+
+====================================================
+OBJECT STORAGE
+====================================================
+
+Support:
+
+S3-Compatible Storage
+
+MinIO
+
+Cloud Object Storage
+
+Lifecycle Policies
+
+Versioning
+
+Immutable Evidence Storage
+
+====================================================
+OBSERVABILITY
+====================================================
+
+Implement:
+
+Structured Logging
+
+Distributed Tracing
+
+Metrics Collection
+
+Health Endpoints
+
+Performance Dashboards
+
+Audit Logs
+
+====================================================
+MONITORING
+====================================================
+
+Monitor:
+
+API Services
+
+AI Services
+
+Workers
+
+GPU
+
+CPU
+
+Memory
+
+Disk
+
+Storage
+
+Databases
+
+Queues
+
+Camera Services
+
+Recording Services
+
+Network Latency
+
+====================================================
+ALERTING
+====================================================
+
+Support:
+
+Email
+
+Webhook
+
+Future SMS
+
+Future Push Notifications
+
+Escalation Policies
+
+Maintenance Windows
+
+====================================================
+SECURITY
+====================================================
+
+Implement:
+
+TLS Everywhere
+
+RBAC
+
+Multi-Tenant Isolation
+
+Secrets Management
+
+Key Rotation
+
+API Authentication
+
+OAuth2/OIDC Ready
+
+JWT
+
+Encryption at Rest
+
+Encryption in Transit
+
+Certificate Management
+
+====================================================
+AUDIT
+====================================================
+
+Log:
+
+Authentication
+
+Authorization
+
+Configuration Changes
+
+Deployment Events
+
+Operator Actions
+
+API Access
+
+Evidence Access
+
+System Changes
+
+====================================================
+CI/CD
+====================================================
+
+Support:
+
+GitHub Actions
+
+GitLab CI
+
+Azure DevOps
+
+Automated Builds
+
+Automated Tests
+
+Static Analysis
+
+Dependency Scanning
+
+Container Scanning
+
+Artifact Management
+
+Automated Deployments
+
+====================================================
+QUALITY
+====================================================
+
+Integrate:
+
+Unit Tests
+
+Integration Tests
+
+End-to-End Tests
+
+Performance Tests
+
+Load Tests
+
+Stress Tests
+
+Security Tests
+
+Regression Tests
+
+====================================================
+DISASTER RECOVERY
+====================================================
+
+Support:
+
+Automatic Backups
+
+Database Recovery
+
+Configuration Backup
+
+Evidence Backup
+
+Cross-Site Replication
+
+Failover
+
+Recovery Procedures
+
+====================================================
+HIGH AVAILABILITY
+====================================================
+
+Support:
+
+Redundant Services
+
+Load Balancing
+
+Automatic Restart
+
+Health-Based Failover
+
+Zero-Downtime Updates
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+10,000+ Cameras
+
+Millions of Events
+
+Millions of Identities
+
+Thousands of Concurrent Operators
+
+Low-Latency Streaming
+
+Real-Time AI Processing
+
+====================================================
+PLUGIN PLATFORM
+====================================================
+
+Support:
+
+Independent Plugin Deployment
+
+Plugin Versioning
+
+Compatibility Validation
+
+Hot Installation (where safe)
+
+Hot Removal (where safe)
+
+Plugin Sandboxing
+
+====================================================
+DOCUMENTATION
+====================================================
+
+Automatically generate:
+
+API Documentation
+
+Architecture Documentation
+
+Deployment Guides
+
+Administrator Guide
+
+Operator Guide
+
+Plugin SDK Documentation
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Audit the existing infrastructure.
+
+2. Identify scalability bottlenecks.
+
+3. Evaluate production technologies.
+
+4. Select the most suitable architecture.
+
+5. Design deployment topology.
+
+6. Design CI/CD pipelines.
+
+7. Design security architecture.
+
+8. Design disaster recovery strategy.
+
+9. Design observability and monitoring.
+
+10. Design testing and release strategy.
+
+Only after architecture approval begin implementation.
+
+Never introduce demo infrastructure.
+
+Never deploy insecure defaults.
+
+Never hardcode secrets or credentials.
+
+Every deployment component must satisfy enterprise production standards.

@@ -1,0 +1,159 @@
+groups:
+  # ── Application health alerts ───────────────────────────────────────────────
+  - name: sentinel_vms_app
+    interval: 30s
+    rules:
+      - alert: VMSInstanceDown
+        expr: up{job="sentinel-vms"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Sentinel VMS instance down"
+          description: "{{ $labels.instance }} has been down for more than 1 minute."
+          runbook: "https://wiki.example.com/runbooks/vms-instance-down"
+
+      - alert: VMSHighErrorRate
+        expr: |
+          rate(vms_http_requests_total{status_code=~"5.."}[5m]) /
+          rate(vms_http_requests_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+
+      - alert: VMSHighResponseLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(vms_http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "95th percentile response latency > 2s"
+          description: "p95 latency: {{ $value | humanizeDuration }}"
+
+      - alert: VMSHighMemoryUsage
+        expr: |
+          vms_process_resident_memory_bytes /
+          (1024 * 1024 * 1024) > 6
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VMS process memory > 6GB"
+          description: "Current RSS: {{ $value | humanize1024 }}B"
+
+  # ── AI / Inference alerts ───────────────────────────────────────────────────
+  - name: sentinel_vms_ai
+    interval: 30s
+    rules:
+      - alert: AIInferenceLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            rate(vms_ai_inference_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI inference p95 latency > 1s"
+          description: "Model: {{ $labels.model }}, Plugin: {{ $labels.plugin }}"
+
+      - alert: AIQueueDepthHigh
+        expr: vms_ai_queue_depth > 500
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI inference queue depth > 500"
+          description: "Queue depth: {{ $value }} on worker {{ $labels.worker }}"
+
+  # ── Camera / streaming alerts ───────────────────────────────────────────────
+  - name: sentinel_vms_cameras
+    interval: 30s
+    rules:
+      - alert: CameraConnectionsLow
+        expr: vms_camera_connections_active < 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No cameras connected"
+          description: "Active camera connections: {{ $value }}"
+
+      - alert: CameraFrameRateLow
+        expr: vms_camera_frame_rate_fps < 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Camera frame rate critically low"
+          description: "Camera {{ $labels.camera_id }}: {{ $value }} FPS"
+
+  # ── Security / Operations alerts ────────────────────────────────────────────
+  - name: sentinel_vms_security
+    interval: 30s
+    rules:
+      - alert: CriticalAlarmsActive
+        expr: vms_security_alarms_active{severity="CRITICAL"} > 0
+        for: 0m
+        labels:
+          severity: critical
+          pager: "true"
+        annotations:
+          summary: "{{ $value }} critical security alarms active"
+          description: "Immediate operator attention required. Type: {{ $labels.type }}"
+
+      - alert: HighIncidentCount
+        expr: vms_security_incidents_open{priority=~"CRITICAL|HIGH"} > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of open critical/high incidents"
+          description: "Open incidents: {{ $value }}"
+
+  # ── Infrastructure alerts ───────────────────────────────────────────────────
+  - name: sentinel_infra
+    interval: 60s
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is unreachable"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is unreachable — cache and sessions unavailable"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_activity_count > 180
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connection count > 180 / 200 max"
+          description: "Active connections: {{ $value }}"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} /
+           node_filesystem_size_bytes{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space < 10% on root filesystem"
+          description: "Available: {{ $value | humanizePercentage }}"

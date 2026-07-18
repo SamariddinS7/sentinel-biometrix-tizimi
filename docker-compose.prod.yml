@@ -1,0 +1,244 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sentinel AI VMS — Production Docker Compose
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required secrets (set in .env or environment before running):
+#   JWT_SECRET, POSTGRES_PASSWORD, REDIS_PASSWORD,
+#   MINIO_ROOT_PASSWORD, GRAFANA_PASSWORD, SESSION_SECRET
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: '3.9'
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  redis_data:
+  nats_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+secrets:
+  jwt_secret:
+    external: true
+  postgres_password:
+    external: true
+  redis_password:
+    external: true
+  minio_password:
+    external: true
+
+services:
+
+  # ── nginx — TLS termination + API gateway ─────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - app
+    networks:
+      - frontend
+      - backend
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Application (2 replicas) ───────────────────────────────────────────────
+  app:
+    image: ${REGISTRY:-ghcr.io}/sentinel-vms:${IMAGE_TAG:-latest}
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+      PORT: "5000"
+      POSTGRES_URL: "postgres://sentinel:${POSTGRES_PASSWORD}@postgres:5432/sentinel_vms?sslmode=require"
+      POSTGRES_REPLICA_URL: "postgres://sentinel:${POSTGRES_PASSWORD}@postgres-replica:5432/sentinel_vms?sslmode=require"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      NATS_URL: "nats://nats:4222"
+      STORAGE_ENDPOINT: "http://minio:9000"
+      STORAGE_ACCESS_KEY: sentinel_prod
+      STORAGE_FORCE_PATH_STYLE: "true"
+    secrets:
+      - jwt_secret
+      - postgres_password
+      - redis_password
+      - minio_password
+    env_file: .env.prod
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── PostgreSQL 16 primary ─────────────────────────────────────────────────
+  postgres:
+    image: timescale/timescaledb-ha:pg16-latest
+    environment:
+      POSTGRES_DB: sentinel_vms
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_primary_data:/home/postgres/pgdata/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_vms"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+
+  # ── Redis 7 (with password) ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: >
+      sh -c "redis-server
+      --requirepass $$(cat /run/secrets/redis_password)
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+      --tcp-keepalive 60"
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: always
+
+  # ── NATS 2 JetStream (3-node cluster) ────────────────────────────────────
+  nats:
+    image: nats:2.10-alpine
+    command: >
+      -js
+      -sd /data
+      -cluster nats://0.0.0.0:6222
+      -routes nats://nats-2:6222,nats://nats-3:6222
+      -m 8222
+      --max_payload 8MB
+    volumes:
+      - nats_data:/data
+    networks:
+      - backend
+    restart: always
+
+  # ── MinIO ─────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sentinel_prod
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
+    secrets:
+      - minio_password
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=90d'
+      - '--web.enable-lifecycle'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerting/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - backend
+    restart: always
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_DOMAIN: "${PUBLIC_DOMAIN:-localhost}"
+      GF_SERVER_ROOT_URL: "https://%(domain)s/grafana"
+      GF_SECURITY_SECRET_KEY: "${GRAFANA_SECRET_KEY}"
+      GF_DATABASE_URL: "postgres://sentinel:${POSTGRES_PASSWORD}@postgres:5432/grafana?sslmode=require"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+    depends_on:
+      - prometheus
+      - postgres
+    networks:
+      - backend
+    restart: always

@@ -1,0 +1,57 @@
+# Production overrides — merge with values.yaml
+# helm upgrade sentinel-vms ./helm/sentinel-vms -f values.yaml -f values.prod.yaml
+
+replicaCount: 3
+
+image:
+  pullPolicy: Always
+
+ingress:
+  hosts:
+    - host: vms.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sentinel-vms-tls
+      hosts:
+        - vms.example.com
+
+resources:
+  requests:
+    cpu: 1000m
+    memory: 2Gi
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 20
+
+persistence:
+  storageClass: "premium-rwx"
+  size: 100Gi
+
+postgresql:
+  primary:
+    persistence:
+      storageClass: premium-ssd
+      size: 500Gi
+  readReplicas:
+    replicaCount: 2
+
+redis:
+  master:
+    persistence:
+      storageClass: premium-ssd
+      size: 50Gi
+
+minio:
+  persistence:
+    storageClass: premium-ssd
+    size: 2Ti
+
+env:
+  LOG_LEVEL: warn
+  POSTGRES_POOL_MAX: "50"

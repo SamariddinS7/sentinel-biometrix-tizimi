@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+  labels:
+    app: sentinel-vms
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9090"
+spec:
+  type: ClusterIP
+  selector:
+    app: sentinel-vms
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  sessionAffinity: ClientIP       # Sticky sessions for WebSocket
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+---
+# ServiceMonitor for Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sentinel-vms
+  namespace: sentinel-vms
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: sentinel-vms
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
