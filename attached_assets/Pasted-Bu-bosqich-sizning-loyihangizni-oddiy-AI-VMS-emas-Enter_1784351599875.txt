@@ -1,0 +1,743 @@
+Bu bosqich sizning loyihangizni oddiy AI VMS emas, Enterprise Security Operations Platform darajasiga olib chiqadi.
+
+Oldingi promptlarda:
+
+Camera Layer ✅
+Detection Engine ✅
+Identity Intelligence ✅
+Analytics Engine ✅
+Person Intelligence ✅
+
+endi bularning barchasi bitta operatsion markaz ostida ishlashi kerak.
+
+Bu modul HikCentral, Genetec Security Center, Milestone XProtect, Avigilon Unity va Bosch BVMS dagi SOC (Security Operations Center) ga o'xshash bo'ladi.
+
+Lekin undan ham kuchliroq.
+
+PROMPT 8 — ENTERPRISE SECURITY OPERATIONS CENTER (SOC) & DIGITAL TWIN PLATFORM
+You are implementing the Enterprise Security Operations Center (SOC) and Digital Twin Platform of the Enterprise AI Video Management System (AI VMS).
+
+This module is the highest-level operational interface of the platform.
+
+It unifies every subsystem into one operational environment.
+
+This is NOT a dashboard.
+
+This is NOT a monitoring page.
+
+This is NOT a demo.
+
+This is the central command center used by enterprise security operators.
+
+Everything must follow every previously approved architecture, coding standard, plugin architecture, security policy, testing strategy and AI pipeline.
+
+====================================================
+MISSION
+====================================================
+
+Create one centralized Security Operations Center.
+
+Every subsystem must be accessible from this interface.
+
+Every module must share the same Event Bus.
+
+The SOC becomes the operational brain of the system.
+
+====================================================
+ABSOLUTE RULES
+====================================================
+
+Never generate:
+
+Fake camera feeds
+
+Fake AI detections
+
+Fake alarms
+
+Mock notifications
+
+Placeholder widgets
+
+Hardcoded statistics
+
+Simulated Digital Twin
+
+Random movement
+
+Demo maps
+
+Every displayed element must originate from real backend services.
+
+====================================================
+CORE MODULES
+====================================================
+
+Integrate:
+
+Digital Twin
+
+Area Map
+
+Live Monitoring
+
+Video Wall
+
+AI Event Timeline
+
+Alarm Center
+
+Incident Center
+
+Evidence Manager
+
+Investigation Center
+
+Person Intelligence
+
+Analytics
+
+Recording
+
+Playback
+
+Notification Center
+
+Health Dashboard
+
+Audit Console
+
+System Monitoring
+
+Reports
+
+Resource Management
+
+Operator Management
+
+Multi-site Operations
+
+====================================================
+DIGITAL TWIN
+====================================================
+
+Support:
+
+2D Floor Plans
+
+3D Digital Twin
+
+Building Hierarchy
+
+Campus Hierarchy
+
+Camera Placement
+
+Camera Coverage
+
+Camera Frustum
+
+Blind Spot Visualization
+
+Live Person Tracking
+
+Vehicle Tracking
+
+AI Overlay
+
+Movement Trails
+
+Historical Replay
+
+Coverage Simulation
+
+Visibility Analysis
+
+Future BIM Import
+
+Future CAD Import
+
+====================================================
+AREA MAP
+====================================================
+
+Support:
+
+Organization
+
+Campus
+
+Building
+
+Floor
+
+Room
+
+Zone
+
+Sub-zone
+
+Interactive Navigation
+
+Zoom
+
+Pan
+
+Layer Control
+
+Measurement Tools
+
+Camera Placement
+
+Camera Orientation
+
+Coverage Projection
+
+Restricted Zones
+
+Hazard Zones
+
+Entry Zones
+
+Exit Zones
+
+====================================================
+LIVE VIDEO WALL
+====================================================
+
+Support:
+
+Unlimited Layouts
+
+Drag & Drop
+
+Multi Monitor
+
+Operator Layouts
+
+Emergency Layouts
+
+Alarm Layouts
+
+Low Latency Rendering
+
+GPU Rendering
+
+Synchronized Playback
+
+====================================================
+REAL-TIME TRACKING
+====================================================
+
+Display:
+
+Persons
+
+Vehicles
+
+Unknown Persons
+
+Movement Trails
+
+Current Camera
+
+Current Zone
+
+Identity Status
+
+Recognition Status
+
+Tracking Confidence
+
+====================================================
+AI OVERLAY
+====================================================
+
+Overlay:
+
+Bounding Boxes
+
+Track IDs
+
+Identity Labels
+
+Recognition Status
+
+Fire Detection
+
+Smoke Detection
+
+OCR
+
+License Plates
+
+PPE
+
+Crowd Analytics
+
+Heatmaps
+
+Hazards
+
+Confidence
+
+====================================================
+ALARM CENTER
+====================================================
+
+Support:
+
+Critical
+
+High
+
+Medium
+
+Low
+
+Alarm Queue
+
+Alarm Assignment
+
+Alarm Escalation
+
+Alarm Acknowledgement
+
+Alarm Resolution
+
+Alarm History
+
+Alarm Timeline
+
+====================================================
+INCIDENT MANAGEMENT
+====================================================
+
+Support:
+
+Create Incident
+
+Assign Incident
+
+Merge Incidents
+
+Close Incident
+
+Priority
+
+Category
+
+Evidence
+
+Timeline
+
+Tasks
+
+Operator Notes
+
+====================================================
+EVIDENCE MANAGER
+====================================================
+
+Manage:
+
+Snapshots
+
+Video Clips
+
+AI Metadata
+
+Recognition Metadata
+
+OCR Results
+
+License Plates
+
+Documents
+
+Chain of Custody
+
+Evidence Lock
+
+Evidence Export
+
+====================================================
+INVESTIGATION CENTER
+====================================================
+
+Support:
+
+Timeline Replay
+
+Cross Camera Investigation
+
+Movement Replay
+
+Appearance Search
+
+Face Search
+
+Identity Search
+
+Evidence Search
+
+Incident Search
+
+====================================================
+HEALTH DASHBOARD
+====================================================
+
+Display:
+
+Camera Health
+
+AI Engine
+
+GPU
+
+CPU
+
+Memory
+
+Storage
+
+Recorder
+
+Database
+
+Workers
+
+Redis
+
+Queues
+
+Network
+
+API
+
+====================================================
+SYSTEM MONITORING
+====================================================
+
+Monitor:
+
+Camera Services
+
+AI Services
+
+Event Bus
+
+Frame Queue
+
+Detection Queue
+
+Tracking Queue
+
+Database
+
+Storage
+
+Containers
+
+Workers
+
+GPU Runtime
+
+API
+
+====================================================
+NOTIFICATION CENTER
+====================================================
+
+Support:
+
+In-App Notifications
+
+Email
+
+SMS (future)
+
+Push (future)
+
+Webhook (future)
+
+====================================================
+RESOURCE MANAGEMENT
+====================================================
+
+Manage:
+
+Security Staff
+
+Patrol Teams
+
+Equipment
+
+Vehicles
+
+Assignments
+
+Availability
+
+====================================================
+MULTI-SITE OPERATIONS
+====================================================
+
+Support:
+
+Organizations
+
+Campuses
+
+Buildings
+
+Cities
+
+Regions
+
+Countries
+
+Cross-Site Monitoring
+
+Cross-Site Reports
+
+Cross-Site Analytics
+
+====================================================
+SEARCH
+====================================================
+
+Global Search.
+
+Support:
+
+Person
+
+Camera
+
+Vehicle
+
+Evidence
+
+Incident
+
+Alarm
+
+Analytics
+
+Building
+
+Zone
+
+Operator
+
+====================================================
+REPORTS
+====================================================
+
+Generate:
+
+Incident Reports
+
+Alarm Reports
+
+Operational Reports
+
+Executive Reports
+
+Analytics Reports
+
+Camera Reports
+
+Health Reports
+
+Investigation Reports
+
+====================================================
+EVENT BUS
+====================================================
+
+Every module must subscribe to one centralized Event Bus.
+
+Digital Twin
+
+Dashboard
+
+Video Wall
+
+Playback
+
+Evidence
+
+Notifications
+
+SOC
+
+No duplicate event processing.
+
+====================================================
+API
+====================================================
+
+Reuse existing APIs.
+
+SOC must never duplicate backend logic.
+
+SOC acts only as orchestration and visualization.
+
+====================================================
+SECURITY
+====================================================
+
+Support:
+
+RBAC
+
+Fine-Grained Permissions
+
+Audit Logging
+
+Encrypted Communications
+
+Operator Isolation
+
+Organization Isolation
+
+====================================================
+AUDIT
+====================================================
+
+Log:
+
+Operator Actions
+
+Map Changes
+
+Incident Changes
+
+Evidence Access
+
+Exports
+
+Alarm Handling
+
+SOC Actions
+
+====================================================
+PERFORMANCE
+====================================================
+
+Support:
+
+10000+ Cameras
+
+1000+ Operators
+
+Millions of Events
+
+GPU Rendering
+
+WebGL
+
+Worker Threads
+
+Virtual Scrolling
+
+Low Latency
+
+====================================================
+TESTING
+====================================================
+
+Implement:
+
+SOC UI Tests
+
+Digital Twin Tests
+
+Video Wall Tests
+
+Map Tests
+
+Alarm Tests
+
+Incident Tests
+
+Playback Tests
+
+Stress Tests
+
+Performance Tests
+
+Regression Tests
+
+====================================================
+DELIVERABLE
+====================================================
+
+Before implementation:
+
+1. Audit existing dashboard implementation.
+
+2. Reuse working modules.
+
+3. Design SOC architecture.
+
+4. Design Digital Twin architecture.
+
+5. Design Video Wall.
+
+6. Design Area Map.
+
+7. Design Incident workflows.
+
+8. Design Alarm workflows.
+
+9. Design APIs.
+
+10. Design testing strategy.
+
+Only after architecture approval begin implementation.
+
+Never create demo widgets.
+
+Never simulate camera feeds.
+
+Never create fake AI overlays.
+
+Never duplicate backend logic.
+
+Every displayed element must come from real production services.
+
+The Enterprise SOC becomes the single operational interface for the entire Enterprise AI Video Management System.
+Men yana bitta juda muhim qo'shimcha tavsiya qilaman
+
+Sizning Area Map modulingiz uchun quyidagi qoidani albatta qo'shing:
+
+PHYSICAL VISIBILITY ENGINE
+
+The Digital Twin must calculate real camera visibility.
+
+Walls, floors, ceilings, columns, closed doors and structural objects must block the camera field of view.
+
+Only geometrically visible areas may be considered covered.
+
+Coverage visualization must be generated using real ray casting and visibility calculations.
+
+Areas hidden behind walls must never appear inside the camera coverage polygon.
+
+Coverage must update automatically when:
+
+Camera position changes
+
+Camera rotation changes
+
+Camera tilt changes
+
+Field of view changes
+
+Building geometry changes
+
+The visibility engine must become the single source of truth for camera coverage calculations throughout the system.
+
+Bu qoida bilan sizning Digital Twin kameraning ko'rish hududini haqiqiy geometriya asosida hisoblaydi va devor ortidagi hududni "ko'rinadigan" deb chizmaydi. Bu professional VMS va Digital Twin tizimlari uchun muhim talab hisoblanadi.

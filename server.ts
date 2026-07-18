@@ -33,6 +33,9 @@ import dns from "dns";
 import { analyticsApiRouter, evidenceApiRouter } from "./services/analytics/AnalyticsApiRouter";
 import { initAnalyticsPlatform } from "./services/analytics/AnalyticsPlatformBootstrap";
 
+// Incident Service
+import { incidentService } from "./services/incidentService";
+
 // Person Intelligence Platform
 import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
 import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
@@ -2545,6 +2548,401 @@ Reply with ONLY valid JSON, no explanation.`;
 
   // ── Person Intelligence Platform API ──────────────────────────────────────
   app.use("/api/persons", authenticateToken, personIntelApiRouter);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ENTERPRISE SOC ROUTES
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Incident Management ────────────────────────────────────────────────────
+  app.use("/api/incidents", authenticateToken);
+
+  // GET  /api/incidents
+  app.get("/api/incidents", (req, res) => {
+    const { status, priority, category, limit, since } = req.query as Record<string, string>;
+    const results = incidentService.getAll({
+      status   : status   as any,
+      priority : priority as any,
+      category : category as any,
+      limit    : limit ? parseInt(limit, 10) : undefined,
+      since,
+    });
+    res.json({ count: results.length, incidents: results });
+  });
+
+  // GET  /api/incidents/stats
+  app.get("/api/incidents/stats", (_req, res) => {
+    res.json(incidentService.getStats());
+  });
+
+  // GET  /api/incidents/:id
+  app.get("/api/incidents/:id", (req, res) => {
+    const inc = incidentService.getById(String(req.params.id));
+    if (!inc) return res.status(404).json({ error: "Incident not found" });
+    res.json(inc);
+  });
+
+  // POST /api/incidents — create
+  app.post("/api/incidents", async (req, res) => {
+    const { title, description, category, priority, assignedTeam, assignedOperator,
+            associatedCameras, alarmIds, location, tags } = req.body;
+    if (!title || !category || !priority) {
+      return res.status(400).json({ error: "title, category and priority are required" });
+    }
+    const operator = (req as any).user?.email || (req as any).user?.id || 'operator';
+    const inc = incidentService.create({
+      title, description, category, priority,
+      createdBy: operator, assignedTeam, assignedOperator,
+      associatedCameras, alarmIds, location, tags,
+    });
+    vmsAuditService.log({
+      userId: (req as any).user?.id || 'system',
+      userName: operator,
+      action: 'CREATE_INCIDENT',
+      module: 'Incident Management',
+      status: 'SUCCESS',
+      ipAddress: req.ip || 'unknown',
+      details: `Incident ${inc.id} created: "${title}" (${priority} ${category})`,
+    });
+    res.status(201).json(inc);
+  });
+
+  // PUT /api/incidents/:id — update title/description/priority/location/tags
+  app.put("/api/incidents/:id", (req, res) => {
+    const inc = incidentService.getById(String(req.params.id));
+    if (!inc) return res.status(404).json({ error: "Incident not found" });
+    const allow = ['title', 'description', 'priority', 'location', 'tags', 'associatedCameras'];
+    allow.forEach(k => { if (req.body[k] !== undefined) (inc as any)[k] = req.body[k]; });
+    inc.updatedAt = new Date().toISOString();
+    res.json(inc);
+  });
+
+  // POST /api/incidents/:id/status — change status
+  app.post("/api/incidents/:id/status", (req, res) => {
+    const { status, resolution } = req.body;
+    if (!status) return res.status(400).json({ error: "status is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.updateStatus(String(req.params.id), status, operator, resolution);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/assign
+  app.post("/api/incidents/:id/assign", (req, res) => {
+    const { team, operator: assignedOperator } = req.body;
+    if (!team) return res.status(400).json({ error: "team is required" });
+    const by = (req as any).user?.email || 'operator';
+    const ok = incidentService.assign(String(req.params.id), team, assignedOperator || '', by);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/notes
+  app.post("/api/incidents/:id/notes", (req, res) => {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.addNote(String(req.params.id), text, operator);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/evidence
+  app.post("/api/incidents/:id/evidence", (req, res) => {
+    const { evidenceId } = req.body;
+    if (!evidenceId) return res.status(400).json({ error: "evidenceId is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.attachEvidence(String(req.params.id), evidenceId, operator);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/tasks
+  app.post("/api/incidents/:id/tasks", (req, res) => {
+    const { text, assignedTo } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const task = incidentService.addTask(String(req.params.id), text, assignedTo, operator);
+    if (!task) return res.status(404).json({ error: "Incident not found" });
+    res.json(task);
+  });
+
+  // POST /api/incidents/:incidentId/tasks/:taskId/toggle
+  app.post("/api/incidents/:incidentId/tasks/:taskId/toggle", (req, res) => {
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.toggleTask(String(req.params.incidentId), String(req.params.taskId), operator);
+    if (!ok) return res.status(404).json({ error: "Incident or task not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:incidentId/sop/:stepId/toggle
+  app.post("/api/incidents/:incidentId/sop/:stepId/toggle", (req, res) => {
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.toggleSopStep(String(req.params.incidentId), String(req.params.stepId), operator);
+    if (!ok) return res.status(404).json({ error: "Incident or SOP step not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/merge
+  app.post("/api/incidents/merge", requireRole(["ADMIN", "SUPERVISOR"]), (req, res) => {
+    const { sourceId, targetId } = req.body;
+    if (!sourceId || !targetId) return res.status(400).json({ error: "sourceId and targetId are required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.merge(sourceId, targetId, operator);
+    if (!ok) return res.status(404).json({ error: "One or both incidents not found" });
+    res.json({ success: true });
+  });
+
+  // ── Resource Management ────────────────────────────────────────────────────
+  app.use("/api/resources", authenticateToken);
+
+  // GET /api/resources/staff — security personnel (users with security roles)
+  app.get("/api/resources/staff", async (req, res) => {
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      const securityRoles = new Set(["ADMIN", "SUPERVISOR", "OPERATOR", "GUARD", "OFFICER"]);
+      const staff = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((u: any) => securityRoles.has(u.role))
+        .map((u: any) => ({
+          id          : u.id,
+          name        : u.fullName || u.email || u.id,
+          email       : u.email || '',
+          role        : u.role,
+          department  : u.department || 'Security',
+          status      : (u as any).patrolStatus || 'IDLE',
+          location    : (u as any).currentLocation || 'Base',
+          radioChannel: (u as any).radioChannel || 'CH-1',
+          lastActive  : u.lastActive || new Date().toISOString(),
+        }));
+      res.json({ count: staff.length, staff });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/resources/staff/:id/dispatch
+  app.post("/api/resources/staff/:id/dispatch", requireRole(["ADMIN", "SUPERVISOR", "OPERATOR"]), async (req, res) => {
+    const { location, incidentId } = req.body;
+    const operator = (req as any).user?.email || 'operator';
+    try {
+      const userRef = doc(db, "users", String(req.params.id));
+      await updateDoc(userRef, {
+        patrolStatus   : 'DISPATCHED',
+        currentLocation: location || 'Field',
+        dispatchedAt   : new Date().toISOString(),
+        dispatchedBy   : operator,
+        dispatchedTo   : incidentId || null,
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/resources/staff/:id/recall
+  app.post("/api/resources/staff/:id/recall", requireRole(["ADMIN", "SUPERVISOR", "OPERATOR"]), async (req, res) => {
+    try {
+      const userRef = doc(db, "users", String(req.params.id));
+      await updateDoc(userRef, { patrolStatus: 'IDLE', currentLocation: 'Base' });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Multi-site / Organization ──────────────────────────────────────────────
+  app.get("/api/sites", authenticateToken, (_req, res) => {
+    // Static site configuration — extend from settings or Firestore in future
+    const sites = [
+      {
+        id       : "site-tashkent-hq",
+        name     : "Tashkent Campus HQ",
+        city     : "Tashkent",
+        country  : "Uzbekistan",
+        timezone : "Asia/Tashkent",
+        status   : "ONLINE",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date().toISOString(),
+        coordinates: { lat: 41.2995, lng: 69.2401 },
+      },
+      {
+        id       : "site-samarkand",
+        name     : "Samarkand Tech Hub",
+        city     : "Samarkand",
+        country  : "Uzbekistan",
+        timezone : "Asia/Samarkand",
+        status   : "ONLINE",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date().toISOString(),
+        coordinates: { lat: 39.6542, lng: 66.9597 },
+      },
+      {
+        id       : "site-namangan",
+        name     : "Namangan Regional Office",
+        city     : "Namangan",
+        country  : "Uzbekistan",
+        timezone : "Asia/Tashkent",
+        status   : "DEGRADED",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date(Date.now() - 15 * 60_000).toISOString(),
+        coordinates: { lat: 41.0, lng: 71.6724 },
+      },
+    ];
+
+    // Enrich with live alarm counts where possible
+    try {
+      const alarmStats = incidentService.getStats();
+      sites[0].alarmCount = alarmStats.open + alarmStats.investigating;
+    } catch {}
+
+    res.json({ count: sites.length, sites });
+  });
+
+  // ── Global SOC Search ──────────────────────────────────────────────────────
+  app.get("/api/soc/search", authenticateToken, async (req, res) => {
+    const { q = '', types = 'all' } = req.query as Record<string, string>;
+    const query_lc = q.toLowerCase().trim();
+    if (!query_lc) return res.json({ results: [] });
+
+    const typeSet = new Set(types === 'all'
+      ? ['camera', 'alarm', 'incident', 'identity', 'evidence', 'analytics']
+      : types.split(',').map(t => t.trim()));
+
+    const results: Array<{ type: string; id: string; title: string; subtitle?: string; timestamp?: string; url?: string }> = [];
+
+    // Search cameras
+    if (typeSet.has('camera') || typeSet.has('all')) {
+      try {
+        const cameras = cameraRegistry.getAllRegistrations()
+          .filter((r: any) =>
+            r.config?.name?.toLowerCase().includes(query_lc) ||
+            r.config?.id?.toLowerCase().includes(query_lc) ||
+            r.config?.location?.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        cameras.forEach((r: any) => results.push({
+          type: 'camera', id: r.config.id, title: r.config.name,
+          subtitle: `${r.config.location ?? ''} · ${r.config.status ?? 'UNKNOWN'}`,
+        }));
+      } catch {}
+    }
+
+    // Search incidents
+    if (typeSet.has('incident') || typeSet.has('all')) {
+      incidentService.getAll({ limit: 200 })
+        .filter(i =>
+          i.title.toLowerCase().includes(query_lc) ||
+          i.id.toLowerCase().includes(query_lc) ||
+          i.category.toLowerCase().includes(query_lc) ||
+          i.description?.toLowerCase().includes(query_lc)
+        )
+        .slice(0, 5)
+        .forEach(i => results.push({
+          type: 'incident', id: i.id, title: i.title,
+          subtitle: `${i.priority} · ${i.status}`,
+          timestamp: i.createdAt,
+        }));
+    }
+
+    // Search identities
+    if (typeSet.has('identity') || typeSet.has('all')) {
+      try {
+        const identities = identityFusionEngine.getAllIdentities()
+          .filter((id: any) =>
+            id.name?.toLowerCase().includes(query_lc) ||
+            id.id?.toLowerCase().includes(query_lc) ||
+            id.role?.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        identities.forEach((id: any) => results.push({
+          type: 'identity', id: id.id, title: id.name || id.id,
+          subtitle: `${id.role} · ${id.status}`,
+        }));
+      } catch {}
+    }
+
+    // Search evidence
+    if (typeSet.has('evidence') || typeSet.has('all')) {
+      try {
+        const { evidenceManager } = await import('./services/evidenceManager');
+        const evResults = evidenceManager.search({ limit: 200 })
+          .filter(e =>
+            e.id.toLowerCase().includes(query_lc) ||
+            e.eventType.toLowerCase().includes(query_lc) ||
+            e.cameraId.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        evResults.forEach(e => results.push({
+          type: 'evidence', id: e.id, title: `${e.eventType} — ${e.cameraId}`,
+          subtitle: `Confidence: ${Math.round(e.confidence * 100)}%`,
+          timestamp: e.timestamp,
+        }));
+      } catch {}
+    }
+
+    res.json({ count: results.length, results });
+  });
+
+  // ── SOC Reports ────────────────────────────────────────────────────────────
+  app.post("/api/soc/reports/generate", authenticateToken, requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    const { reportType, period, cameraId, format = 'json' } = req.body;
+    const operator = (req as any).user?.email || 'operator';
+    const since = new Date(Date.now() - 86_400_000 * (period === '7d' ? 7 : period === '30d' ? 30 : 1)).toISOString();
+
+    try {
+      let reportData: any = {
+        reportId   : `RPT-${Date.now()}`,
+        reportType : reportType || 'OPERATIONAL',
+        generatedAt: new Date().toISOString(),
+        generatedBy: operator,
+        period     : period || '24h',
+      };
+
+      switch (reportType) {
+        case 'INCIDENT':
+          reportData.data = incidentService.getAll({ since, limit: 500 });
+          reportData.summary = incidentService.getStats();
+          break;
+        case 'ALARM': {
+          const alertsSnap = await getSecurityAlerts();
+          reportData.data    = alertsSnap;
+          reportData.summary = {
+            total     : alertsSnap.length,
+            critical  : alertsSnap.filter((a: any) => a.severity === 'CRITICAL').length,
+            resolved  : alertsSnap.filter((a: any) => a.status === 'RESOLVED').length,
+          };
+          break;
+        }
+        case 'HEALTH':
+          reportData.data = {
+            telemetry: vmsHealthService.getTelemetry(),
+            services : vmsHealthService.getServiceStates(),
+          };
+          break;
+        case 'OPERATIONAL':
+        default:
+          reportData.data = {
+            incidents: incidentService.getStats(),
+            cameras  : cameraRegistry.getAllRegistrations().length,
+          };
+          break;
+      }
+
+      vmsAuditService.log({
+        userId: (req as any).user?.id || 'system',
+        userName: operator,
+        action: 'GENERATE_SOC_REPORT',
+        module: 'SOC Reports',
+        status: 'SUCCESS',
+        ipAddress: req.ip || 'unknown',
+        details: `Generated ${reportType} report for period ${period}`,
+      });
+
+      res.json(reportData);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // --- Vite Middleware Integration ---
   if (process.env.NODE_ENV !== "production") {
