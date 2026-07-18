@@ -19,8 +19,18 @@ import { IdentityFusionConsole } from './components/IdentityFusionConsole';
 import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligenceConsole';
 import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
 import { PersonIntelligencePlatform } from './components/PersonIntelligencePlatform';
-import { SOCCommandCenter } from './components/SOCCommandCenter';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
+import { DigitalTwinView } from './components/DigitalTwinView';
+import { SOCOverview } from './components/soc/SOCOverview';
+import { SOCVideoWall } from './components/soc/SOCVideoWall';
+import { SOCEventTimeline } from './components/soc/SOCEventTimeline';
+import { SOCIncidentCenter } from './components/soc/SOCIncidentCenter';
+import { SOCInvestigationCenter } from './components/soc/SOCInvestigationCenter';
+import { SOCEvidenceManager } from './components/soc/SOCEvidenceManager';
+import { SOCResourceManager } from './components/soc/SOCResourceManager';
+import { SOCMultiSite } from './components/soc/SOCMultiSite';
+import { SOCReports } from './components/soc/SOCReports';
+import { SOCHealthMonitor } from './components/soc/SOCHealthMonitor';
 import { AuthPage } from './components/AuthPage';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
@@ -28,8 +38,10 @@ import { User } from './types';
 import { 
   LayoutDashboard, Users, FileText, Settings, Search, Bell, Menu, X, Shield, 
   ChevronDown, Camera, Video, LogOut, User as UserIcon, Lock, HelpCircle, 
-  KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, PenTool, Moon, Sun,
-  Activity, Terminal, ShieldAlert, Layers, Eye, Network, Fingerprint, TrendingUp
+  KeyRound, Mail, ArrowRight, Bot, Map as MapIcon, Moon, Sun,
+  Activity, Terminal, ShieldAlert, Layers, Eye, Network, Fingerprint, TrendingUp,
+  Monitor, Cpu, Zap, AlertTriangle, Archive, BarChart2, UserCheck, Globe,
+  HeartPulse, LayoutGrid, FolderSearch
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './services/i18n';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
@@ -172,7 +184,14 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(authService.getCurrentUser());
   const [isAuthenticated, setIsAuthenticated] = useState(!!authService.getCurrentUser()); 
   
-  const [currentView, setCurrentView] = useState<'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' | 'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' | 'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' | 'soc_center' | 'analytics'>('dashboard');
+  const [currentView, setCurrentView] = useState<
+    'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' |
+    'ai_chat' | 'map' | 'builder' | 'system_health' | 'audit_logs' | 'alarm_center' |
+    'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' | 'person_intelligence' |
+    'analytics' | 'soc_overview' | 'video_wall' | 'digital_twin' | 'event_timeline' |
+    'incident_center' | 'investigation' | 'evidence_manager' | 'resources' |
+    'multi_site' | 'reports' | 'health_monitor'
+  >('dashboard');
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
@@ -245,20 +264,30 @@ const AppContent: React.FC = () => {
 
   const getViewTitle = () => {
       switch(currentView) {
-          case 'dashboard': return t('nav.dashboard');
-          case 'users': return t('nav.employees');
-          case 'logs': return t('nav.records');
-          case 'settings': return t('nav.settings');
-          case 'cameras': return t('cameras.title');
-          case 'ai_chat': return t('nav.aiChat');
-          case 'map': return t('nav.areaMap');
-          case 'builder': return 'Raqamli Egizak Arxitektori'; 
-          case 'system_health': return 'Tizim Salomatligi';
-          case 'audit_logs': return 'Xavfsizlik Auditi';
-          case 'alarm_center': return 'Tizim Favqulodda Vaziyatlar Markazi';
+          case 'dashboard':         return t('nav.dashboard');
+          case 'users':             return t('nav.employees');
+          case 'logs':              return t('nav.records');
+          case 'settings':          return t('nav.settings');
+          case 'cameras':           return t('cameras.title');
+          case 'ai_chat':           return t('nav.aiChat');
+          case 'map':               return t('nav.areaMap');
+          case 'builder':           return 'Raqamli Egizak Arxitektori';
+          case 'system_health':     return 'Tizim Salomatligi';
+          case 'audit_logs':        return 'Xavfsizlik Auditi';
+          case 'alarm_center':      return 'Alarmlar Markazi';
           case 'person_intelligence': return 'Shaxslar Intellektual Tizimi';
-          case 'soc_center': return 'SOC Unified Command Center';
-          case 'analytics': return 'Enterprise Analytics Platform';
+          case 'analytics':         return 'Enterprise Analytics Platform';
+          case 'soc_overview':      return 'SOC Umumiy Ko\'rinish';
+          case 'video_wall':        return 'Video Devor';
+          case 'digital_twin':      return 'Raqamli Egizak Ko\'rinish';
+          case 'event_timeline':    return 'AI Hodisalar Vaqt Chizig\'i';
+          case 'incident_center':   return 'Hodisalar Markazi';
+          case 'investigation':     return 'Tekshiruv Markazi';
+          case 'evidence_manager':  return 'Dalillar Boshqaruvchisi';
+          case 'resources':         return 'Resurslar Boshqaruvi';
+          case 'multi_site':        return 'Ko\'p Saytli Boshqaruv';
+          case 'reports':           return 'Hisobotlar';
+          case 'health_monitor':    return 'SOC Sog\'liq Monitori';
           default: return '';
       }
   };
@@ -319,123 +348,67 @@ const AppContent: React.FC = () => {
           </button>
         </div>
 
-        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-8">
+        <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-6">
+          {/* ASOSIY */}
           <div>
-            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Asosiy Menyu</p>
-            <SidebarItem 
-              icon={LayoutDashboard} 
-              label={t('nav.dashboard')}
-              active={currentView === 'dashboard'} 
-              onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem 
-              icon={Video} 
-              label={t('nav.cameras')}
-              active={currentView === 'cameras'} 
-              onClick={() => { setCurrentView('cameras'); setIsSidebarOpen(false); }}
-            />
-             <SidebarItem 
-              icon={MapIcon} 
-              label={t('nav.areaMap')} 
-              active={currentView === 'map'} 
-              onClick={() => { setCurrentView('map'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Camera} 
-              label={t('nav.liveDetector')}
-              active={false} 
-              onClick={() => { setCurrentView('live_feed'); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem 
-              icon={FileText} 
-              label={t('nav.records')}
-              active={currentView === 'logs'} 
-              onClick={() => { setCurrentView('logs'); setIsSidebarOpen(false); }}
-            />
-            <SidebarItem 
-              icon={Users} 
-              label={t('nav.employees')}
-              active={currentView === 'users'} 
-              onClick={() => { setCurrentView('users'); setIsSidebarOpen(false); }}
-            />
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Asosiy</p>
+            <SidebarItem icon={LayoutDashboard} label={t('nav.dashboard')} active={currentView === 'dashboard'} onClick={() => { setCurrentView('dashboard'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={LayoutGrid}      label="SOC Umumiy Ko'rinish" active={currentView === 'soc_overview'} onClick={() => { setCurrentView('soc_overview'); setIsSidebarOpen(false); }} />
           </div>
 
+          {/* KUZATUV */}
           <div>
-            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Intellekt</p>
-            <SidebarItem 
-              icon={Bot} 
-              label={t('nav.aiChat')} 
-              active={currentView === 'ai_chat'} 
-              onClick={() => { setCurrentView('ai_chat'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Layers} 
-              label="Identity Fusion Markazi" 
-              active={currentView === 'identity_fusion'} 
-              onClick={() => { setCurrentView('identity_fusion'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Network} 
-              label="Multi-Modal Identity Engine" 
-              active={currentView === 'multi_modal_intel'} 
-              onClick={() => { setCurrentView('multi_modal_intel'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Fingerprint} 
-              label="Person Intelligence Platform" 
-              active={currentView === 'person_intelligence'} 
-              onClick={() => { setCurrentView('person_intelligence'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Eye} 
-              label="Appearance Intelligence" 
-              active={currentView === 'appearance_intel'} 
-              onClick={() => { setCurrentView('appearance_intel'); setIsSidebarOpen(false); }} 
-            />
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Kuzatuv</p>
+            <SidebarItem icon={Video}   label={t('nav.cameras')}   active={currentView === 'cameras'}      onClick={() => { setCurrentView('cameras');      setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Monitor} label="Video Devor"         active={currentView === 'video_wall'}   onClick={() => { setCurrentView('video_wall');   setIsSidebarOpen(false); }} />
+            <SidebarItem icon={MapIcon} label={t('nav.areaMap')}    active={currentView === 'map'}          onClick={() => { setCurrentView('map');          setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Cpu}     label="Raqamli Egizak"      active={currentView === 'digital_twin'} onClick={() => { setCurrentView('digital_twin'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Camera}  label={t('nav.liveDetector')} active={false}                        onClick={() => { setCurrentView('live_feed');    setIsSidebarOpen(false); }} />
           </div>
 
+          {/* SIGNALLAR VA HODISALAR */}
           <div>
-            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Monitoring & Audit</p>
-            <SidebarItem 
-              icon={TrendingUp} 
-              label="Enterprise Analytics" 
-              active={currentView === 'analytics'} 
-              onClick={() => { setCurrentView('analytics'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Shield} 
-              label="SOC Command Center" 
-              active={currentView === 'soc_center'} 
-              onClick={() => { setCurrentView('soc_center'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={ShieldAlert} 
-              label="Alarmlar Markazi" 
-              active={currentView === 'alarm_center'} 
-              onClick={() => { setCurrentView('alarm_center'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Activity} 
-              label="Tizim Salomatligi" 
-              active={currentView === 'system_health'} 
-              onClick={() => { setCurrentView('system_health'); setIsSidebarOpen(false); }} 
-            />
-            <SidebarItem 
-              icon={Terminal} 
-              label="Xavfsizlik Auditi" 
-              active={currentView === 'audit_logs'} 
-              onClick={() => { setCurrentView('audit_logs'); setIsSidebarOpen(false); }} 
-            />
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Signallar & Hodisalar</p>
+            <SidebarItem icon={ShieldAlert}     label="Alarmlar Markazi"    active={currentView === 'alarm_center'}    onClick={() => { setCurrentView('alarm_center');    setIsSidebarOpen(false); }} />
+            <SidebarItem icon={AlertTriangle}   label="Hodisalar Markazi"   active={currentView === 'incident_center'} onClick={() => { setCurrentView('incident_center'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Zap}             label="AI Hodisalar Vaqt Chizig'i" active={currentView === 'event_timeline'} onClick={() => { setCurrentView('event_timeline'); setIsSidebarOpen(false); }} />
           </div>
 
+          {/* INTELLEKT */}
           <div>
-            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-4">Tizim</p>
-            <SidebarItem 
-              icon={Settings} 
-              label={t('nav.settings')} 
-              active={currentView === 'settings'} 
-              onClick={() => { setCurrentView('settings'); setIsSidebarOpen(false); }} 
-            />
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Intellekt</p>
+            <SidebarItem icon={Fingerprint}  label="Person Intelligence"    active={currentView === 'person_intelligence'} onClick={() => { setCurrentView('person_intelligence'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={FolderSearch} label="Tekshiruv Markazi"      active={currentView === 'investigation'}       onClick={() => { setCurrentView('investigation');       setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Archive}      label="Dalillar Boshqaruvchisi" active={currentView === 'evidence_manager'}    onClick={() => { setCurrentView('evidence_manager');    setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Bot}          label={t('nav.aiChat')}         active={currentView === 'ai_chat'}             onClick={() => { setCurrentView('ai_chat');             setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Layers}       label="Identity Fusion"         active={currentView === 'identity_fusion'}     onClick={() => { setCurrentView('identity_fusion');     setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Eye}          label="Appearance Intelligence" active={currentView === 'appearance_intel'}    onClick={() => { setCurrentView('appearance_intel');    setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Network}      label="Multi-Modal Engine"      active={currentView === 'multi_modal_intel'}   onClick={() => { setCurrentView('multi_modal_intel');   setIsSidebarOpen(false); }} />
+          </div>
+
+          {/* TAHLIL */}
+          <div>
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Tahlil</p>
+            <SidebarItem icon={TrendingUp} label="Enterprise Analytics" active={currentView === 'analytics'} onClick={() => { setCurrentView('analytics'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={BarChart2}  label="Hisobotlar"           active={currentView === 'reports'}   onClick={() => { setCurrentView('reports');   setIsSidebarOpen(false); }} />
+          </div>
+
+          {/* BOSHQARUV */}
+          <div>
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Boshqaruv</p>
+            <SidebarItem icon={UserCheck} label="Resurslar"       active={currentView === 'resources'}  onClick={() => { setCurrentView('resources');  setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Globe}     label="Ko'p Saytli Ops" active={currentView === 'multi_site'} onClick={() => { setCurrentView('multi_site'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Users}     label={t('nav.employees')} active={currentView === 'users'}   onClick={() => { setCurrentView('users');      setIsSidebarOpen(false); }} />
+            <SidebarItem icon={FileText}  label={t('nav.records')}   active={currentView === 'logs'}    onClick={() => { setCurrentView('logs');       setIsSidebarOpen(false); }} />
+          </div>
+
+          {/* TIZIM */}
+          <div>
+            <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Tizim</p>
+            <SidebarItem icon={Activity}    label="Tizim Salomatligi" active={currentView === 'system_health'} onClick={() => { setCurrentView('system_health'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={HeartPulse}  label="SOC Sog'liq"       active={currentView === 'health_monitor'} onClick={() => { setCurrentView('health_monitor'); setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Terminal}    label="Xavfsizlik Auditi"  active={currentView === 'audit_logs'}     onClick={() => { setCurrentView('audit_logs');     setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Settings}    label={t('nav.settings')}  active={currentView === 'settings'}       onClick={() => { setCurrentView('settings');       setIsSidebarOpen(false); }} />
           </div>
         </div>
         
@@ -574,23 +547,33 @@ const AppContent: React.FC = () => {
                     transition={{ duration: 0.2, ease: "easeOut" }}
                     className="min-h-full"
                   >
-                      {currentView === 'dashboard' && <Dashboard globalSearchTerm={globalSearchTerm} />}
-                      {currentView === 'users' && <UserManagement globalSearchTerm={globalSearchTerm} />}
-                      {currentView === 'logs' && <AttendanceLogViewer globalSearchTerm={globalSearchTerm} />}
-                      {currentView === 'cameras' && <CamerasView />}
-                      {currentView === 'map' && <AreaMapView />}
-                      {currentView === 'builder' && <DigitalTwinBuilder />} 
-                      {currentView === 'settings' && <SettingsView />}
-                      {currentView === 'ai_chat' && <AIChatView />}
-                      {currentView === 'system_health' && <SystemHealthView />}
-                      {currentView === 'audit_logs' && <AuditLogsView />}
-                      {currentView === 'alarm_center' && <AlarmCenter />}
-                      {currentView === 'identity_fusion' && <IdentityFusionConsole />}
-                      {currentView === 'appearance_intel' && <AppearanceIntelligenceConsole />}
+                      {currentView === 'dashboard'          && <Dashboard globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'users'             && <UserManagement globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'logs'              && <AttendanceLogViewer globalSearchTerm={globalSearchTerm} />}
+                      {currentView === 'cameras'           && <CamerasView />}
+                      {currentView === 'map'               && <AreaMapView />}
+                      {currentView === 'builder'           && <DigitalTwinBuilder />}
+                      {currentView === 'settings'          && <SettingsView />}
+                      {currentView === 'ai_chat'           && <AIChatView />}
+                      {currentView === 'system_health'     && <SystemHealthView />}
+                      {currentView === 'audit_logs'        && <AuditLogsView />}
+                      {currentView === 'alarm_center'      && <AlarmCenter />}
+                      {currentView === 'identity_fusion'   && <IdentityFusionConsole />}
+                      {currentView === 'appearance_intel'  && <AppearanceIntelligenceConsole />}
                       {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
                       {currentView === 'person_intelligence' && <PersonIntelligencePlatform />}
-                      {currentView === 'soc_center' && <SOCCommandCenter />}
-                      {currentView === 'analytics' && <AnalyticsDashboard />}
+                      {currentView === 'analytics'         && <AnalyticsDashboard />}
+                      {currentView === 'soc_overview'      && <SOCOverview />}
+                      {currentView === 'video_wall'        && <SOCVideoWall />}
+                      {currentView === 'digital_twin'      && <DigitalTwinView />}
+                      {currentView === 'event_timeline'    && <SOCEventTimeline />}
+                      {currentView === 'incident_center'   && <SOCIncidentCenter />}
+                      {currentView === 'investigation'     && <SOCInvestigationCenter />}
+                      {currentView === 'evidence_manager'  && <SOCEvidenceManager />}
+                      {currentView === 'resources'         && <SOCResourceManager />}
+                      {currentView === 'multi_site'        && <SOCMultiSite />}
+                      {currentView === 'reports'           && <SOCReports />}
+                      {currentView === 'health_monitor'    && <SOCHealthMonitor />}
                   </motion.div>
                 </AnimatePresence>
             </div>
