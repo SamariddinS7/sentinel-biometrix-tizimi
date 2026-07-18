@@ -1,3 +1,4 @@
+- [VMS Monorepo Structure](vms-monorepo-structure.md) — apps/web + apps/api workspaces; Vite alias bridge, process.cwd() for paths, no __dirname in ESM.
 - [VMS Stabilization](vms-stabilization.md) — Phase 2 complete: sim blocks, pickle RCE, WS auth, RBAC, rate-limit, dead files all fixed; infra secrets remain.
 - [VMS Arch Stabilization 2026-07-16](vms-arch-stabilization.md) — Removed fake data, dead scripts, fake DB writes; sidebar now live telemetry; TS clean; report in STABILIZATION_REPORT.md.
 - [VMS Phase 4 Detection Engine](vms-phase4-detection.md) — YOLOv8n ONNX + ByteTrack+Kalman; model placement, coord normalisation, BYTE stage, VmsAiEventType gap, 9 API routes.
