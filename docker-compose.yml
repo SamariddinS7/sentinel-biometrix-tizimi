@@ -177,6 +177,58 @@ services:
       - sentinel-net
     restart: unless-stopped
 
+  # ── Alertmanager ─────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=:9093'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
+  # ── PostgreSQL exporter ───────────────────────────────────────────────────
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "postgresql://sentinel:sentinel_dev@postgres:5432/sentinel_vms?sslmode=disable"
+    networks:
+      - sentinel-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis exporter ────────────────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - sentinel-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Node exporter (host metrics) ──────────────────────────────────────────
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)'
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
   # ── Grafana ───────────────────────────────────────────────────────────────
   grafana:
     image: grafana/grafana:latest
@@ -190,8 +242,8 @@ services:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/prometheus.yml:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       - prometheus
     networks:

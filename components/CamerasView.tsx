@@ -843,28 +843,23 @@ const CameraCard: React.FC<{
             baseBitrate = 1536;
         }
 
-        setCurrentBitrate(Math.round(baseBitrate + (Math.random() * 200 - 100)));
-        setCurrentFps(camera.fps + (Math.random() * 0.8 - 0.4));
+        // Show nominal values — real bitrate comes from the actual RTSP stream metrics
+        setCurrentBitrate(baseBitrate);
+        setCurrentFps(camera.fps);
 
-        const interval = setInterval(() => {
-            setCurrentFps(prev => {
-                const change = (Math.random() * 0.6 - 0.3);
-                const next = prev + change;
-                const maxDiff = 1.5;
-                if (next < camera.fps - maxDiff) return camera.fps - maxDiff;
-                if (next > camera.fps + maxDiff) return camera.fps + maxDiff;
-                return next;
-            });
-
-            setCurrentBitrate(prev => {
-                const pctChange = (Math.random() * 0.1 - 0.05); // ±5%
-                const change = Math.round(baseBitrate * pctChange);
-                const next = prev + change;
-                if (next < baseBitrate * 0.8) return Math.round(baseBitrate * 0.8);
-                if (next > baseBitrate * 1.2) return Math.round(baseBitrate * 1.2);
-                return Math.round(next);
-            });
-        }, 1500);
+        // Poll real stream stats from backend every 5s when camera is online
+        const interval = setInterval(async () => {
+            try {
+                const r = await fetch(`/api/cameras/${camera.id}/stream/stats`);
+                if (r.ok) {
+                    const j = await r.json();
+                    if (typeof j.bitrateKbps === 'number') setCurrentBitrate(j.bitrateKbps);
+                    if (typeof j.fps === 'number') setCurrentFps(j.fps);
+                }
+            } catch {
+                // No stream stats available — keep showing nominal values
+            }
+        }, 5000);
 
         return () => clearInterval(interval);
     }, [isOnline, camera.fps, camera.resolution]);
@@ -1956,149 +1951,31 @@ export const CamerasView: React.FC = () => {
         const portMatch = camera.streamUrl.match(/:(\d+)/);
         const port = portMatch ? portMatch[1] : '554';
 
-        // Prepare our steps
-        const testSteps = [
-            {
-                progress: 25,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[PING] ${ip} tuguniga ICMP echo so'rovi yuborilmoqda...`
-                            : `[PING] Dispatching ICMP echo request frames to target host ${ip}...`
-                    ]);
-                    
-                    const t1 = setTimeout(() => {
-                        if (camera.status === CameraStatus.OFFLINE) {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[PING] ✗ Tarmoq xatosi: Destination Host Unreachable. Paket yo'qolishi = 100%`
-                                    : `[PING] ✗ ICMP Error: Destination Host Unreachable. Packet loss = 100%`,
-                                language === 'uz'
-                                    ? `[ERROR] Kamerani tarmoqdan qidirish bajarilmadi. Ulanishni sinash to'xtatildi.`
-                                    : `[ERROR] Failed to discover device on local subnet. Diagnostics aborted.`
-                            ]);
-                            setTestStatus('failed');
-                            setTestProgress(25);
-                        } else {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[PING] ✓ Muvaffaqiyatli javob olindi. RTT: o'rtacha = 1.4ms, paket yo'qolishi = 0%`
-                                    : `[PING] ✓ Echo response received. RTT: avg = 1.4ms, packet loss = 0%`
-                            ]);
-                            executeStep(1);
-                        }
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t1);
-                }
-            },
-            {
-                progress: 50,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[PORT] TCP socket handshaking boshlanmoqda. Port: ${port}...`
-                            : `[PORT] Initiating TCP socket handshake. Checking port ${port}...`
-                    ]);
-                    
-                    const t2 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[PORT] ✓ Tarmoq soketi ochiq va xizmat so'rovlarni qabul qilmoqda.`
-                                : `[PORT] ✓ Target socket port ${port} is active and listening.`
-                        ]);
-                        executeStep(2);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t2);
-                }
-            },
-            {
-                progress: 75,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[RTSP] RTSP OPTIONS & DESCRIBE shartnomasi yuborilmoqda...`
-                            : `[RTSP] Dispatching RTSP OPTIONS & DESCRIBE sequence commands...`
-                    ]);
-                    
-                    const t3 = setTimeout(() => {
-                        if (camera.status === CameraStatus.ERROR) {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[RTSP] ✗ RTSP protokoli xatosi: 401 Unauthorized (Login yoki parol noto'g'ri)`
-                                    : `[RTSP] ✗ RTSP Authentication Error: 401 Unauthorized (Bad credentials)`,
-                                language === 'uz'
-                                    ? `[ERROR] RTSP oqim xavfsizlik tekshiruvidan o'ta olmadi. Ulanish to'xtatildi.`
-                                    : `[ERROR] Stream auth handshake failed. Session terminated.`
-                            ]);
-                            setTestStatus('failed');
-                            setTestProgress(75);
-                        } else {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[RTSP] ✓ RTSP Server: 200 OK. Ruxsatlar: OPTIONS, DESCRIBE, SETUP, PLAY`
-                                    : `[RTSP] ✓ Handshake: 200 OK. Active commands: OPTIONS, DESCRIBE, SETUP, PLAY`,
-                                language === 'uz'
-                                    ? `[RTSP] ✓ SDP Profil muvaffaqiyatli yuklandi va parslash bajarildi.`
-                                    : `[RTSP] ✓ Stream Profile (SDP) loaded and parsed correctly.`
-                            ]);
-                            executeStep(3);
-                        }
-                    }, 1000);
-                    activeTestTimersRef.current.timeouts.push(t3);
-                }
-            },
-            {
-                progress: 90,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[CODEC] ${camera.resolution} oqim uchun H.264 video oqimi dekoderi yuklanmoqda...`
-                            : `[CODEC] Loading H.264 video stream hardware decoder for ${camera.resolution}...`
-                    ]);
-                    
-                    const t4 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[CODEC] ✓ Dekoder muvaffaqiyatli ishga tushirildi. Oqim tezligi: ~2.4 Mbps.`
-                                : `[CODEC] ✓ Decoder pipeline initialized. Bandwidth footprint: ~2.4 Mbps.`
-                        ]);
-                        executeStep(4);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t4);
-                }
-            },
-            {
-                progress: 100,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[SYSTEM] Kadrlarni sinxronizatsiya qilish va buffer sozlanmoqda...`
-                            : `[SYSTEM] Calibrating live frames buffer with central system grid...`
-                    ]);
-                    
-                    const t5 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[SUCCESS] ✓ Kamera onlayn holatda! Jonli oqim muvaffaqiyatli ulandi.`
-                                : `[SUCCESS] ✓ Device is fully functional. Live RTSP connection established.`
-                        ]);
-                        setTestStatus('success');
-                        setTestProgress(100);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t5);
-                }
-            }
-        ];
+        // Run real backend diagnostics
+        cameraService.diagnoseCamera(camera.id, camera.streamUrl).then(result => {
+            const allLogs = result.logs;
+            const msPerLog = Math.max(60, Math.min(180, 2400 / (allLogs.length || 1)));
+            let delay = 0;
 
-        const executeStep = (stepIndex: number) => {
-            if (stepIndex < testSteps.length) {
-                setTestProgress(testSteps[stepIndex].progress);
-                testSteps[stepIndex].run();
-            }
-        };
+            allLogs.forEach((log: string, i: number) => {
+                const t = setTimeout(() => {
+                    setTestLogs(prev => [...prev, log]);
+                    setTestProgress(Math.round(5 + ((i + 1) / allLogs.length) * 90));
+                }, delay);
+                activeTestTimersRef.current.timeouts.push(t);
+                delay += msPerLog;
+            });
 
-        // Start step 0
-        executeStep(0);
+            const finalT = setTimeout(() => {
+                setTestProgress(100);
+                setTestStatus(result.success ? 'success' : 'failed');
+            }, delay);
+            activeTestTimersRef.current.timeouts.push(finalT);
+        }).catch((err: Error) => {
+            setTestLogs(prev => [...prev, `[ERROR] ${err.message}`]);
+            setTestStatus('failed');
+            setTestProgress(0);
+        });
     };
 
     const reloadCameras = async () => {

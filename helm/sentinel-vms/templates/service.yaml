@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sentinel-vms.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sentinel-vms.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  sessionAffinity: {{ .Values.service.sessionAffinity | default "None" }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.service.metricsPort }}
+      targetPort: {{ .Values.service.metricsPort }}
+      protocol: TCP
+  selector:
+    {{- include "sentinel-vms.selectorLabels" . | nindent 4 }}

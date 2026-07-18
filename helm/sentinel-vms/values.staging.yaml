@@ -1,0 +1,89 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sentinel AI VMS — Staging Environment Overrides
+# Usage: helm upgrade --install sentinel-vms ./helm/sentinel-vms \
+#          -f values.yaml -f values.staging.yaml -n sentinel-staging
+# ═══════════════════════════════════════════════════════════════════════════════
+
+replicaCount: 2
+
+image:
+  tag: ""   # Set by CD pipeline: --set image.tag=$COMMIT_SHA
+
+env:
+  nodeEnv: "staging"
+  logLevel: "debug"
+
+ingress:
+  hosts:
+    - host: vms-staging.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sentinel-vms-staging-tls
+      hosts:
+        - vms-staging.example.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 85
+
+podDisruptionBudget:
+  minAvailable: 1
+
+# Lighter HA for staging
+postgresql:
+  primary:
+    persistence:
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+  readReplicas:
+    replicaCount: 0   # No read replica in staging
+
+redis:
+  architecture: standalone   # Single node in staging
+  sentinel:
+    enabled: false
+  master:
+    persistence:
+      size: 5Gi
+
+nats:
+  nats:
+    cluster:
+      enabled: false
+      replicas: 1
+
+minio:
+  persistence:
+    size: 50Gi
+
+backup:
+  enabled: true
+  schedule: "0 4 * * *"   # 4am UTC daily
+  s3Bucket: sentinel-vms-staging-backups
+  retentionDays: 7
+
+serviceMonitor:
+  enabled: true
+  labels:
+    release: kube-prometheus-stack
+
+gpuEnabled: false

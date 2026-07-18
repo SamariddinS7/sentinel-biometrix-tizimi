@@ -224,3 +224,29 @@ serviceMonitor:
   scrapeTimeout: 10s
   labels:
     release: kube-prometheus-stack
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  minAvailable: 1
+
+# Backup CronJob
+backup:
+  enabled: true
+  schedule: "0 2 * * *"   # 02:00 UTC daily
+  s3Bucket: sentinel-vms-backups
+  s3Endpoint: ""           # Leave empty for AWS S3; set to MinIO endpoint in dev
+  retentionDays: 30
+
+# Application environment variables (non-secret)
+env:
+  nodeEnv: production
+  logLevel: info
+  extraEnv: {}
+
+# HPA target utilization
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80

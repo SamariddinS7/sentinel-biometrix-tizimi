@@ -1,0 +1,111 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "sentinel-vms.fullname" . }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sentinel-vms.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | default "0 2 * * *" | quote }}
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            {{- include "sentinel-vms.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "sentinel-vms.serviceAccountName" . }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+          containers:
+            - name: backup
+              image: "postgres:16-alpine"
+              command: ["/bin/sh", "/scripts/backup.sh"]
+              env:
+                - name: POSTGRES_HOST
+                  value: {{ .Release.Name }}-postgresql
+                - name: POSTGRES_DB
+                  value: sentinel_vms
+                - name: POSTGRES_USER
+                  value: sentinel
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.postgresql.auth.existingSecret }}
+                      key: {{ .Values.postgresql.auth.secretKeys.userPasswordKey }}
+                - name: S3_BUCKET
+                  value: {{ .Values.backup.s3Bucket | default "sentinel-vms-backups" | quote }}
+                - name: S3_ENDPOINT
+                  value: {{ .Values.backup.s3Endpoint | default "" | quote }}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: access-key
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: minio-credentials
+                      key: secret-key
+                - name: RETENTION_DAYS
+                  value: {{ .Values.backup.retentionDays | default 30 | quote }}
+              volumeMounts:
+                - name: backup-scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+          volumes:
+            - name: backup-scripts
+              configMap:
+                name: {{ include "sentinel-vms.fullname" . }}-backup-scripts
+                defaultMode: 0755
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sentinel-vms.fullname" . }}-backup-scripts
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sentinel-vms.labels" . | nindent 4 }}
+data:
+  backup.sh: |
+    #!/bin/sh
+    set -euo pipefail
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    FILENAME="sentinel_vms_${TIMESTAMP}.dump"
+    echo "[backup] Starting PostgreSQL dump: ${FILENAME}"
+    pg_dump \
+      -h "${POSTGRES_HOST}" \
+      -U "${POSTGRES_USER}" \
+      -d "${POSTGRES_DB}" \
+      --format=custom \
+      --compress=9 \
+      -f "/tmp/${FILENAME}"
+    echo "[backup] Upload to S3: s3://${S3_BUCKET}/postgres/${FILENAME}"
+    aws s3 cp "/tmp/${FILENAME}" "s3://${S3_BUCKET}/postgres/${FILENAME}" \
+      ${S3_ENDPOINT:+--endpoint-url "${S3_ENDPOINT}"}
+    echo "[backup] Pruning backups older than ${RETENTION_DAYS} days"
+    aws s3 ls "s3://${S3_BUCKET}/postgres/" \
+      ${S3_ENDPOINT:+--endpoint-url "${S3_ENDPOINT}"} | \
+      awk '{print $4}' | sort | head -n "-${RETENTION_DAYS}" | \
+      xargs -I{} aws s3 rm "s3://${S3_BUCKET}/postgres/{}" \
+        ${S3_ENDPOINT:+--endpoint-url "${S3_ENDPOINT}"} || true
+    echo "[backup] Done"
+{{- end }}

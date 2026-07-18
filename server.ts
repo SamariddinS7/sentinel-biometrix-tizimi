@@ -40,6 +40,10 @@ import { incidentService } from "./services/incidentService";
 import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
 import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
 
+// OpenTelemetry — must be imported before app code starts
+import { setupTracing } from "./services/infrastructure/tracing";
+setupTracing();
+
 // Enterprise Infrastructure Services
 import { requestLoggingMiddleware, getLogger } from "./services/infrastructure/logger";
 import { metricsHandler, cameraConnectionsActive, wsConnectionsActive, wsMessagesTotal, aiDetectionsTotal } from "./services/infrastructure/metrics";
@@ -772,12 +776,14 @@ async function startServer() {
       let isPrivateIp = false;
       
       try {
+        const dnsStart = Date.now();
         const lookup = await new Promise<{ address: string; family: number }>((resolve, reject) => {
           dns.lookup(host, (err, address, family) => {
             if (err) reject(err);
             else resolve({ address, family });
           });
         });
+        const dnsRttMs = Date.now() - dnsStart;
         resolvedIp = lookup.address;
         addLog(`DNS muvaffaqiyatli hal qilindi. IP: ${resolvedIp}`);
         
@@ -793,9 +799,9 @@ async function startServer() {
         steps.push({ 
           step: 1, 
           status: "success", 
-          message: `Ping OK! Ulanish vaqti: ${Math.round(5 + Math.random() * 15)}ms. IP: ${resolvedIp}` 
+          message: `Ping OK! Ulanish vaqti: ${dnsRttMs}ms. IP: ${resolvedIp}` 
         });
-        addLog(`Mavjudlik testi (Ping) muvaffaqiyatli: RTT ${Math.round(5 + Math.random() * 15)}ms`);
+        addLog(`Mavjudlik testi (Ping) muvaffaqiyatli: RTT ${dnsRttMs}ms`);
       } catch (dnsErr: any) {
         success = false;
         failedStep = 1;
@@ -1410,7 +1416,7 @@ async function startServer() {
       for (const anomaly of fallbackData.anomalies) {
         try {
           await saveAnomalyToFirestore({
-            id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            id: crypto.randomUUID(),
             severity: 'WARNING',
             message: anomaly.description,
             timestamp: Date.now(),
@@ -1482,7 +1488,7 @@ async function startServer() {
             for (const anomaly of parsed.anomalies) {
               try {
                 await saveAnomalyToFirestore({
-                  id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+                  id: crypto.randomUUID(),
                   severity: 'WARNING',
                   message: anomaly.description,
                   timestamp: Date.now(),
@@ -1502,7 +1508,7 @@ async function startServer() {
           for (const anomaly of fallbackData.anomalies) {
             try {
               await saveAnomalyToFirestore({
-                id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+                id: crypto.randomUUID(),
                 severity: 'WARNING',
                 message: anomaly.description,
                 timestamp: Date.now(),
@@ -1521,7 +1527,7 @@ async function startServer() {
         for (const anomaly of fallbackData.anomalies) {
           try {
             await saveAnomalyToFirestore({
-              id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+              id: crypto.randomUUID(),
               severity: 'WARNING',
               message: anomaly.description,
               timestamp: Date.now(),
@@ -1540,7 +1546,7 @@ async function startServer() {
       for (const anomaly of fallbackData.anomalies) {
         try {
           await saveAnomalyToFirestore({
-            id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            id: crypto.randomUUID(),
             severity: 'WARNING',
             message: anomaly.description,
             timestamp: Date.now(),

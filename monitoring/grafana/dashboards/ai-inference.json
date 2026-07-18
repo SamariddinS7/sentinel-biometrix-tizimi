@@ -1,0 +1,84 @@
+{
+  "uid": "sentinel-ai-inference",
+  "title": "Sentinel VMS — AI Inference",
+  "tags": ["sentinel", "ai", "yolo"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Inference Rate (5m avg)",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(rate(vms_ai_inference_total[5m]))", "legendFormat": "inf/s" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Inference Latency p99",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "histogram_quantile(0.99, rate(vms_ai_inference_duration_seconds_bucket[5m]))", "legendFormat": "p99" }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 0.05 }, { "color": "red", "value": 0.2 }] } } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Detection Confidence (avg)",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "avg(vms_ai_detection_confidence_avg)", "legendFormat": "confidence" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Tracks Active",
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "datasource": "Prometheus",
+      "targets": [{ "expr": "sum(vms_active_tracks_total)", "legendFormat": "tracks" }],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Inference Latency Distribution",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(vms_ai_inference_duration_seconds_bucket[2m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.90, rate(vms_ai_inference_duration_seconds_bucket[2m]))", "legendFormat": "p90" },
+        { "expr": "histogram_quantile(0.99, rate(vms_ai_inference_duration_seconds_bucket[2m]))", "legendFormat": "p99" },
+        { "expr": "histogram_quantile(0.999, rate(vms_ai_inference_duration_seconds_bucket[2m]))", "legendFormat": "p99.9" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "lineWidth": 2 } } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Detections by Class",
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "sum by (class) (rate(vms_ai_detections_total[1m]))", "legendFormat": "{{class}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "lineWidth": 2, "fillOpacity": 5 } } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Frame Scheduler Queue Depth",
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        { "expr": "vms_frame_scheduler_queue_depth", "legendFormat": "Queue Depth" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2 }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 200 }] } } }
+    }
+  ]
+}

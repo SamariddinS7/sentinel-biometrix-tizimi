@@ -1,0 +1,14 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "sentinel-vms.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sentinel-vms.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "sentinel-vms.selectorLabels" . | nindent 6 }}
+{{- end }}
