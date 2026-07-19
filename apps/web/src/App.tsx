@@ -12,7 +12,6 @@ import { DigitalTwinBuilder } from './components/DigitalTwinBuilder';
 import { ProfileModal } from './components/ProfileModal';
 import { SupportModal } from './components/SupportModal';
 import { NotificationCenter } from './components/NotificationCenter';
-import { AuditLogsView } from './components/AuditLogsView';
 import { IdentityFusionConsole } from './components/IdentityFusionConsole';
 import { AppearanceIntelligenceConsole } from './components/AppearanceIntelligenceConsole';
 import { MultiModalIdentityConsole } from './components/MultiModalIdentityConsole';
@@ -176,7 +175,7 @@ const AppContent: React.FC = () => {
   
   const [currentView, setCurrentView] = useState<
     'dashboard' | 'users' | 'logs' | 'live_feed' | 'settings' | 'cameras' |
-    'ai_chat' | 'map' | 'builder' | 'audit_logs' |
+    'ai_chat' | 'map' | 'builder' |
     'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' |
     'event_timeline' | 'investigation' | 'resources' |
     'multi_site' | 'reports'
@@ -261,7 +260,6 @@ const AppContent: React.FC = () => {
           case 'ai_chat':           return t('nav.aiChat');
           case 'map':               return t('nav.areaMap');
           case 'builder':           return 'Raqamli Egizak Arxitektori';
-          case 'audit_logs':        return 'Xavfsizlik Auditi';
           case 'event_timeline':    return 'AI Hodisalar Vaqt Chizig\'i';
           case 'investigation':     return 'Tekshiruv Markazi';
           case 'resources':         return 'Resurslar Boshqaruvi';
@@ -376,7 +374,6 @@ const AppContent: React.FC = () => {
           {/* TIZIM */}
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Tizim</p>
-            <SidebarItem icon={Terminal} label="Xavfsizlik Auditi" active={currentView === 'audit_logs'} onClick={() => { setCurrentView('audit_logs'); setIsSidebarOpen(false); }} />
             <SidebarItem icon={Settings} label={t('nav.settings')}  active={currentView === 'settings'}   onClick={() => { setCurrentView('settings');   setIsSidebarOpen(false); }} />
           </div>
         </div>
@@ -524,7 +521,6 @@ const AppContent: React.FC = () => {
                       {currentView === 'builder'           && <DigitalTwinBuilder />}
                       {currentView === 'settings'          && <SettingsView />}
                       {currentView === 'ai_chat'           && <AIChatView />}
-                      {currentView === 'audit_logs'        && <AuditLogsView />}
                       {currentView === 'identity_fusion'   && <IdentityFusionConsole />}
                       {currentView === 'appearance_intel'  && <AppearanceIntelligenceConsole />}
                       {currentView === 'multi_modal_intel' && <MultiModalIdentityConsole />}
