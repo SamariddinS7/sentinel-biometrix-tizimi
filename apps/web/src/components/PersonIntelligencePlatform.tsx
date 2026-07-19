@@ -5,12 +5,13 @@ import {
   AlertTriangle, Navigation, Camera, BarChart3, FileText,
   Download, Trash2, ScanFace, Bookmark, BookmarkX, ChevronRight,
   CheckCircle2, XCircle, Eye, MapPin, Layers, Network, Play,
-  Loader2, PlusCircle, ShieldAlert, Info,
+  Loader2, PlusCircle, ShieldAlert, Info, LayoutList,
 } from 'lucide-react';
 
 import { PersonTimeline } from './PersonTimeline';
 import { IdentityCard } from './IdentityCard';
 import { PersonSearchModal } from './PersonSearchModal';
+import { PersonAttributeProfile } from './PersonAttributeProfile';
 import type {
   PersonProfile, PersonStatus, TimelineEntry, RelationshipObservation,
   MovementRecord, ReportType, ReportPeriod,
@@ -129,6 +130,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
   // ── State: selected person ─────────────────────────────────────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<PersonProfile | null>(null);
+  const [attrPanelId, setAttrPanelId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW');
   const [profileLoading, setProfileLoading] = useState(false);
 
@@ -449,6 +451,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
                 selected={selectedId === p.personId}
                 onSelect={() => selectPerson(p.personId)}
                 onWatchlist={() => handleWatchlist(p.personId)}
+                onViewProfile={() => setAttrPanelId(p.personId)}
               />
             ))
           )}
@@ -502,6 +505,12 @@ export const PersonIntelligencePlatform: React.FC = () => {
 
             {/* Header actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setAttrPanelId(selectedId)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-cyan-600/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-600/20 transition-colors"
+              >
+                <LayoutList className="w-3.5 h-3.5" /> Profil
+              </button>
               <button
                 onClick={() => handleWatchlist(selectedId)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
@@ -1103,6 +1112,15 @@ export const PersonIntelligencePlatform: React.FC = () => {
         onClose={() => setShowSearchModal(false)}
         onSelect={p => { selectPerson(p.personId); setShowSearchModal(false); }}
       />
+
+      {/* ── Attribute Profile Panel ──────────────────────────────────────── */}
+      {attrPanelId && (
+        <PersonAttributeProfile
+          personId={attrPanelId}
+          initialProfile={attrPanelId === selectedId ? selectedProfile ?? undefined : undefined}
+          onClose={() => setAttrPanelId(null)}
+        />
+      )}
     </div>
   );
 };

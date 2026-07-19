@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Eye, Bookmark, Search, Camera, Clock, Shield, ShieldAlert, User } from 'lucide-react';
+import { Eye, Bookmark, Search, Camera, Clock, Shield, ShieldAlert, User, LayoutList } from 'lucide-react';
 import type { PersonProfile, PersonStatus } from '../services/personIntel/types/PersonProfile';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,6 +41,7 @@ interface IdentityCardProps {
   onSelect?: () => void;
   onWatchlist?: () => void;
   onInvestigate?: () => void;
+  onViewProfile?: () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ export const IdentityCard: React.FC<IdentityCardProps> = ({
   onSelect,
   onWatchlist,
   onInvestigate,
+  onViewProfile,
 }) => {
   const s = STATUS_STYLES[profile.status] ?? STATUS_STYLES.ANONYMOUS;
   const name = displayName(profile);
@@ -155,8 +157,16 @@ export const IdentityCard: React.FC<IdentityCardProps> = ({
       </div>
 
       {/* Action buttons */}
-      {!compact && (onSelect || onWatchlist || onInvestigate) && (
+      {!compact && (onSelect || onWatchlist || onInvestigate || onViewProfile) && (
         <div className="flex gap-1.5 mt-3 pt-3 border-t border-gray-700/50">
+          {onViewProfile && (
+            <button
+              onClick={e => { e.stopPropagation(); onViewProfile(); }}
+              className="flex-1 flex items-center justify-center gap-1 text-[11px] py-1 rounded bg-gray-700/50 hover:bg-cyan-500/20 hover:text-cyan-400 text-gray-400 transition-colors"
+            >
+              <LayoutList className="w-3 h-3" /> Profil
+            </button>
+          )}
           {onSelect && (
             <button
               onClick={e => { e.stopPropagation(); onSelect(); }}

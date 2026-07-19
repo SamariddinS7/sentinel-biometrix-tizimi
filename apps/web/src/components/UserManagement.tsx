@@ -4,12 +4,14 @@ import { userService } from '../services/userService';
 import { insightFaceService } from '../services/insightFaceService';
 import { UserRole, User } from '../types';
 import { analyzeBiometricFrame, BiometricAnalysisResult } from '../services/geminiService';
-import { MoreHorizontal, Plus, Search, Fingerprint, X, User as UserIcon, Camera, Upload, CheckCircle2, Loader2, RefreshCw, AlertCircle, Film, Image as ImageIcon, Trash2, ShieldAlert, Sparkles, ScanFace } from 'lucide-react';
+import { MoreHorizontal, Plus, Search, Fingerprint, X, User as UserIcon, Camera, Upload, CheckCircle2, Loader2, RefreshCw, AlertCircle, Film, Image as ImageIcon, Trash2, ShieldAlert, Sparkles, ScanFace, LayoutList } from 'lucide-react';
+import { PersonAttributeProfile } from './PersonAttributeProfile';
 import { useLanguage } from '../services/i18n';
 
 export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ globalSearchTerm }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [profilePanelId, setProfilePanelId] = useState<string | null>(null);
   const { language, t } = useLanguage();
 
   useEffect(() => {
@@ -301,6 +303,13 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                   <td className="px-6 py-4 text-text-primary0 whitespace-nowrap">{user.enrolledDate}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setProfilePanelId(user.id)}
+                          className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded"
+                          title="Atribut Profilini Ko'rish"
+                        >
+                          <LayoutList className="w-4 h-4" />
+                        </button>
                         <button 
                           onClick={() => handleDeleteUser(user.id)}
                           className="text-text-primary0 hover:text-red-400 p-2 hover:bg-red-950/30 rounded" 
@@ -332,6 +341,14 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
           </table>
         </div>
       </div>
+
+      {/* Person Attribute Profile Panel */}
+      {profilePanelId && (
+        <PersonAttributeProfile
+          personId={profilePanelId}
+          onClose={() => setProfilePanelId(null)}
+        />
+      )}
 
       {rescanUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">

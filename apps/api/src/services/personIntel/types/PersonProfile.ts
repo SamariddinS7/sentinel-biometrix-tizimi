@@ -94,8 +94,13 @@ export interface AppearanceSnapshot {
   bag:                 boolean;
   glasses:             boolean;
   mask:                boolean;
+  umbrella?:           boolean;      // Soyabon
   hairColor:           string;
+  hairStyle?:          string;       // Soch uslubi (e.g. short, long, curly, bun)
+  beard?:              boolean;      // Soqol mavjudligi
+  beardStyle?:         string;       // Soqol uslubi (e.g. stubble, full, goatee)
   bodyShape:           string;
+  estimatedBodySize?:  string;       // XS / S / M / L / XL / XXL
   estimatedHeightCm:   number;
   carriedObjects:      string[];
   appearanceEmbedding?: number[];   // For similarity search
