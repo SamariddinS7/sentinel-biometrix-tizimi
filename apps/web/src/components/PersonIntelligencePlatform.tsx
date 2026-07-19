@@ -11,7 +11,7 @@ import {
 import { PersonTimeline } from './PersonTimeline';
 import { IdentityCard } from './IdentityCard';
 import { PersonSearchModal } from './PersonSearchModal';
-import { PersonAttributeProfile } from './PersonAttributeProfile';
+import { PersonNameLink, usePersonProfile } from '../context/PersonProfileContext';
 import type {
   PersonProfile, PersonStatus, TimelineEntry, RelationshipObservation,
   MovementRecord, ReportType, ReportPeriod,
@@ -130,8 +130,8 @@ export const PersonIntelligencePlatform: React.FC = () => {
   // ── State: selected person ─────────────────────────────────────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<PersonProfile | null>(null);
-  const [attrPanelId, setAttrPanelId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW');
+  const { openProfile } = usePersonProfile();
   const [profileLoading, setProfileLoading] = useState(false);
 
   // ── State: per-tab data ────────────────────────────────────────────────────
@@ -451,7 +451,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
                 selected={selectedId === p.personId}
                 onSelect={() => selectPerson(p.personId)}
                 onWatchlist={() => handleWatchlist(p.personId)}
-                onViewProfile={() => setAttrPanelId(p.personId)}
+                onViewProfile={() => openProfile(p.personId)}
               />
             ))
           )}
@@ -475,7 +475,11 @@ export const PersonIntelligencePlatform: React.FC = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-lg font-bold text-white truncate">
-                  {selectedProfile.fullName ?? `Anonymous #${selectedProfile.personId.slice(-6)}`}
+                  <PersonNameLink
+                    personId={selectedProfile.personId}
+                    name={selectedProfile.fullName ?? `Anonymous #${selectedProfile.personId.slice(-6)}`}
+                    className="text-lg font-bold text-white"
+                  />
                 </h2>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
                   selectedProfile.status === 'KNOWN'     ? 'bg-teal-500/20 border-teal-500/40 text-teal-400' :
@@ -506,7 +510,7 @@ export const PersonIntelligencePlatform: React.FC = () => {
             {/* Header actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
-                onClick={() => setAttrPanelId(selectedId)}
+                onClick={() => selectedId && openProfile(selectedId)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-cyan-600/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-600/20 transition-colors"
               >
                 <LayoutList className="w-3.5 h-3.5" /> Profil
@@ -1113,14 +1117,6 @@ export const PersonIntelligencePlatform: React.FC = () => {
         onSelect={p => { selectPerson(p.personId); setShowSearchModal(false); }}
       />
 
-      {/* ── Attribute Profile Panel ──────────────────────────────────────── */}
-      {attrPanelId && (
-        <PersonAttributeProfile
-          personId={attrPanelId}
-          initialProfile={attrPanelId === selectedId ? selectedProfile ?? undefined : undefined}
-          onClose={() => setAttrPanelId(null)}
-        />
-      )}
     </div>
   );
 };

@@ -8,6 +8,7 @@ import {
 import { settingsService } from '../services/settingsService';
 import { SystemSettings } from '../types';
 import { useLanguage } from '../services/i18n';
+import { PersonNameLink } from '../context/PersonProfileContext';
 
 // ── Audit log types ──────────────────────────────────────────────────────────
 interface AuditLogEntry {
@@ -633,7 +634,7 @@ export const SettingsView: React.FC = () => {
                                                         <tr key={i} className="hover:bg-indigo-950/10 transition-all">
                                                             <td className="py-3 px-4 text-text-muted whitespace-nowrap">{new Date(log.timestamp).toLocaleString('uz-UZ')}</td>
                                                             <td className="py-3 px-4 font-bold text-text-primary">
-                                                                <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-400" />{log.userName}</span>
+                                                                <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-400" /><PersonNameLink personId={log.userId} name={log.userName} /></span>
                                                             </td>
                                                             <td className="py-3 px-4 text-text-secondary">{log.module}</td>
                                                             <td className="py-3 px-4 font-bold text-indigo-300">{log.action}</td>

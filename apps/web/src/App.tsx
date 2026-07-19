@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { LanguageProvider, useLanguage } from './services/i18n';
 import { ThemeProvider, useTheme } from './theme/ThemeProvider';
+import { PersonProfileProvider } from './context/PersonProfileContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
@@ -573,7 +574,9 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
         <LanguageProvider>
-            <AppContent />
+            <PersonProfileProvider>
+                <AppContent />
+            </PersonProfileProvider>
         </LanguageProvider>
     </ThemeProvider>
   );

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Eye, Bookmark, Search, Camera, Clock, Shield, ShieldAlert, User, LayoutList } from 'lucide-react';
 import type { PersonProfile, PersonStatus } from '../services/personIntel/types/PersonProfile';
+import { PersonNameLink } from '../context/PersonProfileContext';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ export const IdentityCard: React.FC<IdentityCardProps> = ({
         <div className="flex-1 min-w-0">
           {/* Name + status */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-white text-sm truncate">{name}</span>
+            <PersonNameLink personId={profile.personId} name={name} className="font-semibold text-white text-sm truncate" />
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${s.badge}`}>
               {profile.status}
             </span>

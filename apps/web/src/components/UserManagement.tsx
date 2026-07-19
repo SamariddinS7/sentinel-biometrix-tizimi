@@ -5,14 +5,14 @@ import { insightFaceService } from '../services/insightFaceService';
 import { UserRole, User } from '../types';
 import { analyzeBiometricFrame, BiometricAnalysisResult } from '../services/geminiService';
 import { MoreHorizontal, Plus, Search, Fingerprint, X, User as UserIcon, Camera, Upload, CheckCircle2, Loader2, RefreshCw, AlertCircle, Film, Image as ImageIcon, Trash2, ShieldAlert, Sparkles, ScanFace, LayoutList } from 'lucide-react';
-import { PersonAttributeProfile } from './PersonAttributeProfile';
 import { useLanguage } from '../services/i18n';
+import { PersonNameLink, usePersonProfile } from '../context/PersonProfileContext';
 
 export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ globalSearchTerm }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [profilePanelId, setProfilePanelId] = useState<string | null>(null);
   const { language, t } = useLanguage();
+  const { openProfile } = usePersonProfile();
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -273,7 +273,7 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                     <div className="flex items-center gap-3">
                       <img src={user.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-app-surface object-cover border border-border shrink-0" />
                       <div className="min-w-0">
-                        <p className="font-medium text-text-primary truncate">{user.fullName}</p>
+                        <PersonNameLink personId={user.id} name={user.fullName} className="font-medium text-text-primary truncate block" />
                         <p className="text-xs text-text-primary0 truncate">{user.id}</p>
                       </div>
                     </div>
@@ -304,7 +304,7 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
-                          onClick={() => setProfilePanelId(user.id)}
+                          onClick={() => openProfile(user.id)}
                           className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded"
                           title="Atribut Profilini Ko'rish"
                         >
@@ -341,14 +341,6 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
           </table>
         </div>
       </div>
-
-      {/* Person Attribute Profile Panel */}
-      {profilePanelId && (
-        <PersonAttributeProfile
-          personId={profilePanelId}
-          onClose={() => setProfilePanelId(null)}
-        />
-      )}
 
       {rescanUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">
