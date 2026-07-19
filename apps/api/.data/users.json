@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": "7733ec3d-10a3-4164-ad2a-fe79b34922c3",
+      "fullName": "qwer",
+      "email": "samariddinsattorov33@gmail.com",
+      "passwordHash": "$2b$12$fsNlv.LCOuMNjnUbCVDYAO018FywLVbEGpSSGNh5wh9dnEnh6oXWO",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-19T05:45:45.065Z"
+    }
+  ]
+}
