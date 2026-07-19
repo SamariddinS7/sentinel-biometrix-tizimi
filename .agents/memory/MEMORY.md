@@ -1,9 +1,5 @@
-- [VMS Monorepo Structure](vms-monorepo-structure.md) — apps/web + apps/api workspaces; Vite alias bridge, process.cwd() for paths, no __dirname in ESM.
 - [VMS Stabilization](vms-stabilization.md) — Phase 2 complete: sim blocks, pickle RCE, WS auth, RBAC, rate-limit, dead files all fixed; infra secrets remain.
 - [VMS Arch Stabilization 2026-07-16](vms-arch-stabilization.md) — Removed fake data, dead scripts, fake DB writes; sidebar now live telemetry; TS clean; report in STABILIZATION_REPORT.md.
 - [VMS Phase 4 Detection Engine](vms-phase4-detection.md) — YOLOv8n ONNX + ByteTrack+Kalman; model placement, coord normalisation, BYTE stage, VmsAiEventType gap, 9 API routes.
 - [VMS Identity Intelligence Gap Fixes](vms-identity-gaps.md) — FAISS, YOLOv8n model, real HSV colour extraction, search API; onnxruntime provider naming, vite watch exclusions.
 - [VMS Enterprise Analytics Platform](vms-phase5-analytics-platform.md) — 8 plugins (fire, PPE, vehicle/LPR, OCR, behavior, object-state, crowd, heatmap); alarm broker, report engine, search index, 17-route API, AnalyticsDashboard.
-- [VMS Person Intelligence Platform](vms-person-intel-platform.md) — 5-phase build: bootstrap wiring, API audit fixes, 3 new UI components, platform rebuild, SOC integration. PersonProfile field names, API shapes, VmsEventCallback pattern.
-- [VMS SOC Unified Command Center](vms-soc-unified-command.md) — SOCCommandCenter rebuilt as 17-module shell; SOCEventTimeline + SOCOverview created; icon typing rule; NotificationCenter wrapper pattern.
-- [VMS DevSecOps Platform](vms-devsecops-platform.md) — OTEL v2 API, Helm templates gap, fake code removal patterns, lerp animation, docker-compose exporter additions.

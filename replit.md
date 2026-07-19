@@ -6,34 +6,23 @@ An enterprise AI Video Management System (VMS) with biometrics, face recognition
 
 - **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS
 - **Backend:** Express 5 (TypeScript, `tsx` runtime)
-- **Database:** Firebase Firestore (config in `apps/api/firebase-applet-config.json`)
+- **Database:** Firebase Firestore (config in `firebase-applet-config.json`)
 - **AI:** Google Gemini (`@google/genai`), YOLOv8n ONNX local inference, custom AI pipeline
 - **3D:** Three.js + React Three Fiber (digital twin views)
 - **Auth:** Firebase Auth + JWT for API routes
-
-## Monorepo structure
-
-```
-apps/
-  web/          ← React frontend source (index.html, src/)
-  api/          ← Express backend (src/server.ts, src/services/, models/)
-packages/
-  shared-types/ ← Shared TypeScript types (re-exported from apps/api/src/types.ts)
-  config/       ← Shared tsconfig base
-archive/
-  python-backend/ ← Archived Python face recognition / digital twin code
-```
 
 ## How to run on Replit
 
 The workflow `Start application` is already configured and runs `npm run dev`.
 
+To start it manually:
+
 ```
 npm install
-npm run dev          # → npm run dev --workspace=apps/api → tsx src/server.ts
+npm run dev
 ```
 
-The server starts on port **5000** from `apps/api/`. Express serves both the REST/WebSocket API and Vite dev middleware (root: `apps/web/`) from a single process.
+The server starts on port **5000**. Express serves both the REST/WebSocket API and the Vite dev middleware from a single process (`server.ts`).
 
 ## Environment variables / Secrets
 
@@ -47,36 +36,34 @@ Set these as Replit Secrets (never commit values to the repo):
 | `BOOTSTRAP_ADMIN_EMAIL` | Optional | Admin account email for email+password login. |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Optional | Admin account password. |
 
-Firebase config is at `apps/api/firebase-applet-config.json` and requires no additional setup.
+Firebase config is already present in `firebase-applet-config.json` and requires no additional setup for the bundled Firebase project.
 
 ## Login
 
 The login screen is at `/`. Two options:
-- **"Admin tizimga kirish (Bootstrap)"** button — direct admin bypass, always available.
+- **"To'g'ridan-to'g'ri kirish (Admin)"** button — direct admin bypass, always available.
 - Email + password — requires `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` to be set, or valid Firebase credentials.
 
 ## Key directories
 
-- `apps/web/src/components/` — React UI components (camera grid, dashboard, alerts, digital twin, etc.)
-- `apps/api/src/services/` — All services (auth, camera, AI pipeline, Firestore, alarm broker, etc.)
-- `apps/api/src/services/ai/` — AI inference pipeline, face/biometric engines, YOLOv8n + ByteTrack, plugins
-- `apps/api/src/services/analytics/` — Enterprise analytics platform (8 plugins)
-- `apps/api/src/services/personIntel/` — Person Intelligence Platform
-- `apps/api/src/services/infrastructure/` — Cache, DB, metrics, health, tracing
-- `apps/api/models/` — ONNX model files (`yolov8n.onnx`)
-- `apps/api/src/server.ts` — Express API gateway + Vite dev middleware (single entry point)
-- `packages/shared-types/src/index.ts` — Shared TypeScript types
+- `components/` — React UI components (camera grid, dashboard, alerts, digital twin, etc.)
+- `services/` — Application services (auth, camera, AI pipeline, Firestore, alarm broker, etc.)
+- `services/ai/` — AI inference pipeline, face/biometric engines, YOLOv8n + ByteTrack, plugins
+- `backend/` — Pure computation modules (area maps, digital twin math, face recognition, security)
+- `models/` — ONNX model files (`yolov8n.onnx`)
+- `server.ts` — Express API gateway + Vite dev server integration (single entry point)
+- `types.ts` — Shared TypeScript types across frontend and backend
 
 ## Architecture notes
 
-- `apps/api/src/server.ts` is the single backend entry point — starts Express, Vite dev middleware (root: `apps/web/`), WebSocket broker, and all AI services.
-- Frontend components import services from `apps/api/src/services/` via Vite path aliases (no import changes needed).
-- AI services initialize at startup: YOLOv8n loads from `apps/api/models/`; Gemini is optional.
+- `server.ts` is the single backend entry point — it starts Express, Vite dev middleware, WebSocket broker, and all AI services together.
+- AI services initialize at startup: YOLOv8n loads from `yolov8n.onnx`; Gemini is optional.
 - Firebase Firestore is used for alerts, identities, and audit logs.
+- The WebSocket server handles real-time camera frame relay and AI event streaming.
 
 ## Stabilization status
 
-Architecture stabilization completed 2026-07-16. Monorepo restructure completed 2026-07-18. See `STABILIZATION_REPORT.md` and `docs/CONSOLIDATION_AUDIT.md` for details.
+Architecture stabilization completed 2026-07-16. See `STABILIZATION_REPORT.md` for full details.
 
 ## User preferences
 

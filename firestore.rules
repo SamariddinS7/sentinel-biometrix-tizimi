@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Default-deny catch-all rule block defined first!
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Validation helpers
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'fullName', 'role'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 128
+        && data.role is string && data.role.size() >= 1 && data.role.size() <= 64
+        && (!('department' in data) || (data.department is string && data.department.size() <= 128))
+        && (!('enrolledDate' in data) || (data.enrolledDate is string && data.enrolledDate.size() <= 64))
+        && (!('hasEmbedding' in data) || data.hasEmbedding is bool)
+        && (!('lastActive' in data) || (data.lastActive is string && data.lastActive.size() <= 64))
+        && (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 1048576))
+        && !('isAdmin' in data);
+    }
+
+    function isValidCamera(data) {
+      return data.keys().hasAll(['id', 'name', 'type'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.type is string && data.type.size() >= 1 && data.type.size() <= 64
+        && (!('location' in data) || (data.location is string && data.location.size() <= 128))
+        && (!('streamUrl' in data) || (data.streamUrl is string && data.streamUrl.size() <= 2048))
+        && (!('status' in data) || (data.status is string && data.status.size() <= 64))
+        && (!('fps' in data) || (data.fps is number && data.fps >= 0 && data.fps <= 120))
+        && (!('resolution' in data) || (data.resolution is string && data.resolution.size() <= 64))
+        && (!('lastActive' in data) || (data.lastActive is string && data.lastActive.size() <= 64))
+        && (!('focalLength' in data) || (data.focalLength is number && data.focalLength >= 0 && data.focalLength <= 500))
+        && (!('sensorWidth' in data) || (data.sensorWidth is number && data.sensorWidth >= 0 && data.sensorWidth <= 100))
+        && (!('sensorHeight' in data) || (data.sensorHeight is number && data.sensorHeight >= 0 && data.sensorHeight <= 100));
+    }
+
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['id', 'userId', 'userName', 'status'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128
+        && data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 128
+        && data.status is string && data.status.size() >= 1 && data.status.size() <= 64
+        && (!('userAvatar' in data) || (data.userAvatar is string && data.userAvatar.size() <= 512))
+        && (!('department' in data) || (data.department is string && data.department.size() <= 128))
+        && (!('timestamp' in data) || (data.timestamp is string && data.timestamp.size() <= 64))
+        && (!('checkIn' in data) || (data.checkIn is string && data.checkIn.size() <= 64))
+        && (!('checkOut' in data) || (data.checkOut is string && data.checkOut.size() <= 64))
+        && (!('confidenceScore' in data) || (data.confidenceScore is number && data.confidenceScore >= 0 && data.confidenceScore <= 1))
+        && (!('livenessVerified' in data) || data.livenessVerified is bool)
+        && (!('nodeId' in data) || (data.nodeId is string && data.nodeId.size() <= 128));
+    }
+
+    function isValidSecurityAlert(data) {
+      return data.keys().hasAll(['id', 'severity', 'message', 'timestamp', 'entityId'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.severity is string && data.severity.size() >= 1 && data.severity.size() <= 32
+        && data.message is string && data.message.size() >= 1 && data.message.size() <= 5000
+        && data.timestamp is number
+        && data.entityId is string && data.entityId.size() >= 1 && data.entityId.size() <= 128
+        && (!('zoneId' in data) || (data.zoneId is string && data.zoneId.size() <= 128))
+        && (!('type' in data) || (data.type is string && data.type.size() <= 256));
+    }
+
+    function isValidFusedIdentity(data) {
+      return data.keys().hasAll(['id', 'status', 'label'])
+        && data.id is string && data.id.size() >= 1 && data.id.size() <= 128
+        && data.status is string && data.status.size() >= 1 && data.status.size() <= 64
+        && data.label is string && data.label.size() >= 1 && data.label.size() <= 256
+        && (!('userId' in data) || (data.userId is string && data.userId.size() <= 128))
+        && (!('role' in data) || (data.role is string && data.role.size() <= 64))
+        && (!('confidence' in data) || (data.confidence is number && data.confidence >= 0 && data.confidence <= 1))
+        && (!('firstSeen' in data) || (data.firstSeen is string && data.firstSeen.size() <= 64))
+        && (!('lastSeen' in data) || (data.lastSeen is string && data.lastSeen.size() <= 64))
+        && (!('lastCameraId' in data) || (data.lastCameraId is string && data.lastCameraId.size() <= 128))
+        && (!('upperClothingColor' in data) || (data.upperClothingColor is string && data.upperClothingColor.size() <= 64))
+        && (!('lowerClothingColor' in data) || (data.lowerClothingColor is string && data.lowerClothingColor.size() <= 64))
+        && (!('clothingType' in data) || (data.clothingType is string && data.clothingType.size() <= 64))
+        && (!('shoes' in data) || (data.shoes is string && data.shoes.size() <= 64))
+        && (!('backpack' in data) || data.backpack is bool)
+        && (!('helmet' in data) || data.helmet is bool)
+        && (!('vest' in data) || data.vest is bool)
+        && (!('bodySize' in data) || (data.bodySize is string && data.bodySize.size() <= 64))
+        && (!('bodyShape' in data) || (data.bodyShape is string && data.bodyShape.size() <= 64));
+    }
+
+    // Collection rules
+    match /users/{userId} {
+      allow read, get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(userId) && userId == incoming().id && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && incoming().id == existing().id && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'role', 'department', 'enrolledDate', 'hasEmbedding', 'lastActive', 'avatarUrl', 'faceDescriptor'])
+      );
+      allow delete: if isSignedIn() && isValidId(userId);
+    }
+
+    match /cameras/{cameraId} {
+      allow read, get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(cameraId) && cameraId == incoming().id && isValidCamera(incoming());
+      allow update: if isSignedIn() && isValidId(cameraId) && isValidCamera(incoming()) && incoming().id == existing().id && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'location', 'type', 'streamUrl', 'status', 'fps', 'resolution', 'lastActive', 'focalLength', 'sensorWidth', 'sensorHeight', 'recordingMode', 'retentionDays', 'manualRecordingActive', 'emergencyRecordingActive'])
+      );
+      allow delete: if isSignedIn() && isValidId(cameraId);
+    }
+
+    match /attendanceLogs/{logId} {
+      allow read, get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId) && logId == incoming().id && isValidAttendanceLog(incoming());
+      allow update, delete: if false;
+    }
+
+    match /securityAlerts/{alertId} {
+      allow read, get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(alertId) && alertId == incoming().id && isValidSecurityAlert(incoming());
+      allow update: if isSignedIn() && isValidId(alertId) && isValidSecurityAlert(incoming()) && incoming().id == existing().id;
+      allow delete: if false;
+    }
+
+    match /multiModalIdentities/{identityId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(identityId) && identityId == incoming().id;
+      allow delete: if isSignedIn() && isValidId(identityId);
+    }
+
+    match /appearanceProfiles/{profileId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(profileId) && profileId == incoming().id;
+      allow delete: if isSignedIn() && isValidId(profileId);
+    }
+
+    match /fusedIdentities/{identityId} {
+      allow read, get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(identityId) && identityId == incoming().id && isValidFusedIdentity(incoming());
+      allow update: if isSignedIn() && isValidId(identityId) && isValidFusedIdentity(incoming()) && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(identityId);
+    }
+
+    match /complianceAuditLogs/{logId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(logId) && logId == incoming().id;
+      allow delete: if isSignedIn() && isValidId(logId);
+    }
+
+    match /recordings/{recordingId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(recordingId) && recordingId == incoming().id;
+      allow delete: if isSignedIn() && isValidId(recordingId);
+    }
+  }
+}
