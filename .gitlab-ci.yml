@@ -1,0 +1,201 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sentinel AI VMS — GitLab CI/CD Pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
+
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy-staging
+  - smoke
+  - deploy-production
+  - notify
+
+variables:
+  NODE_VERSION: "20"
+  DOCKER_IMAGE: "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+  DOCKER_IMAGE_LATEST: "$CI_REGISTRY_IMAGE:latest"
+  HELM_CHART: "./helm/sentinel-vms"
+  KUBE_NAMESPACE_STAGING: "sentinel-staging"
+  KUBE_NAMESPACE_PRODUCTION: "sentinel-production"
+
+# ── Templates ────────────────────────────────────────────────────────────────
+.node-cache: &node-cache
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-node"
+    paths: [node_modules/]
+    policy: pull
+
+.deploy-template: &deploy-template
+  image: alpine/helm:3.14.0
+  before_script:
+    - apk add --no-cache curl kubectl
+    - kubectl config use-context "$KUBE_CONTEXT"
+
+# ── Validate ─────────────────────────────────────────────────────────────────
+lint:
+  stage: validate
+  image: node:$NODE_VERSION-alpine
+  <<: *node-cache
+  script:
+    - npm ci --prefer-offline
+    - npm run lint
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+helm-lint:
+  stage: validate
+  image: alpine/helm:3.14.0
+  script:
+    - helm lint $HELM_CHART -f $HELM_CHART/values.yaml -f $HELM_CHART/values.staging.yaml
+    - helm lint $HELM_CHART -f $HELM_CHART/values.yaml -f $HELM_CHART/values.prod.yaml
+  rules:
+    - changes: ["helm/**/*"]
+
+# ── Test ─────────────────────────────────────────────────────────────────────
+test:unit:
+  stage: test
+  image: node:$NODE_VERSION-alpine
+  services:
+    - postgres:16-alpine
+    - redis:7-alpine
+  variables:
+    POSTGRES_DB: sentinel_vms_test
+    POSTGRES_USER: sentinel
+    POSTGRES_PASSWORD: test_password
+    POSTGRES_URL: postgres://sentinel:test_password@postgres/sentinel_vms_test
+    REDIS_URL: redis://redis:6379
+  <<: *node-cache
+  script:
+    - npm ci --prefer-offline
+    - npm test -- --coverage --reporter=junit --outputFile=junit.xml
+  artifacts:
+    reports:
+      junit: junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths: [coverage/]
+    expire_in: 7 days
+  coverage: '/Statements\s*:\s*(\d+\.?\d*)%/'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Security ─────────────────────────────────────────────────────────────────
+sast:
+  stage: security
+  image: node:$NODE_VERSION-alpine
+  <<: *node-cache
+  script:
+    - npm audit --audit-level=high
+    - npx semgrep --config=auto --error --output=semgrep-results.json --json
+  artifacts:
+    paths: [semgrep-results.json]
+    expire_in: 30 days
+  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+secret-scan:
+  stage: security
+  image: trufflesecurity/trufflehog:latest
+  script:
+    - trufflehog git file://. --since-commit HEAD~1 --fail
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+container-scan:
+  stage: security
+  image: aquasec/trivy:latest
+  dependencies: [build]
+  script:
+    - trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$DOCKER_IMAGE"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Build ────────────────────────────────────────────────────────────────────
+build:
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+    - >
+      docker buildx build
+      --platform linux/amd64,linux/arm64
+      --cache-from "$DOCKER_IMAGE_LATEST"
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      --tag "$DOCKER_IMAGE"
+      --tag "$DOCKER_IMAGE_LATEST"
+      --push
+      .
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Deploy Staging ───────────────────────────────────────────────────────────
+deploy:staging:
+  stage: deploy-staging
+  <<: *deploy-template
+  environment:
+    name: staging
+    url: https://vms-staging.example.com
+  script:
+    - >
+      helm upgrade --install sentinel-vms $HELM_CHART
+      --namespace $KUBE_NAMESPACE_STAGING
+      --create-namespace
+      -f $HELM_CHART/values.yaml
+      -f $HELM_CHART/values.staging.yaml
+      --set image.tag=$CI_COMMIT_SHA
+      --wait --timeout 10m
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Smoke Tests ──────────────────────────────────────────────────────────────
+smoke:staging:
+  stage: smoke
+  image: curlimages/curl:latest
+  script:
+    - curl -sf --retry 10 --retry-delay 5 https://vms-staging.example.com/health/live
+    - curl -sf --retry 5 --retry-delay 3 https://vms-staging.example.com/health/ready
+    - echo "Smoke tests passed"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Deploy Production ────────────────────────────────────────────────────────
+deploy:production:
+  stage: deploy-production
+  <<: *deploy-template
+  environment:
+    name: production
+    url: https://vms.example.com
+  when: manual
+  script:
+    - >
+      helm upgrade --install sentinel-vms $HELM_CHART
+      --namespace $KUBE_NAMESPACE_PRODUCTION
+      --create-namespace
+      -f $HELM_CHART/values.yaml
+      -f $HELM_CHART/values.prod.yaml
+      --set image.tag=$CI_COMMIT_SHA
+      --atomic --timeout 15m
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+notify:failure:
+  stage: notify
+  image: curlimages/curl:latest
+  when: on_failure
+  script:
+    - >
+      curl -sf -X POST "$SLACK_WEBHOOK_URL"
+      -H 'Content-type: application/json'
+      --data "{\"text\":\"❌ Pipeline failed on \`$CI_COMMIT_BRANCH\` — <$CI_PIPELINE_URL|View pipeline>\"}"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

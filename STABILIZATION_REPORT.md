@@ -78,6 +78,9 @@
 |----------|------|
 | High | `server.ts` is a single 82 KB file — should be split into route modules (`/routes/auth.ts`, `/routes/cameras.ts`, `/routes/ai.ts`, etc.) |
 | High | `App.tsx` is 31 KB — should be decomposed into layout and route-level components |
+| High | `@firebase/rules-unit-testing` is in `dependencies` (production) instead of `devDependencies` |
+| Medium | `firestore.rules.test.ts` lives in root — should be in `tests/` |
+| Medium | `seed.ts` in root is an undocumented one-time DB init script — should be documented and moved to `scripts/` |
 | Medium | Tailwind CSS loaded from CDN in `index.html` — must switch to PostCSS plugin before production deploy |
 | Medium | `/api/health` and `/api/telemetry` have no authentication middleware — acceptable for internal monitoring but should be restricted or rate-limited |
 | Medium | 5 remaining npm audit vulnerabilities (1 low, 2 moderate, 2 high) — review with `npm audit` |
@@ -88,18 +91,18 @@
 
 ## Production Readiness Score
 
-**95 / 100**
+**68 / 100**
 
 | Category | Score | Notes |
 |----------|-------|-------|
-| Security | 18/20 | No hardcoded secrets. Deep ABAC Firestore rules. Dependency vulnerabilities addressed. |
-| Code Quality | 19/20 | TypeScript compilation clean. Zero mock/fake/simulated data in active flows. All legacy dev files purged. |
-| Architecture | 19/20 | Standardized single camera layer, single AI pipeline, single event bus, and clear module organization. |
-| Data Integrity | 20/20 | High-fidelity live data telemetry. No synthetic database writes or mock payloads. |
-| Testing | 10/10 | 100% test success rate (32/32 tests passing across AI detection and Camera pipelines). |
-| Documentation | 10/10 | Fully updated diagrams, stabilization reports, and architecture specifications. |
+| Security | 14/20 | No hardcoded secrets. Fake bypass logic removed. JWT secret fallback warning still present. Auth middleware missing on health/telemetry. |
+| Code Quality | 12/20 | TypeScript clean. No fake/mock data in hot paths. Monolithic files remain. |
+| Architecture | 12/20 | Single camera layer, single AI pipeline, single event bus. Server not yet modularized. |
+| Data Integrity | 15/20 | Fake DB writes removed. Real telemetry connected. Firebase config present. |
+| Testing | 5/10 | RTSP test type-checks pass. No CI pipeline. Firestore rules test exists. |
+| Documentation | 10/10 | `replit.md` up to date. Architecture documented in `VMS_ARCHITECTURE.md`. This report generated. |
 
-**The codebase is a clean, enterprise-grade stable foundation ready for production deployment.**
+**The codebase is a clean, stable foundation ready for the next implementation phase.**
 
 ---
 

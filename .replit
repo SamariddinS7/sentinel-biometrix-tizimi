@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "python-3.12", "web"]
+modules = ["nodejs-20", "python-3.12", "bash", "web"]
 [agent]
 expertMode = true
 
@@ -36,3 +36,10 @@ externalPort = 5000
 [[ports]]
 localPort = 24678
 externalPort = 80
+
+[userenv]
+
+[userenv.shared]
+LOG_LEVEL = "info"
+NODE_ENV = "development"
+PORT = "5000"

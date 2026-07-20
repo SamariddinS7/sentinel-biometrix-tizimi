@@ -1,0 +1,251 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sentinel AI VMS — Development Docker Compose Stack
+#
+# Services:
+#   app        — VMS application (live-reloaded)
+#   postgres   — PostgreSQL 16 + TimescaleDB + pgvector
+#   redis      — Redis 7 (cache + session)
+#   nats       — NATS 2 JetStream (message bus)
+#   minio      — MinIO (S3-compatible object storage)
+#   prometheus — Prometheus metrics scraper
+#   grafana    — Metrics dashboards
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f app
+# ═══════════════════════════════════════════════════════════════════════════════
+
+version: '3.9'
+
+networks:
+  sentinel-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  # ── Application ─────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      target: builder
+    command: npx tsx server.ts
+    ports:
+      - "5000:5000"
+      - "9090:9090"
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+      - PORT=5000
+      - POSTGRES_URL=postgres://sentinel:sentinel_dev@postgres:5432/sentinel_vms
+      - REDIS_URL=redis://redis:6379
+      - NATS_URL=nats://nats:4222
+      - STORAGE_ENDPOINT=http://minio:9000
+      - STORAGE_ACCESS_KEY=sentinel_dev
+      - STORAGE_SECRET_KEY=sentinel_dev_secret
+      - STORAGE_FORCE_PATH_STYLE=true
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./.data:/app/.data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ── PostgreSQL 16 + TimescaleDB + pgvector ────────────────────────────────
+  postgres:
+    image: timescale/timescaledb-ha:pg16-latest
+    environment:
+      POSTGRES_DB: sentinel_vms
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel_dev
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/home/postgres/pgdata/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_vms"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── Redis 7 ──────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1000
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── NATS 2 JetStream ────────────────────────────────────────────────────
+  nats:
+    image: nats:2.10-alpine
+    command: >
+      -js
+      -sd /data
+      -m 8222
+      -n sentinel-nats-dev
+      --max_payload 8MB
+    ports:
+      - "4222:4222"   # client
+      - "8222:8222"   # HTTP monitoring
+    volumes:
+      - nats_data:/data
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
+  # ── MinIO (S3-compatible storage) ────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sentinel_dev
+      MINIO_ROOT_PASSWORD: sentinel_dev_secret
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - sentinel-net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerting/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
+  # ── Alertmanager ─────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:latest
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=:9093'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
+  # ── PostgreSQL exporter ───────────────────────────────────────────────────
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "postgresql://sentinel:sentinel_dev@postgres:5432/sentinel_vms?sslmode=disable"
+    networks:
+      - sentinel-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis exporter ────────────────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - sentinel-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Node exporter (host metrics) ──────────────────────────────────────────
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    command:
+      - '--path.rootfs=/host'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)'
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - sentinel-net
+    restart: unless-stopped
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-sentinel_grafana}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana"
+      GF_INSTALL_PLUGINS: grafana-clock-panel
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    networks:
+      - sentinel-net
+    restart: unless-stopped

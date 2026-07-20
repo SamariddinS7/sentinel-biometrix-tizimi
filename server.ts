@@ -1,8 +1,9 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import jwt from "jsonwebtoken";
-import { SecurityAlert } from "./types";
 import bcrypt from "bcryptjs";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import { WebSocketServer } from "ws";
@@ -21,8 +22,8 @@ import {
 } from "./services/securityService";
 import { HazardDetectorPlugin } from "./services/ai/plugins/HazardDetectorPlugin";
 import { db, auth } from "./services/firestoreService";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc } from "firebase/firestore";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, updateDoc, query, where } from "firebase/firestore";
 import net from "net";
 import crypto from "crypto";
 import os from "os";
@@ -31,6 +32,28 @@ import dns from "dns";
 // Analytics Platform
 import { analyticsApiRouter, evidenceApiRouter } from "./services/analytics/AnalyticsApiRouter";
 import { initAnalyticsPlatform } from "./services/analytics/AnalyticsPlatformBootstrap";
+
+// Incident Service
+import { incidentService } from "./services/incidentService";
+
+// Person Intelligence Platform
+import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
+import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
+
+// OpenTelemetry — must be imported before app code starts
+import { setupTracing } from "./services/infrastructure/tracing";
+setupTracing();
+
+// Enterprise Infrastructure Services
+import { requestLoggingMiddleware, getLogger } from "./services/infrastructure/logger";
+import { metricsHandler, cameraConnectionsActive, wsConnectionsActive, wsMessagesTotal, aiDetectionsTotal } from "./services/infrastructure/metrics";
+import { livenessHandler, readinessHandler, statusHandler, registerHealthChecker } from "./services/infrastructure/healthcheck";
+import { cacheService } from "./services/infrastructure/cache";
+import { messageBusService } from "./services/infrastructure/messagebus";
+import { storageService } from "./services/infrastructure/storage";
+import { db as pgDb } from "./services/infrastructure/database";
+
+const infraLog = getLogger('server');
 
 // VMS Enterprise Core Services
 import { vmsEventService } from "./services/vmsEventService";
@@ -55,6 +78,39 @@ const camerasCollection = collection(db, "cameras");
 const logsCollection = collection(db, "logs");
 const anomaliesCollection = collection(db, "anomalies");
 const recordingsCollection = collection(db, "recordings");
+
+// ── Local user store (JSON file, bcrypt passwords) ────────────────────────────
+// Used when Firebase Auth Email/Password provider is not enabled.
+import fs from "fs";
+const LOCAL_USERS_FILE = path.join(process.cwd(), ".data", "users.json");
+
+interface LocalUser {
+  id: string;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+  department: string;
+  role: string;
+  createdAt: string;
+}
+
+function readLocalUsers(): LocalUser[] {
+  try {
+    const raw = fs.readFileSync(LOCAL_USERS_FILE, "utf8");
+    return JSON.parse(raw).users ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalUsers(users: LocalUser[]): void {
+  fs.mkdirSync(path.dirname(LOCAL_USERS_FILE), { recursive: true });
+  fs.writeFileSync(LOCAL_USERS_FILE, JSON.stringify({ users }, null, 2), "utf8");
+}
+
+function findLocalUser(email: string): LocalUser | undefined {
+  return readLocalUsers().find(u => u.email === email.toLowerCase().trim());
+}
 
 // JWT_SECRET must be set via environment variable. No hardcoded fallback allowed.
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -235,17 +291,48 @@ function generateCameraSvg(cameraId: string, cameraName: string, status: string,
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 5000;
 
   // Trust the first proxy (Replit reverse proxy) for correct IP resolution by rate-limiters
   app.set("trust proxy", 1);
 
   // Security headers
+  app.use(helmet({ contentSecurityPolicy: false }));
+
   // Rate limiting — protect auth and AI endpoints
-  const authLimiter = (req: any, res: any, next: any) => next();
-  const aiLimiter = (req: any, res: any, next: any) => next();
-  const globalLimiter = (req: any, res: any, next: any) => next();
+  const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Juda ko'p urinish. Iltimos, keyinroq qayta urinib ko'ring." }
+  });
+  const aiLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "AI so'rov limiti oshib ketdi. Iltimos, bir daqiqadan so'ng urinib ko'ring." }
+  });
+  const globalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
   app.use(globalLimiter);
+
+  // Enterprise structured request logging (after rate-limiter so aborted requests are logged)
+  app.use(requestLoggingMiddleware);
+
+  // ── Kubernetes / load-balancer health probes (no auth required) ───────────
+  app.get('/health/live',   livenessHandler);
+  app.get('/health/ready',  readinessHandler);
+  app.get('/health/status', statusHandler);
+
+  // ── Prometheus metrics scrape endpoint ────────────────────────────────────
+  // Restrict to internal network in production (via nginx/k8s NetworkPolicy)
+  app.get('/metrics', metricsHandler);
 
   // Support large base64 image transfers for biometrics and blueprints
   app.use(express.json({ limit: "50mb" }));
@@ -374,8 +461,28 @@ async function startServer() {
         user: { id: user.uid, email: user.email, fullName, role, department }
       });
     } catch (authError: any) {
-      // Firebase Auth failed — attempt bootstrap check (initial setup only)
-      
+      // Firebase Auth failed — try local file-based user store next
+      const normalizedEmail = email.trim().toLowerCase();
+      const localUser = findLocalUser(normalizedEmail);
+
+      if (localUser && localUser.passwordHash && await bcrypt.compare(password, localUser.passwordHash)) {
+        const token = jwt.sign(
+          { id: localUser.id, email: localUser.email, role: localUser.role, fullName: localUser.fullName },
+          EFFECTIVE_JWT_SECRET,
+          { expiresIn: "12h" }
+        );
+        return res.json({
+          token,
+          user: {
+            id: localUser.id,
+            email: localUser.email,
+            fullName: localUser.fullName,
+            role: localUser.role,
+            department: localUser.department,
+          }
+        });
+      }
+
       // Bootstrap fallback for initial setup when Firebase is offline or unconfigured.
       // The bootstrap password MUST be overridden via BOOTSTRAP_ADMIN_PASSWORD env var.
       const bootstrapPassword = process.env.BOOTSTRAP_ADMIN_PASSWORD;
@@ -400,6 +507,74 @@ async function startServer() {
       }
       
       res.status(401).json({ error: "Elektron pochta yoki parol noto'g'ri." });
+    }
+  });
+
+  // Register new user
+  app.post("/api/auth/register", authLimiter, async (req, res) => {
+    const { fullName, email, password, department } = req.body;
+
+    if (!fullName || typeof fullName !== 'string' || fullName.trim().length < 3) {
+      res.status(400).json({ error: "To'liq ism kamida 3 harfdan iborat bo'lishi kerak" });
+      return;
+    }
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+      res.status(400).json({ error: "Yaroqli email manzil kiritilishi shart" });
+      return;
+    }
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      res.status(400).json({ error: "Parol kamida 6 belgidan iborat bo'lishi kerak" });
+      return;
+    }
+
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Check for duplicate email in local user store
+      if (findLocalUser(normalizedEmail)) {
+        res.status(409).json({ error: "Bu email manzil allaqachon ro'yxatdan o'tgan." });
+        return;
+      }
+
+      // Hash password with bcrypt (12 rounds)
+      const passwordHash = await bcrypt.hash(password, 12);
+      const userId = crypto.randomUUID();
+
+      // Persist user to local JSON store
+      const users = readLocalUsers();
+      const newUser: LocalUser = {
+        id: userId,
+        fullName: fullName.trim(),
+        email: normalizedEmail,
+        passwordHash,
+        department: department?.trim() || 'General',
+        role: 'OPERATOR',
+        createdAt: new Date().toISOString(),
+      };
+      users.push(newUser);
+      writeLocalUsers(users);
+
+      // Issue JWT
+      const token = jwt.sign(
+        { id: userId, email: normalizedEmail, role: 'OPERATOR', fullName: fullName.trim() },
+        EFFECTIVE_JWT_SECRET,
+        { expiresIn: "12h" }
+      );
+
+      console.log(`[Register] New user created: ${normalizedEmail} (${userId})`);
+      res.status(201).json({
+        token,
+        user: {
+          id: userId,
+          email: normalizedEmail,
+          fullName: fullName.trim(),
+          role: 'OPERATOR',
+          department: department?.trim() || 'General',
+        },
+      });
+    } catch (err: any) {
+      console.error('[Register] Error:', err?.code, err?.message);
+      res.status(500).json({ error: "Ro'yxatdan o'tishda xatolik yuz berdi." });
     }
   });
 
@@ -601,12 +776,14 @@ async function startServer() {
       let isPrivateIp = false;
       
       try {
+        const dnsStart = Date.now();
         const lookup = await new Promise<{ address: string; family: number }>((resolve, reject) => {
           dns.lookup(host, (err, address, family) => {
             if (err) reject(err);
             else resolve({ address, family });
           });
         });
+        const dnsRttMs = Date.now() - dnsStart;
         resolvedIp = lookup.address;
         addLog(`DNS muvaffaqiyatli hal qilindi. IP: ${resolvedIp}`);
         
@@ -622,9 +799,9 @@ async function startServer() {
         steps.push({ 
           step: 1, 
           status: "success", 
-          message: `Ping OK! Ulanish vaqti: ${Math.round(5 + Math.random() * 15)}ms. IP: ${resolvedIp}` 
+          message: `Ping OK! Ulanish vaqti: ${dnsRttMs}ms. IP: ${resolvedIp}` 
         });
-        addLog(`Mavjudlik testi (Ping) muvaffaqiyatli: RTT ${Math.round(5 + Math.random() * 15)}ms`);
+        addLog(`Mavjudlik testi (Ping) muvaffaqiyatli: RTT ${dnsRttMs}ms`);
       } catch (dnsErr: any) {
         success = false;
         failedStep = 1;
@@ -1239,7 +1416,7 @@ async function startServer() {
       for (const anomaly of fallbackData.anomalies) {
         try {
           await saveAnomalyToFirestore({
-            id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            id: crypto.randomUUID(),
             severity: 'WARNING',
             message: anomaly.description,
             timestamp: Date.now(),
@@ -1311,7 +1488,7 @@ async function startServer() {
             for (const anomaly of parsed.anomalies) {
               try {
                 await saveAnomalyToFirestore({
-                  id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+                  id: crypto.randomUUID(),
                   severity: 'WARNING',
                   message: anomaly.description,
                   timestamp: Date.now(),
@@ -1331,7 +1508,7 @@ async function startServer() {
           for (const anomaly of fallbackData.anomalies) {
             try {
               await saveAnomalyToFirestore({
-                id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+                id: crypto.randomUUID(),
                 severity: 'WARNING',
                 message: anomaly.description,
                 timestamp: Date.now(),
@@ -1350,7 +1527,7 @@ async function startServer() {
         for (const anomaly of fallbackData.anomalies) {
           try {
             await saveAnomalyToFirestore({
-              id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+              id: crypto.randomUUID(),
               severity: 'WARNING',
               message: anomaly.description,
               timestamp: Date.now(),
@@ -1369,7 +1546,7 @@ async function startServer() {
       for (const anomaly of fallbackData.anomalies) {
         try {
           await saveAnomalyToFirestore({
-            id: `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+            id: crypto.randomUUID(),
             severity: 'WARNING',
             message: anomaly.description,
             timestamp: Date.now(),
@@ -2033,57 +2210,6 @@ async function startServer() {
     }
   });
 
-  // Log a manual security alert (Incident Log)
-  app.post("/api/security/alerts", async (req, res) => {
-    try {
-      const { entityId, severity, message, type, snapshot } = req.body;
-      if (!entityId || !severity || !message) {
-        return res.status(400).json({ error: "entityId, severity, and message are required." });
-      }
-
-      const alertId = `alert-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-      const newAlert: SecurityAlert = {
-        id: alertId,
-        severity: severity,
-        message: message,
-        timestamp: Date.now(),
-        entityId: entityId,
-        type: type || "MANUAL_LOG",
-        status: "ACTIVE",
-        snapshot: snapshot || undefined,
-        notesHistory: [{
-          timestamp: Date.now(),
-          operator: "Operator",
-          text: `Incident manually logged from camera feed.`,
-          action: "CREATE"
-        }]
-      };
-
-      await saveAnomalyToFirestore(newAlert);
-
-      // Write to audit log for compliance
-      await vmsAuditService.log({
-        userId: "operator",
-        userName: "Operator",
-        action: "ALARM_CREATE",
-        module: "AlarmCenter",
-        ipAddress: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || "127.0.0.1",
-        status: "SUCCESS",
-        details: `Incident logged manually: ${message} (Severity: ${severity})`
-      });
-
-      // Emit event
-      vmsEventService.emit("SYSTEM_ERROR", "AlarmCenter", {
-        msg: `MANUAL INCIDENT LOGGED: ${message}`,
-        alarmId: alertId
-      }, severity === "CRITICAL" ? "CRITICAL" : "INFO");
-
-      res.status(201).json({ success: true, alert: newAlert });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
   // Acknowledge alarm
   app.post("/api/security/alerts/:id/acknowledge", async (req, res) => {
     try {
@@ -2501,6 +2627,404 @@ Reply with ONLY valid JSON, no explanation.`;
   app.use("/api/analytics", authenticateToken, analyticsApiRouter);
   app.use("/api/evidence",  authenticateToken, evidenceApiRouter);
 
+  // ── Person Intelligence Platform API ──────────────────────────────────────
+  app.use("/api/persons", authenticateToken, personIntelApiRouter);
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ENTERPRISE SOC ROUTES
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Incident Management ────────────────────────────────────────────────────
+  app.use("/api/incidents", authenticateToken);
+
+  // GET  /api/incidents
+  app.get("/api/incidents", (req, res) => {
+    const { status, priority, category, limit, since } = req.query as Record<string, string>;
+    const results = incidentService.getAll({
+      status   : status   as any,
+      priority : priority as any,
+      category : category as any,
+      limit    : limit ? parseInt(limit, 10) : undefined,
+      since,
+    });
+    res.json({ count: results.length, incidents: results });
+  });
+
+  // GET  /api/incidents/stats
+  app.get("/api/incidents/stats", (_req, res) => {
+    res.json(incidentService.getStats());
+  });
+
+  // GET  /api/incidents/:id
+  app.get("/api/incidents/:id", (req, res) => {
+    const inc = incidentService.getById(String(req.params.id));
+    if (!inc) return res.status(404).json({ error: "Incident not found" });
+    res.json(inc);
+  });
+
+  // POST /api/incidents — create
+  app.post("/api/incidents", async (req, res) => {
+    const { title, description, category, priority, assignedTeam, assignedOperator,
+            associatedCameras, alarmIds, location, tags } = req.body;
+    if (!title || !category || !priority) {
+      return res.status(400).json({ error: "title, category and priority are required" });
+    }
+    const operator = (req as any).user?.email || (req as any).user?.id || 'operator';
+    const inc = incidentService.create({
+      title, description, category, priority,
+      createdBy: operator, assignedTeam, assignedOperator,
+      associatedCameras, alarmIds, location, tags,
+    });
+    vmsAuditService.log({
+      userId: (req as any).user?.id || 'system',
+      userName: operator,
+      action: 'CREATE_INCIDENT',
+      module: 'Incident Management',
+      status: 'SUCCESS',
+      ipAddress: req.ip || 'unknown',
+      details: `Incident ${inc.id} created: "${title}" (${priority} ${category})`,
+    });
+    res.status(201).json(inc);
+  });
+
+  // PUT /api/incidents/:id — update title/description/priority/location/tags
+  app.put("/api/incidents/:id", (req, res) => {
+    const inc = incidentService.getById(String(req.params.id));
+    if (!inc) return res.status(404).json({ error: "Incident not found" });
+    const allow = ['title', 'description', 'priority', 'location', 'tags', 'associatedCameras'];
+    allow.forEach(k => { if (req.body[k] !== undefined) (inc as any)[k] = req.body[k]; });
+    inc.updatedAt = new Date().toISOString();
+    res.json(inc);
+  });
+
+  // POST /api/incidents/:id/status — change status
+  app.post("/api/incidents/:id/status", (req, res) => {
+    const { status, resolution } = req.body;
+    if (!status) return res.status(400).json({ error: "status is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.updateStatus(String(req.params.id), status, operator, resolution);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/assign
+  app.post("/api/incidents/:id/assign", (req, res) => {
+    const { team, operator: assignedOperator } = req.body;
+    if (!team) return res.status(400).json({ error: "team is required" });
+    const by = (req as any).user?.email || 'operator';
+    const ok = incidentService.assign(String(req.params.id), team, assignedOperator || '', by);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/notes
+  app.post("/api/incidents/:id/notes", (req, res) => {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.addNote(String(req.params.id), text, operator);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/evidence
+  app.post("/api/incidents/:id/evidence", (req, res) => {
+    const { evidenceId } = req.body;
+    if (!evidenceId) return res.status(400).json({ error: "evidenceId is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.attachEvidence(String(req.params.id), evidenceId, operator);
+    if (!ok) return res.status(404).json({ error: "Incident not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:id/tasks
+  app.post("/api/incidents/:id/tasks", (req, res) => {
+    const { text, assignedTo } = req.body;
+    if (!text) return res.status(400).json({ error: "text is required" });
+    const operator = (req as any).user?.email || 'operator';
+    const task = incidentService.addTask(String(req.params.id), text, assignedTo, operator);
+    if (!task) return res.status(404).json({ error: "Incident not found" });
+    res.json(task);
+  });
+
+  // POST /api/incidents/:incidentId/tasks/:taskId/toggle
+  app.post("/api/incidents/:incidentId/tasks/:taskId/toggle", (req, res) => {
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.toggleTask(String(req.params.incidentId), String(req.params.taskId), operator);
+    if (!ok) return res.status(404).json({ error: "Incident or task not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/:incidentId/sop/:stepId/toggle
+  app.post("/api/incidents/:incidentId/sop/:stepId/toggle", (req, res) => {
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.toggleSopStep(String(req.params.incidentId), String(req.params.stepId), operator);
+    if (!ok) return res.status(404).json({ error: "Incident or SOP step not found" });
+    res.json({ success: true });
+  });
+
+  // POST /api/incidents/merge
+  app.post("/api/incidents/merge", requireRole(["ADMIN", "SUPERVISOR"]), (req, res) => {
+    const { sourceId, targetId } = req.body;
+    if (!sourceId || !targetId) return res.status(400).json({ error: "sourceId and targetId are required" });
+    const operator = (req as any).user?.email || 'operator';
+    const ok = incidentService.merge(sourceId, targetId, operator);
+    if (!ok) return res.status(404).json({ error: "One or both incidents not found" });
+    res.json({ success: true });
+  });
+
+  // ── Resource Management ────────────────────────────────────────────────────
+  app.use("/api/resources", authenticateToken);
+
+  // GET /api/resources/staff — security personnel (users with security roles)
+  app.get("/api/resources/staff", async (req, res) => {
+    try {
+      const snap = await getDocs(collection(db, "users"));
+      const securityRoles = new Set(["ADMIN", "SUPERVISOR", "OPERATOR", "GUARD", "OFFICER"]);
+      const staff = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((u: any) => securityRoles.has(u.role))
+        .map((u: any) => ({
+          id          : u.id,
+          name        : u.fullName || u.email || u.id,
+          email       : u.email || '',
+          role        : u.role,
+          department  : u.department || 'Security',
+          status      : (u as any).patrolStatus || 'IDLE',
+          location    : (u as any).currentLocation || 'Base',
+          radioChannel: (u as any).radioChannel || 'CH-1',
+          lastActive  : u.lastActive || new Date().toISOString(),
+        }));
+      res.json({ count: staff.length, staff });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/resources/staff/:id/dispatch
+  app.post("/api/resources/staff/:id/dispatch", requireRole(["ADMIN", "SUPERVISOR", "OPERATOR"]), async (req, res) => {
+    const { location, incidentId } = req.body;
+    const operator = (req as any).user?.email || 'operator';
+    try {
+      const userRef = doc(db, "users", String(req.params.id));
+      await updateDoc(userRef, {
+        patrolStatus   : 'DISPATCHED',
+        currentLocation: location || 'Field',
+        dispatchedAt   : new Date().toISOString(),
+        dispatchedBy   : operator,
+        dispatchedTo   : incidentId || null,
+      });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // POST /api/resources/staff/:id/recall
+  app.post("/api/resources/staff/:id/recall", requireRole(["ADMIN", "SUPERVISOR", "OPERATOR"]), async (req, res) => {
+    try {
+      const userRef = doc(db, "users", String(req.params.id));
+      await updateDoc(userRef, { patrolStatus: 'IDLE', currentLocation: 'Base' });
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Multi-site / Organization ──────────────────────────────────────────────
+  app.get("/api/sites", authenticateToken, (_req, res) => {
+    // Static site configuration — extend from settings or Firestore in future
+    const sites = [
+      {
+        id       : "site-tashkent-hq",
+        name     : "Tashkent Campus HQ",
+        city     : "Tashkent",
+        country  : "Uzbekistan",
+        timezone : "Asia/Tashkent",
+        status   : "ONLINE",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date().toISOString(),
+        coordinates: { lat: 41.2995, lng: 69.2401 },
+      },
+      {
+        id       : "site-samarkand",
+        name     : "Samarkand Tech Hub",
+        city     : "Samarkand",
+        country  : "Uzbekistan",
+        timezone : "Asia/Samarkand",
+        status   : "ONLINE",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date().toISOString(),
+        coordinates: { lat: 39.6542, lng: 66.9597 },
+      },
+      {
+        id       : "site-namangan",
+        name     : "Namangan Regional Office",
+        city     : "Namangan",
+        country  : "Uzbekistan",
+        timezone : "Asia/Tashkent",
+        status   : "DEGRADED",
+        cameraCount: 0,
+        alarmCount : 0,
+        lastSync : new Date(Date.now() - 15 * 60_000).toISOString(),
+        coordinates: { lat: 41.0, lng: 71.6724 },
+      },
+    ];
+
+    // Enrich with live alarm counts where possible
+    try {
+      const alarmStats = incidentService.getStats();
+      sites[0].alarmCount = alarmStats.open + alarmStats.investigating;
+    } catch {}
+
+    res.json({ count: sites.length, sites });
+  });
+
+  // ── Global SOC Search ──────────────────────────────────────────────────────
+  app.get("/api/soc/search", authenticateToken, async (req, res) => {
+    const { q = '', types = 'all' } = req.query as Record<string, string>;
+    const query_lc = q.toLowerCase().trim();
+    if (!query_lc) return res.json({ results: [] });
+
+    const typeSet = new Set(types === 'all'
+      ? ['camera', 'alarm', 'incident', 'identity', 'evidence', 'analytics']
+      : types.split(',').map(t => t.trim()));
+
+    const results: Array<{ type: string; id: string; title: string; subtitle?: string; timestamp?: string; url?: string }> = [];
+
+    // Search cameras
+    if (typeSet.has('camera') || typeSet.has('all')) {
+      try {
+        const cameras = cameraRegistry.getAllRegistrations()
+          .filter((r: any) =>
+            r.config?.name?.toLowerCase().includes(query_lc) ||
+            r.config?.id?.toLowerCase().includes(query_lc) ||
+            r.config?.location?.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        cameras.forEach((r: any) => results.push({
+          type: 'camera', id: r.config.id, title: r.config.name,
+          subtitle: `${r.config.location ?? ''} · ${r.config.status ?? 'UNKNOWN'}`,
+        }));
+      } catch {}
+    }
+
+    // Search incidents
+    if (typeSet.has('incident') || typeSet.has('all')) {
+      incidentService.getAll({ limit: 200 })
+        .filter(i =>
+          i.title.toLowerCase().includes(query_lc) ||
+          i.id.toLowerCase().includes(query_lc) ||
+          i.category.toLowerCase().includes(query_lc) ||
+          i.description?.toLowerCase().includes(query_lc)
+        )
+        .slice(0, 5)
+        .forEach(i => results.push({
+          type: 'incident', id: i.id, title: i.title,
+          subtitle: `${i.priority} · ${i.status}`,
+          timestamp: i.createdAt,
+        }));
+    }
+
+    // Search identities
+    if (typeSet.has('identity') || typeSet.has('all')) {
+      try {
+        const identities = identityFusionEngine.getAllIdentities()
+          .filter((id: any) =>
+            id.name?.toLowerCase().includes(query_lc) ||
+            id.id?.toLowerCase().includes(query_lc) ||
+            id.role?.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        identities.forEach((id: any) => results.push({
+          type: 'identity', id: id.id, title: id.name || id.id,
+          subtitle: `${id.role} · ${id.status}`,
+        }));
+      } catch {}
+    }
+
+    // Search evidence
+    if (typeSet.has('evidence') || typeSet.has('all')) {
+      try {
+        const { evidenceManager } = await import('./services/evidenceManager');
+        const evResults = evidenceManager.search({ limit: 200 })
+          .filter(e =>
+            e.id.toLowerCase().includes(query_lc) ||
+            e.eventType.toLowerCase().includes(query_lc) ||
+            e.cameraId.toLowerCase().includes(query_lc)
+          ).slice(0, 5);
+        evResults.forEach(e => results.push({
+          type: 'evidence', id: e.id, title: `${e.eventType} — ${e.cameraId}`,
+          subtitle: `Confidence: ${Math.round(e.confidence * 100)}%`,
+          timestamp: e.timestamp,
+        }));
+      } catch {}
+    }
+
+    res.json({ count: results.length, results });
+  });
+
+  // ── SOC Reports ────────────────────────────────────────────────────────────
+  app.post("/api/soc/reports/generate", authenticateToken, requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    const { reportType, period, cameraId, format = 'json' } = req.body;
+    const operator = (req as any).user?.email || 'operator';
+    const since = new Date(Date.now() - 86_400_000 * (period === '7d' ? 7 : period === '30d' ? 30 : 1)).toISOString();
+
+    try {
+      let reportData: any = {
+        reportId   : `RPT-${Date.now()}`,
+        reportType : reportType || 'OPERATIONAL',
+        generatedAt: new Date().toISOString(),
+        generatedBy: operator,
+        period     : period || '24h',
+      };
+
+      switch (reportType) {
+        case 'INCIDENT':
+          reportData.data = incidentService.getAll({ since, limit: 500 });
+          reportData.summary = incidentService.getStats();
+          break;
+        case 'ALARM': {
+          const alertsSnap = await getSecurityAlerts();
+          reportData.data    = alertsSnap;
+          reportData.summary = {
+            total     : alertsSnap.length,
+            critical  : alertsSnap.filter((a: any) => a.severity === 'CRITICAL').length,
+            resolved  : alertsSnap.filter((a: any) => a.status === 'RESOLVED').length,
+          };
+          break;
+        }
+        case 'HEALTH':
+          reportData.data = {
+            telemetry: vmsHealthService.getTelemetry(),
+            services : vmsHealthService.getServiceStates(),
+          };
+          break;
+        case 'OPERATIONAL':
+        default:
+          reportData.data = {
+            incidents: incidentService.getStats(),
+            cameras  : cameraRegistry.getAllRegistrations().length,
+          };
+          break;
+      }
+
+      vmsAuditService.log({
+        userId: (req as any).user?.id || 'system',
+        userName: operator,
+        action: 'GENERATE_SOC_REPORT',
+        module: 'SOC Reports',
+        status: 'SUCCESS',
+        ipAddress: req.ip || 'unknown',
+        details: `Generated ${reportType} report for period ${period}`,
+      });
+
+      res.json(reportData);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // --- Vite Middleware Integration ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2521,6 +3045,9 @@ Reply with ONLY valid JSON, no explanation.`;
     initializeAlarmBroker();
     initAnalyticsPlatform().catch(err => {
       process.stderr.write(`[WARN] Analytics platform bootstrap failed: ${err}\n`);
+    });
+    initPersonIntelPlatform().catch(err => {
+      process.stderr.write(`[WARN] Person Intelligence Platform bootstrap failed: ${err}\n`);
     });
     vmsSystemManager.bootstrap().catch(err => {
       process.stderr.write(`[CRITICAL] VMS lifecycle bootstrap failed: ${err}\n`);

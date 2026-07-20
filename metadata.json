@@ -2,8 +2,7 @@
   "name": "Remix: Sentinel Biometrik Tizimi",
   "description": "Korporativ darajadagi AI Video Boshqaruv Tizimi (AI VMS) va Xavfsizlik Dashboardi. Real vaqt rejimli kameralar monitoringi, aqlli AI tahlillari va anomaliyalarni aniqlash imkoniyatlariga ega.",
   "requestFramePermissions": [
-    "camera",
-    "microphone"
+    "camera"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
