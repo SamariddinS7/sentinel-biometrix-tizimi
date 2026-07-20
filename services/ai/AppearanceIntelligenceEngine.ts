@@ -32,7 +32,7 @@
  * ============================================================================
  */
 
-import { db } from '../firestoreService';
+import { db, authReadyPromise } from '../firestoreService';
 import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { vmsEventService } from '../vmsEventService';
 import { BoundingBox } from './interfaces';
@@ -111,7 +111,9 @@ export class AppearanceIntelligenceEngine {
   private embeddingHistory: Map<string, number[][]> = new Map(); // Store history of ReID embeddings per person
 
   private constructor() {
-    this.syncFromDatabase();
+    authReadyPromise.then(() => {
+      this.syncFromDatabase();
+    });
   }
 
   public static getInstance(): AppearanceIntelligenceEngine {

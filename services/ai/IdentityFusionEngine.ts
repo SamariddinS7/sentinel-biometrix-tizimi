@@ -1,4 +1,4 @@
-import { db } from '../firestoreService';
+import { db, authReadyPromise } from '../firestoreService';
 import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { userService } from '../userService';
 import { vmsEventService } from '../vmsEventService';
@@ -62,7 +62,9 @@ export class IdentityFusionEngine {
   private trackToIdentityMap: Map<string, string> = new Map(); // rawTrackId -> FusedIdentity.id
   
   private constructor() {
-    this.syncFromFirestore();
+    authReadyPromise.then(() => {
+      this.syncFromFirestore();
+    });
   }
 
   public static getInstance(): IdentityFusionEngine {

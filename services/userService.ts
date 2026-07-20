@@ -1,6 +1,6 @@
 import { User } from '../types';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType } from './firestoreService';
+import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType, authReadyPromise } from './firestoreService';
 
 const CACHE_KEY = 'sentinel_users_cache';
 
@@ -25,6 +25,7 @@ function sanitizeUser(user: User): any {
 export const userService = {
     getAllUsers: async (): Promise<User[]> => {
         try {
+            await authReadyPromise;
             const querySnapshot = await getDocs(collection(db, 'users'));
             const users = querySnapshot.docs.map(doc => doc.data() as User);
             if (users.length > 0) {
@@ -55,6 +56,7 @@ export const userService = {
 
         // Sync with Firestore
         try {
+            await authReadyPromise;
             const sanitized = sanitizeUser(user);
             await setDoc(doc(db, 'users', user.id), sanitized);
         } catch (e) {
@@ -72,6 +74,7 @@ export const userService = {
 
         // Sync with Firestore
         try {
+            await authReadyPromise;
             await deleteDoc(doc(db, 'users', userId));
         } catch (e) {
             console.error(`Firestore deleteUser for ${userId} failed:`, e);

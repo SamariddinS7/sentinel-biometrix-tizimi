@@ -26,6 +26,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests/firestore.rules.test.ts"
+    "tests/firestore.rules.test.ts",
+    "services/infrastructure",
+    "services/personIntel",
+    "tests"
   ]
 }

@@ -1,4 +1,4 @@
-import { db, handleFirestoreError, OperationType } from './firestoreService';
+import { db, handleFirestoreError, OperationType, authReadyPromise } from './firestoreService';
 import { doc, setDoc, collection, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { SecurityAlert } from '../types';
 import { vmsEventService, VmsEvent } from './vmsEventService';
@@ -30,6 +30,7 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage = "
  */
 export const saveAnomalyToFirestore = async (alert: SecurityAlert): Promise<void> => {
   try {
+    await authReadyPromise;
     const docRef = doc(collection(db, 'securityAlerts'), alert.id);
     await withTimeout(setDoc(docRef, alert), 1500, "Firestore setDoc timed out");
   } catch (error) {
@@ -42,6 +43,7 @@ export const saveAnomalyToFirestore = async (alert: SecurityAlert): Promise<void
  */
 export const getSecurityAlerts = async (): Promise<SecurityAlert[]> => {
   try {
+    await authReadyPromise;
     const querySnapshot = await withTimeout(getDocs(collection(db, 'securityAlerts')), 2000, "Firestore getDocs timed out");
     const alerts = querySnapshot.docs.map(doc => doc.data() as SecurityAlert);
     // Sort in reverse chronological order

@@ -6,7 +6,7 @@ import {
   HanwhaConnector, BoschConnector, TiandyConnector, TpLinkVigiConnector, 
   ReolinkConnector, ImouConnector, TapoConnector 
 } from './vendors/brandConnectors';
-import { db } from '../firestoreService';
+import { db, authReadyPromise } from '../firestoreService';
 import { doc, updateDoc, collection, getDocs, setDoc } from 'firebase/firestore';
 import { vmsEventService } from '../vmsEventService';
 
@@ -115,6 +115,7 @@ class CameraManager {
    */
   public async bootstrapDatabaseFeeds(): Promise<void> {
     try {
+      await authReadyPromise;
       const snap = await getDocs(collection(db, 'cameras'));
       const cameras = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as CameraConfig[];
       
@@ -139,6 +140,7 @@ class CameraManager {
         try {
           const health = await conn.getHealth();
           
+          await authReadyPromise;
           // Write telemetry updates to database (Merge mode)
           await updateDoc(doc(db, 'cameras', id), {
             status: health.state === 'STREAMING' ? 'ONLINE' : 'OFFLINE',
@@ -160,6 +162,7 @@ class CameraManager {
    */
   private async persistCameraStatus(cameraId: string, status: 'ONLINE' | 'OFFLINE'): Promise<void> {
     try {
+      await authReadyPromise;
       await updateDoc(doc(db, 'cameras', cameraId), {
         status,
         lastActive: new Date().toISOString()

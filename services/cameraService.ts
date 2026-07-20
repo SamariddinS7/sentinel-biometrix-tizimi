@@ -1,10 +1,11 @@
 import { Camera } from '../types';
-import { db } from './firestoreService';
+import { db, authReadyPromise } from './firestoreService';
 import { collection, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 
 export const cameraService = {
   getAllCameras: async (): Promise<Camera[]> => {
     try {
+      await authReadyPromise;
       const querySnapshot = await getDocs(collection(db, "cameras"));
       const cameras: Camera[] = [];
       querySnapshot.forEach((doc) => {
@@ -19,6 +20,7 @@ export const cameraService = {
 
   saveCamera: async (camera: Camera): Promise<void> => {
     try {
+      await authReadyPromise;
       const formattedCamera = {
         id: camera.id,
         name: camera.name,
@@ -47,6 +49,7 @@ export const cameraService = {
 
   deleteCamera: async (id: string): Promise<void> => {
     try {
+      await authReadyPromise;
       await deleteDoc(doc(db, "cameras", id));
     } catch (e) {
       console.error('Firestore deleteCamera failed:', e);

@@ -164,5 +164,19 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isValidId(recordingId) && recordingId == incoming().id;
       allow delete: if isSignedIn() && isValidId(recordingId);
     }
+    match /personProfiles/{profileId} {
+      allow read, get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(profileId) && profileId == incoming().personId;
+      allow delete: if isSignedIn() && isValidId(profileId);
+    }
+    match /appearanceProfiles/{profileId} {
+      allow read, write: if isSignedIn();
+    }
+    match /fusedIdentities/{identityId} {
+      allow read, write: if isSignedIn();
+    }
+    match /multiModalIdentities/{identityId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }

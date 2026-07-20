@@ -1,12 +1,13 @@
 import { AttendanceRecord } from '../types';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType } from './firestoreService';
+import { db, getLocalCache, setLocalCache, handleFirestoreError, OperationType, authReadyPromise } from './firestoreService';
 
 const CACHE_KEY = 'sentinel_logs_cache';
 
 export const logService = {
   getAttendanceLogs: async (): Promise<AttendanceRecord[]> => {
     try {
+      await authReadyPromise;
       const q = query(collection(db, 'attendanceLogs'), orderBy('timestamp', 'desc'));
       const querySnapshot = await getDocs(q);
       const logs = querySnapshot.docs.map(doc => doc.data() as AttendanceRecord);

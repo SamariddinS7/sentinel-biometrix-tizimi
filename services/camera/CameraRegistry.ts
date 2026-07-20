@@ -21,7 +21,7 @@
 
 import net from 'net';
 import { EventEmitter } from 'events';
-import { db } from '../firestoreService';
+import { db, authReadyPromise } from '../firestoreService';
 import {
   collection,
   getDocs,
@@ -112,6 +112,7 @@ class CameraRegistry extends EventEmitter {
     this.bootstrapped = true;
 
     try {
+      await authReadyPromise;
       const snap = await getDocs(collection(db, CAMERAS_COLLECTION));
       const cameras = snap.docs.map(d => ({ id: d.id, ...d.data() })) as unknown as CameraConfig[];
 

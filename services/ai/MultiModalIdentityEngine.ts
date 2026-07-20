@@ -26,7 +26,7 @@
  * ============================================================================
  */
 
-import { db } from '../firestoreService';
+import { db, authReadyPromise } from '../firestoreService';
 import { collection, doc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { vmsEventService } from '../vmsEventService';
 import { digitalTwinService } from '../digitalTwinService';
@@ -112,7 +112,9 @@ export class MultiModalIdentityEngine {
   ]);
 
   private constructor() {
-    this.syncFromFirestore();
+    authReadyPromise.then(() => {
+      this.syncFromFirestore();
+    });
   }
 
   public registerPlugin(plugin: ModalityPlugin) {

@@ -323,6 +323,8 @@ const SingleCameraView: React.FC<{
             
             // Look for live video tag
             const videoEl = document.querySelector('video');
+            const imgEl = document.querySelector('img[src*="/stream"]') as HTMLImageElement;
+            
             if (videoEl && videoEl.readyState >= 2) {
                 const canvas = document.createElement('canvas');
                 canvas.width = videoEl.videoWidth || 640;
@@ -330,6 +332,15 @@ const SingleCameraView: React.FC<{
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
                     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                    base64 = canvas.toDataURL('image/jpeg', 0.85);
+                }
+            } else if (imgEl && imgEl.complete) {
+                const canvas = document.createElement('canvas');
+                canvas.width = imgEl.naturalWidth || 800;
+                canvas.height = imgEl.naturalHeight || 600;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
                     base64 = canvas.toDataURL('image/jpeg', 0.85);
                 }
             } else {
