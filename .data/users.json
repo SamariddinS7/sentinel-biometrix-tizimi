@@ -8,6 +8,15 @@
       "department": "wef",
       "role": "OPERATOR",
       "createdAt": "2026-07-22T05:58:33.327Z"
+    },
+    {
+      "id": "d1abdc14-bffb-49ab-bd7a-3eb86495c942",
+      "fullName": "qwert",
+      "email": "wea@ewat",
+      "passwordHash": "$2b$12$rGoeqv3eh1ZEUPJBjwBsm.8AfqsQAGSWt622hhxtk..s/HZDZmncW",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-22T10:17:45.321Z"
     }
   ]
 }
