@@ -291,7 +291,7 @@ function generateCameraSvg(cameraId: string, cameraName: string, status: string,
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || "5000", 10);
 
   // Trust the first proxy (Replit reverse proxy) for correct IP resolution by rate-limiters
   app.set("trust proxy", 1);
