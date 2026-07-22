@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "id": "3d002fcf-a925-47b1-99c7-20130a816031",
+      "fullName": "dfefd",
+      "email": "wf@fgdbf",
+      "passwordHash": "$2b$12$ir64W4Rcl8HYYhSjoLW.yOVRI4K2VzoZ0cxBe0P2JDxGOUANbv9Dy",
+      "department": "wef",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-22T05:58:33.327Z"
+    }
+  ]
+}

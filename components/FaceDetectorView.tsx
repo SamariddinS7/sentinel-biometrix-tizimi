@@ -150,7 +150,7 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
               // Run face detection
               let localDetections: any = [];
               try {
-                  localDetections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.35 }))
+                  localDetections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.30 }))
                                                   .withFaceLandmarks()
                                                   .withFaceDescriptors();
                   
@@ -199,7 +199,7 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
                   if (descriptor) {
                       let bestMatch = null;
                       if (Object.keys(enrolledDescriptors).length > 0) {
-                          let minDistance = 0.65; // standard threshold for face-api.js recognition
+                          let minDistance = 0.55; // tighter threshold: fewer false matches
 
                           for (const [userId, enrolledDesc] of Object.entries(enrolledDescriptors)) {
                               const dist = faceapi.euclideanDistance(descriptor, enrolledDesc);
@@ -210,40 +210,12 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
                           }
 
                           if (bestMatch) {
-                              matchedUser = users.find(u => u.id === bestMatch.userId);
+                              matchedUser = users.find(u => u.id === bestMatch!.userId);
                               if (matchedUser) {
                                   state = 'VERIFIED';
-                                  similarity = Math.max(0.65, 1.0 - bestMatch.distance * 0.5);
+                                  // Linear mapping: distance 0 → 100%, distance 0.55 → 0%
+                                  similarity = parseFloat((1.0 - bestMatch.distance / 0.55).toFixed(3));
                               }
-                          }
-                      }
-
-                      // Dynamic Auto-Enrollment Engine
-                      if (!matchedUser && users.length > 0) {
-                          const unenrolledUser = users.find(u => u.role === 'EMPLOYEE' && (!u.faceDescriptor || u.faceDescriptor.length === 0));
-                          if (unenrolledUser) {
-                              const updatedUser = {
-                                  ...unenrolledUser,
-                                  faceDescriptor: Array.from(descriptor) as number[],
-                                  hasEmbedding: true,
-                                  lastActive: 'Hozirgina'
-                              };
-                              userService.saveUser(updatedUser).then(() => {
-                                  setEnrolledDescriptors(prev => ({
-                                      ...prev,
-                                      [unenrolledUser.id]: new Float32Array(descriptor)
-                                  }));
-                              }).catch(err => {
-                                  console.error("Auto-enroll failed:", err);
-                              });
-                              matchedUser = unenrolledUser;
-                              state = 'VERIFIED';
-                              similarity = 0.95;
-                          } else {
-                              const firstEmployee = users.find(u => u.role === 'EMPLOYEE') || users[0];
-                              matchedUser = firstEmployee;
-                              state = 'VERIFIED';
-                              similarity = 0.88;
                           }
                       }
                   }
@@ -311,7 +283,7 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
               setTracks(newTracks);
               setFps(30); 
           }
-      }, 150); // slight increase to 150ms for buttery-smooth main-thread webcam performance
+      }, 100); // 100ms ≈ 10 FPS detection — faster response with inputSize 416
 
       return () => clearInterval(interval);
   }, [isClientAiReady, streamActive, enrolledDescriptors, users, isServerStreamingActive]);

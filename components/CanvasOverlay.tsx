@@ -130,17 +130,17 @@ export const useDetectionEngine = (
                         if (blob && ws && ws.readyState === WebSocket.OPEN && active) {
                             ws.send(blob);
                         }
-                    }, 'image/jpeg', 0.5);
+                    }, 'image/jpeg', 0.75);
                 }
             } else if (isReady && typeof faceapi !== 'undefined' && faceapi.nets && faceapi.nets.tinyFaceDetector && faceapi.nets.tinyFaceDetector.params) {
                 const startTime = performance.now();
                 try {
                     let detectionsResult: any[] = [];
                     if (config.recognizeFaces && faceapi.nets.faceLandmark68Net.params && faceapi.nets.faceRecognitionNet.params) {
-                        detectionsResult = await faceapi.detectAllFaces(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.45 }))
+                        detectionsResult = await faceapi.detectAllFaces(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.30 }))
                             .withFaceLandmarks().withFaceDescriptors();
                     } else {
-                        detectionsResult = await faceapi.detectAllFaces(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.45 }));
+                        detectionsResult = await faceapi.detectAllFaces(mediaEl, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.30 }));
                     }
 
                     const endTime = performance.now();
@@ -160,7 +160,7 @@ export const useDetectionEngine = (
 
                                 if (config.recognizeFaces && det.descriptor) {
                                     let bestMatch = null;
-                                    let minDistance = 0.65;
+                                    let minDistance = 0.55; // tighter — matches FaceDetectorView
                                     for (const [userId, user] of Object.entries(enrolledDescriptors)) {
                                         const dist = faceapi.euclideanDistance(det.descriptor, user.desc);
                                         if (dist < minDistance) {
@@ -169,7 +169,8 @@ export const useDetectionEngine = (
                                         }
                                     }
                                     if (bestMatch) {
-                                        label = bestMatch.fullName;
+                                        const conf = Math.round((1.0 - minDistance / 0.55) * 100);
+                                        label = `${bestMatch.fullName} (${conf}%)`;
                                         color = '#10b981'; // emerald for verified
                                     } else {
                                         label = language === 'uz' ? 'Noma\'lum' : 'Unknown';
@@ -213,7 +214,7 @@ export const useDetectionEngine = (
             }
 
             if (active) {
-                detectionTimeout = setTimeout(runDetection, 100);
+                detectionTimeout = setTimeout(runDetection, 80);
             }
         };
 
