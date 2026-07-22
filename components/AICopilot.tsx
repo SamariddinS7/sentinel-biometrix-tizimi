@@ -18,7 +18,7 @@ import {
   Camera, Database, Network, Lock, Play, RefreshCw, Copy, Check,
   AlertCircle, Terminal, TrendingUp, Users, Map,
   Bot, User, Trash2, MessageSquare, Sliders,
-  Mic, MapPin, MapPinned, Globe, Square, Video, Volume2
+  Mic, MapPin, MapPinned, Globe, Square, Video, Volume2, Workflow
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -26,10 +26,11 @@ import {
   analyzeVideo, analyzeImage
 } from '../services/geminiService';
 import { useLanguage } from '../services/i18n';
+import { EnterpriseIntegrationPlatform } from './EnterpriseIntegrationPlatform';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type MainTab = 'copilot' | 'chat' | 'tools';
+type MainTab = 'copilot' | 'chat' | 'tools' | 'platform';
 type ToolTab = 'audio' | 'maps' | 'media';
 
 type ReasoningStep = 'Observe' | 'Understand' | 'Reason' | 'Plan' | 'Verify' | 'Execute' | 'Explain' | 'Learn';
@@ -700,9 +701,10 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       {/* ── Top tab bar ──────────────────────────────────────────────────────── */}
       <div className="shrink-0 flex items-center gap-1 px-3 pt-3 pb-0 border-b border-white/10">
         {([
-          { id: 'copilot' as MainTab, label: 'Copilot', icon: <BrainCircuit className="w-3.5 h-3.5" /> },
-          { id: 'chat'    as MainTab, label: 'AI Chat',  icon: <MessageSquare className="w-3.5 h-3.5" /> },
-          { id: 'tools'   as MainTab, label: 'Asboblar', icon: <Sliders className="w-3.5 h-3.5" /> },
+          { id: 'copilot'  as MainTab, label: 'Copilot',    icon: <BrainCircuit className="w-3.5 h-3.5" /> },
+          { id: 'chat'     as MainTab, label: 'AI Chat',    icon: <MessageSquare className="w-3.5 h-3.5" /> },
+          { id: 'tools'    as MainTab, label: 'Asboblar',   icon: <Sliders className="w-3.5 h-3.5" /> },
+          { id: 'platform' as MainTab, label: 'Integratsiya', icon: <Network className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button
             key={tab.id}
@@ -1182,6 +1184,11 @@ export const AICopilot: React.FC<AICopilotProps> = ({
           </div>
         </div>
       )}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          TAB 4: ENTERPRISE INTEGRATION PLATFORM (Sections 42–52)
+      ════════════════════════════════════════════════════════════════════════ */}
+      {mainTab === 'platform' && <EnterpriseIntegrationPlatform />}
     </div>
   );
 };

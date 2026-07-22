@@ -17,6 +17,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-22T10:17:45.321Z"
+    },
+    {
+      "id": "e2808657-4bda-4fa0-95ca-11cb52dbf59f",
+      "fullName": "qwert",
+      "email": "qwert@wert",
+      "passwordHash": "$2b$12$toVNRG2w3y6M7OBB7945deRwSs6mhHQKMcjigsLOqin9dqz/dlANO",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-22T17:23:05.875Z"
     }
   ]
 }
