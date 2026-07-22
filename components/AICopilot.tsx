@@ -27,10 +27,11 @@ import {
 } from '../services/geminiService';
 import { useLanguage } from '../services/i18n';
 import { EnterpriseIntegrationPlatform } from './EnterpriseIntegrationPlatform';
+import { EnterpriseArchitecturePlatform } from './EnterpriseArchitecturePlatform';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type MainTab = 'copilot' | 'chat' | 'tools' | 'platform';
+type MainTab = 'copilot' | 'chat' | 'tools' | 'platform' | 'architecture';
 type ToolTab = 'audio' | 'maps' | 'media';
 
 type ReasoningStep = 'Observe' | 'Understand' | 'Reason' | 'Plan' | 'Verify' | 'Execute' | 'Explain' | 'Learn';
@@ -704,7 +705,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({
           { id: 'copilot'  as MainTab, label: 'Copilot',    icon: <BrainCircuit className="w-3.5 h-3.5" /> },
           { id: 'chat'     as MainTab, label: 'AI Chat',    icon: <MessageSquare className="w-3.5 h-3.5" /> },
           { id: 'tools'    as MainTab, label: 'Asboblar',   icon: <Sliders className="w-3.5 h-3.5" /> },
-          { id: 'platform' as MainTab, label: 'Integratsiya', icon: <Network className="w-3.5 h-3.5" /> },
+          { id: 'platform'     as MainTab, label: 'Integratsiya', icon: <Network className="w-3.5 h-3.5" /> },
+          { id: 'architecture' as MainTab, label: 'Arxitektura',  icon: <Workflow className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button
             key={tab.id}

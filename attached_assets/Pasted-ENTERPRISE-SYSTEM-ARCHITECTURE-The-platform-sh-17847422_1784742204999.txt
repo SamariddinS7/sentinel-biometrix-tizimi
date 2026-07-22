@@ -1,0 +1,648 @@
+ENTERPRISE SYSTEM ARCHITECTURE
+====================================================
+
+The platform shall be implemented as a modular, service-oriented architecture.
+
+Core architectural principles:
+
+Loose Coupling
+
+High Cohesion
+
+Horizontal Scalability
+
+Fault Isolation
+
+Event Driven
+
+API First
+
+Plugin Based
+
+Stateless Services where possible
+
+====================================================
+
+Core Services
+
+====================================================
+
+Authentication Service
+
+Authorization Service
+
+Camera Service
+
+Streaming Service
+
+Recording Service
+
+Playback Service
+
+AI Inference Service
+
+Tracking Service
+
+Face Recognition Service
+
+OCR Service
+
+Search Service
+
+Vector Database Service
+
+Incident Service
+
+Evidence Service
+
+Notification Service
+
+Reporting Service
+
+Digital Twin Service
+
+Audit Service
+
+Configuration Service
+
+Health Monitoring Service
+
+Plugin Service
+
+====================================================
+
+Every service shall expose:
+
+Health Endpoint
+
+Metrics
+
+Tracing
+
+Version
+
+OpenAPI Specification
+
+Structured Logging
+
+====================================================
+SECTION 54 — HIGH AVAILABILITY
+====================================================
+HIGH AVAILABILITY
+====================================================
+
+The platform must support:
+
+24/7 Operation
+
+Automatic Failover
+
+Load Balancing
+
+Redundant Services
+
+Rolling Updates
+
+Zero-Downtime Deployments
+
+====================================================
+
+Failure Handling
+
+====================================================
+
+Restart Failed Worker
+
+Reconnect Cameras
+
+Resume Recording
+
+Replay Missed Events
+
+Recover AI Pipelines
+
+Recover Message Queues
+
+====================================================
+
+No single service failure should stop the complete platform.
+
+====================================================
+SECTION 55 — PERFORMANCE ENGINEERING
+====================================================
+PERFORMANCE
+====================================================
+
+The platform must optimize:
+
+GPU Usage
+
+CPU Usage
+
+Memory Usage
+
+Disk Usage
+
+Network Usage
+
+Storage IO
+
+Inference Latency
+
+====================================================
+
+Support:
+
+Batch Inference
+
+Dynamic Scheduling
+
+GPU Sharing
+
+Frame Skipping Policies
+
+Adaptive Frame Rate
+
+Model Caching
+
+Embedding Cache
+
+Vector Cache
+
+====================================================
+
+Performance Goals
+
+====================================================
+
+Low Latency
+
+High Throughput
+
+Predictable Response Times
+
+Efficient Resource Usage
+
+====================================================
+SECTION 56 — OBSERVABILITY PLATFORM
+====================================================
+OBSERVABILITY
+====================================================
+
+Every component exposes:
+
+Metrics
+
+Logs
+
+Distributed Traces
+
+Health Status
+
+====================================================
+
+Metrics
+
+====================================================
+
+FPS
+
+Camera Latency
+
+AI Latency
+
+GPU Usage
+
+CPU Usage
+
+RAM Usage
+
+Storage
+
+Recording Rate
+
+Inference Time
+
+Queue Length
+
+API Response Time
+
+====================================================
+
+Alerts
+
+====================================================
+
+Critical
+
+High
+
+Medium
+
+Low
+
+====================================================
+SECTION 57 — SECURITY & ZERO TRUST
+====================================================
+ZERO TRUST SECURITY
+====================================================
+
+Never trust any request by default.
+
+Verify every identity.
+
+Verify every device.
+
+Verify every API.
+
+====================================================
+
+Security Features
+
+====================================================
+
+RBAC
+
+ABAC
+
+Multi-Factor Authentication
+
+SSO
+
+JWT
+
+OAuth2
+
+TLS
+
+AES-256 Encryption
+
+Secret Management
+
+API Signing
+
+Key Rotation
+
+====================================================
+
+Security Events
+
+====================================================
+
+Login
+
+Logout
+
+Permission Change
+
+Failed Authentication
+
+Configuration Change
+
+Evidence Export
+
+Camera Access
+
+System Restart
+
+Every event must be audited.
+
+====================================================
+SECTION 58 — DATA GOVERNANCE & PRIVACY
+====================================================
+DATA GOVERNANCE
+====================================================
+
+Support configurable organizational policies for:
+
+Retention Periods
+
+Evidence Retention
+
+Recording Retention
+
+Archive Policies
+
+Deletion Approval
+
+Data Classification
+
+====================================================
+
+Privacy
+
+====================================================
+
+Support optional features such as:
+
+Face Blur
+
+License Plate Blur
+
+Region Masking
+
+Export Watermarks
+
+Audit Watermarks
+
+====================================================
+
+All privacy features must be configurable.
+
+====================================================
+SECTION 59 — TESTING & QUALITY ASSURANCE
+====================================================
+QUALITY ASSURANCE
+====================================================
+
+Testing Levels
+
+====================================================
+
+Unit Tests
+
+Integration Tests
+
+System Tests
+
+Performance Tests
+
+Load Tests
+
+Stress Tests
+
+Recovery Tests
+
+Security Tests
+
+Regression Tests
+
+AI Validation Tests
+
+====================================================
+
+Every release requires:
+
+Automated Testing
+
+Manual Verification
+
+Performance Validation
+
+Security Validation
+
+AI Accuracy Validation
+
+====================================================
+SECTION 60 — DISASTER RECOVERY & BACKUP
+====================================================
+DISASTER RECOVERY
+====================================================
+
+Support:
+
+Database Backup
+
+Configuration Backup
+
+Evidence Backup
+
+Recording Backup
+
+Model Backup
+
+Plugin Backup
+
+====================================================
+
+Recovery
+
+====================================================
+
+Point-in-Time Restore
+
+Full Restore
+
+Partial Restore
+
+Service Recovery
+
+Cluster Recovery
+
+====================================================
+
+Recovery procedures must be documented, tested, and periodically validated.
+
+====================================================
+SECTION 61 — COMPLIANCE & AUDIT
+====================================================
+COMPLIANCE
+====================================================
+
+Support configurable organizational and regulatory requirements.
+
+Audit Records
+
+====================================================
+
+Who
+
+When
+
+What
+
+Why
+
+Where
+
+Before State
+
+After State
+
+Result
+
+====================================================
+
+Audit logs must be:
+
+Immutable
+
+Searchable
+
+Exportable
+
+Tamper-Evident
+
+====================================================
+SECTION 62 — RELEASE MANAGEMENT
+====================================================
+RELEASE MANAGEMENT
+====================================================
+
+Deployment Types
+
+====================================================
+
+Development
+
+Testing
+
+Staging
+
+Production
+
+====================================================
+
+Deployment Strategy
+
+====================================================
+
+Blue-Green
+
+Rolling
+
+Canary
+
+Feature Flags
+
+====================================================
+
+Rollback
+
+====================================================
+
+Instant Rollback
+
+Database Migration Rollback
+
+Configuration Rollback
+
+Plugin Rollback
+
+Model Rollback
+
+====================================================
+SECTION 63 — ENTERPRISE DEPLOYMENT
+====================================================
+DEPLOYMENT
+====================================================
+
+Supported Environments
+
+====================================================
+
+Single Server
+
+Multi Server
+
+Cluster
+
+Edge
+
+Cloud
+
+Hybrid
+
+Air-Gapped
+
+====================================================
+
+Supported Technologies
+
+====================================================
+
+Docker
+
+Kubernetes
+
+NVIDIA GPU
+
+AMD GPU (where supported)
+
+CPU Only
+
+Redis
+
+PostgreSQL
+
+Vector Database
+
+Message Broker
+
+Object Storage
+
+====================================================
+SECTION 64 — MASTER AI DIRECTIVE
+====================================================
+MASTER DIRECTIVE
+====================================================
+
+The Enterprise AI Copilot exists to assist operators by providing accurate, explainable, and evidence-based support.
+
+The Copilot shall:
+
+Observe
+
+Understand
+
+Reason
+
+Plan
+
+Recommend
+
+Execute only authorized actions
+
+Explain every conclusion
+
+Learn operational preferences within approved boundaries
+
+====================================================
+
+The Copilot shall never:
+
+Invent observations
+
+Fabricate evidence
+
+Guess identities
+
+Hide uncertainty
+
+Bypass permissions
+
+Modify protected configurations without authorization
+
+Execute irreversible actions without required approval
+
+====================================================
+
+Every response must prioritize:
+
+Safety
+
+Accuracy
+
+Evidence
+
+Transparency
+
+Auditability
+
+Reliability
+
+Operational Value
+
+====================================================
+ENTERPRISE AI VMS SPECIFICATION — COMPLETE
+
+Bu 6 ta Volume yakunlangach, hujjat quyidagi asosiy yo‘nalishlarni qamrab oladi:
+
+Volume 1: Foundation, Multi-Agent, Memory, Permissions
+Volume 2: Vision Intelligence va Evidence-Based Understanding
+Volume 3: Operations, Camera Control, Playback, Incidents, Reports
+Volume 4: Autonomous Planning, Investigation, Monitoring, Explainability
+Volume 5: Enterprise Integrations, Computer Use, Plugin SDK, External Systems
+Volume 6: Production Architecture, Security, Observability, High Availability, Compliance, Deployment
+
+Bu spetsifikatsiya asosida ishlab chiqilgan tizim Enterprise AI Video Management System uchun mustahkam arxitektura va rivojlantirish yo'nalishini beradi.
