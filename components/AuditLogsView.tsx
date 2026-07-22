@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Skeleton } from './Skeleton';
 import { 
   Terminal, ShieldCheck, Filter, Search, Trash2, 
   RefreshCw, AlertCircle, PlayCircle, Lock, Download,
@@ -241,7 +242,19 @@ export const AuditLogsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                  {filteredLogs.length === 0 ? (
+                  {loading ? (
+                    [...Array(6)].map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-28" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-24" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-20" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-24" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-full" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-20" /></td>
+                        <td className="py-4 px-4"><Skeleton className="h-4 w-16" /></td>
+                      </tr>
+                    ))
+                  ) : filteredLogs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-text-muted italic">
                         Qidiruv bo'yicha hech qanday xavfsizlik audit logi topilmadi.

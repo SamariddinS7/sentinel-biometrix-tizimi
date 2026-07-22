@@ -1,12 +1,36 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
     Settings, Save, RotateCcw, Shield, Camera, Users, 
-    Activity, Bell, Database, Globe, Server, Cpu, CheckCircle2, AlertTriangle, Download, Loader2, Lock, Trash2, Siren, Share2, Info
+    Activity, Bell, Database, Globe, Server, Cpu, CheckCircle2, AlertTriangle, Download, Loader2, Lock, Trash2, Siren, Share2, Info,
+    ShieldCheck, Terminal, Filter, Search, RefreshCw, AlertCircle, User
 } from 'lucide-react';
 import { settingsService } from '../services/settingsService';
 import { SystemSettings } from '../types';
 import { useLanguage } from '../services/i18n';
+import { PersonNameLink } from '../context/PersonProfileContext';
+
+// ── Audit log types ──────────────────────────────────────────────────────────
+interface AuditLogEntry {
+  id?: string;
+  userId: string;
+  userName: string;
+  action: string;
+  module: string;
+  timestamp: string;
+  ipAddress: string;
+  status: 'SUCCESS' | 'FAILURE' | 'WARNING';
+  details: string;
+}
+
+interface VmsEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  source: string;
+  payload: any;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL' | 'SUCCESS';
+}
 
 // --- Reusable UI Components ---
 
@@ -91,6 +115,73 @@ export const SettingsView: React.FC = () => {
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const { t, setLanguage } = useLanguage();
 
+    // ── Audit log state ──────────────────────────────────────────────────────
+    const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+    const [vmsEvents, setVmsEvents] = useState<VmsEvent[]>([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditSearch, setAuditSearch] = useState('');
+    const [auditModule, setAuditModule] = useState('ALL');
+    const [auditStatus, setAuditStatus] = useState('ALL');
+    const [auditSubTab, setAuditSubTab] = useState<'AUDIT' | 'LIVE_EVENTS'>('AUDIT');
+
+    // ── Audit log helpers ────────────────────────────────────────────────────
+    const fetchAuditLogs = useCallback(async () => {
+        setAuditLoading(true);
+        try {
+            const [resLogs, resEvents] = await Promise.all([
+                fetch('/api/system/audit-logs'),
+                fetch('/api/system/events'),
+            ]);
+            if (resLogs.ok && resLogs.headers.get('content-type')?.includes('application/json')) {
+                setAuditLogs(await resLogs.json());
+            }
+            if (resEvents.ok && resEvents.headers.get('content-type')?.includes('application/json')) {
+                setVmsEvents(await resEvents.json());
+            }
+        } catch (e) {
+            console.error('Audit log fetch error:', e);
+        } finally {
+            setAuditLoading(false);
+        }
+    }, []);
+
+    const handleClearEvents = async () => {
+        if (!window.confirm('Haqiqatdan ham barcha jonli tizim hodisalari tarixini o\'chirmoqchimisiz?')) return;
+        try {
+            const res = await fetch('/api/system/events/clear', { method: 'POST' });
+            if (res.ok) setVmsEvents([]);
+        } catch (e) { console.error(e); }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'audit_view') {
+            fetchAuditLogs();
+            const iv = setInterval(fetchAuditLogs, 3500);
+            return () => clearInterval(iv);
+        }
+    }, [activeTab, fetchAuditLogs]);
+
+    const auditModules = ['ALL', ...new Set(auditLogs.map(l => l.module))];
+    const filteredAuditLogs = auditLogs.filter(log => {
+        const q = auditSearch.toLowerCase();
+        return (
+            (log.action.toLowerCase().includes(q) || log.details.toLowerCase().includes(q) || log.userName.toLowerCase().includes(q)) &&
+            (auditModule === 'ALL' || log.module === auditModule) &&
+            (auditStatus === 'ALL' || log.status === auditStatus)
+        );
+    });
+
+    const statusBadge = (s: AuditLogEntry['status']) =>
+        s === 'SUCCESS' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20'
+        : s === 'FAILURE' ? 'bg-red-950/40 text-red-400 border border-red-500/20'
+        : 'bg-amber-950/40 text-amber-400 border border-amber-500/20';
+
+    const severityBadge = (s: VmsEvent['severity']) =>
+        s === 'SUCCESS' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/20'
+        : s === 'CRITICAL' ? 'bg-red-950/40 text-red-400 border border-red-500/20'
+        : s === 'WARNING' ? 'bg-amber-950/40 text-amber-400 border border-amber-500/20'
+        : 'bg-indigo-950/40 text-indigo-400 border border-indigo-500/20';
+
     useEffect(() => {
         loadSettings();
     }, []);
@@ -159,6 +250,7 @@ export const SettingsView: React.FC = () => {
         { id: 'notifications', label: t('settings.alerts'), icon: Siren },
         { id: 'logging', label: t('settings.logs'), icon: Server },
         { id: 'backup', label: t('settings.backup'), icon: Database },
+        { id: 'audit_view', label: 'Xavfsizlik Auditi', icon: ShieldCheck },
     ];
 
     const update = (category: keyof SystemSettings, field: string, value: any) => {
@@ -439,6 +531,146 @@ export const SettingsView: React.FC = () => {
                             <Toggle label="Zaxira Fayllarini Shifrlash" checked={settings.backup.encryptBackups} onChange={(v:any) => update('backup', 'encryptBackups', v)} />
                             {settings.backup.lastBackupDate && (
                                 <p className="text-xs text-text-primary0 mt-2">Oxirgi Zaxira: {settings.backup.lastBackupDate}</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* --- AUDIT VIEW --- */}
+                    {activeTab === 'audit_view' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <ShieldCheck className="text-emerald-400" /> Xavfsizlik Audit va Tizim Loglari
+                                    </h3>
+                                    <p className="text-xs text-text-muted mt-1 font-mono">
+                                        Barcha operator harakatlari, ruxsatnomalar va xavfsizlik hodisalarining immutable jurnali.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {auditSubTab === 'LIVE_EVENTS' && (
+                                        <button onClick={handleClearEvents} className="flex items-center gap-1.5 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg text-xs transition-all">
+                                            <Trash2 size={13} /> Tarixni Tozalash
+                                        </button>
+                                    )}
+                                    <button onClick={fetchAuditLogs} disabled={auditLoading} className="flex items-center gap-1.5 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-300 border border-indigo-500/20 px-3 py-1.5 rounded-lg text-xs transition-all">
+                                        <RefreshCw size={13} className={auditLoading ? 'animate-spin' : ''} /> Yangilash
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Sub-tabs */}
+                            <div className="flex border-b border-border gap-2">
+                                <button
+                                    onClick={() => setAuditSubTab('AUDIT')}
+                                    className={`px-4 py-2 text-xs font-bold uppercase tracking-wider font-mono border-b-2 transition-all ${auditSubTab === 'AUDIT' ? 'border-indigo-500 text-indigo-400 bg-indigo-950/10' : 'border-transparent text-text-muted hover:text-text-secondary'}`}
+                                >
+                                    Compliance Audit Trails
+                                </button>
+                                <button
+                                    onClick={() => setAuditSubTab('LIVE_EVENTS')}
+                                    className={`px-4 py-2 text-xs font-bold uppercase tracking-wider font-mono border-b-2 transition-all flex items-center gap-1.5 ${auditSubTab === 'LIVE_EVENTS' ? 'border-indigo-500 text-indigo-400 bg-indigo-950/10' : 'border-transparent text-text-muted hover:text-text-secondary'}`}
+                                >
+                                    <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                                    Live Event Broker Log
+                                </button>
+                            </div>
+
+                            {auditSubTab === 'AUDIT' ? (
+                                <div className="space-y-4">
+                                    {/* Filters */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-app-panel p-4 border border-border rounded-xl">
+                                        <div className="relative sm:col-span-2">
+                                            <Search className="absolute left-3 top-2.5 w-4 h-4 text-text-muted" />
+                                            <input
+                                                type="text"
+                                                placeholder="Amal, operator yoki tafsilotlar bo'yicha qidirish..."
+                                                value={auditSearch}
+                                                onChange={e => setAuditSearch(e.target.value)}
+                                                className="w-full bg-app-primary border border-border rounded-lg pl-9 pr-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 text-text-primary"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Filter className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                                            <select value={auditModule} onChange={e => setAuditModule(e.target.value)} className="w-full bg-app-primary border border-border rounded-lg px-2 py-2 text-xs focus:outline-none text-text-secondary font-mono">
+                                                {auditModules.map((m, i) => <option key={i} value={m}>{m === 'ALL' ? 'Barcha Modullar' : m}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Activity className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                                            <select value={auditStatus} onChange={e => setAuditStatus(e.target.value)} className="w-full bg-app-primary border border-border rounded-lg px-2 py-2 text-xs focus:outline-none text-text-secondary font-mono">
+                                                <option value="ALL">Barcha Holatlar</option>
+                                                <option value="SUCCESS">SUCCESS</option>
+                                                <option value="FAILURE">FAILURE</option>
+                                                <option value="WARNING">WARNING</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Table */}
+                                    <div className="bg-[#05070c] border border-border rounded-xl overflow-hidden shadow-2xl">
+                                        <div className="bg-slate-950/80 px-4 py-2 border-b border-border flex items-center justify-between text-[11px] font-mono text-text-muted">
+                                            <div className="flex items-center gap-1.5"><Terminal size={14} className="text-emerald-400" /> SECURE AUDIT TRACE SHELL</div>
+                                            <div>Jami: {filteredAuditLogs.length} ta yozuv</div>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs font-mono">
+                                                <thead>
+                                                    <tr className="border-b border-border text-text-muted uppercase text-[9px] bg-slate-950/40">
+                                                        <th className="py-2.5 px-4">Vaqt</th>
+                                                        <th className="py-2.5 px-4">Operator</th>
+                                                        <th className="py-2.5 px-4">Modul</th>
+                                                        <th className="py-2.5 px-4">Harakat</th>
+                                                        <th className="py-2.5 px-4">Tafsilotlar</th>
+                                                        <th className="py-2.5 px-4">IP</th>
+                                                        <th className="py-2.5 px-4">Holat</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-border/30">
+                                                    {filteredAuditLogs.length === 0 ? (
+                                                        <tr><td colSpan={7} className="py-10 text-center text-text-muted italic">{auditLoading ? 'Yuklanmoqda...' : 'Hech qanday audit logi topilmadi.'}</td></tr>
+                                                    ) : filteredAuditLogs.map((log, i) => (
+                                                        <tr key={i} className="hover:bg-indigo-950/10 transition-all">
+                                                            <td className="py-3 px-4 text-text-muted whitespace-nowrap">{new Date(log.timestamp).toLocaleString('uz-UZ')}</td>
+                                                            <td className="py-3 px-4 font-bold text-text-primary">
+                                                                <span className="flex items-center gap-1.5"><User size={12} className="text-indigo-400" /><PersonNameLink personId={log.userId} name={log.userName} /></span>
+                                                            </td>
+                                                            <td className="py-3 px-4 text-text-secondary">{log.module}</td>
+                                                            <td className="py-3 px-4 font-bold text-indigo-300">{log.action}</td>
+                                                            <td className="py-3 px-4 text-text-muted max-w-xs truncate" title={log.details}>{log.details}</td>
+                                                            <td className="py-3 px-4 text-text-muted">{log.ipAddress}</td>
+                                                            <td className="py-3 px-4">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${statusBadge(log.status)}`}>{log.status}</span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Live Events */
+                                <div className="bg-slate-950 border border-border rounded-xl p-4 font-mono text-xs text-text-secondary h-[520px] overflow-y-auto space-y-2 flex flex-col-reverse">
+                                    {vmsEvents.length === 0 ? (
+                                        <p className="text-center text-text-muted italic py-16">Live stream ishlamoqda — hodisalar kutilmoqda...</p>
+                                    ) : vmsEvents.map((evt, i) => (
+                                        <div key={i} className="border-l-2 border-indigo-500/40 pl-3 py-1.5 bg-indigo-950/5 rounded-r-md flex items-start justify-between gap-4 text-[11px] animate-in slide-in-from-left duration-250">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="text-text-muted">[{new Date(evt.timestamp).toLocaleTimeString()}]</span>
+                                                    <span className="text-indigo-300 font-bold uppercase tracking-wider text-[9px] bg-indigo-950/40 px-1 py-0.5 rounded">{evt.source}</span>
+                                                    <span className="font-bold text-text-primary">{evt.type}</span>
+                                                </div>
+                                                <p className="text-text-muted leading-relaxed text-[10px]">
+                                                    {typeof evt.payload === 'object' ? JSON.stringify(evt.payload) : evt.payload}
+                                                </p>
+                                            </div>
+                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold shrink-0 ${severityBadge(evt.severity)}`}>{evt.severity}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     )}

@@ -73,7 +73,6 @@ export const AppearanceIntelligenceConsole: React.FC = () => {
   const runQualityDiagnostics = async () => {
     setDiagnosticActive(true);
     setDiagnosticLogs([]);
-    await new Promise(r => setTimeout(r, 800));
     const logs = appearanceIntelligenceEngine.runDiagnosticTests();
     setDiagnosticLogs(logs);
     setDiagnosticActive(false);

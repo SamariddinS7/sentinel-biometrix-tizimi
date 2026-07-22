@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Activity, Shield, Flame, Car, Users, Eye,
   AlertTriangle, TrendingUp, BarChart2, Search,
@@ -285,10 +286,11 @@ export default function AnalyticsDashboard() {
       )}
 
       <div style={{ padding: '20px 24px' }}>
+        <AnimatePresence mode="wait">
 
         {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
         {tab === 'overview' && stats && (
-          <div>
+          <motion.div key="overview" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 24 }}>
               <StatCard label="Total Frames Analysed" value={stats.platform.frameCount.toLocaleString()} icon={Camera} color="#6366f1" />
               <StatCard label="Total Events Generated" value={stats.platform.totalEventCount.toLocaleString()} icon={Activity} color="#10b981" />
@@ -317,12 +319,12 @@ export default function AnalyticsDashboard() {
                   );
                 })}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* ── EVENTS ───────────────────────────────────────────────────────── */}
         {(tab === 'events' || tab === 'fire' || tab === 'ppe' || tab === 'vehicles' || tab === 'crowd') && (
-          <div>
+          <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
             {loading && <div style={{ textAlign: 'center', color: '#64748b', padding: 32 }}>Loading events…</div>}
             {!loading && events.length === 0 && (
               <div style={{ textAlign: 'center', color: '#64748b', padding: 48 }}>
@@ -335,8 +337,14 @@ export default function AnalyticsDashboard() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 120px 100px 120px', gap: 0, padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   <span>Type</span><span>Camera</span><span>Time</span><span>Confidence</span><span>Location</span>
                 </div>
-                {events.map(evt => (
-                  <div key={evt.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 120px 100px 120px', alignItems: 'center', gap: 0, padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.15s' }}
+                <AnimatePresence initial={false}>
+                {events.map((evt, i) => (
+                  <motion.div key={evt.id}
+                    initial={{ opacity: 0, x: -12 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 12 }}
+                    transition={{ duration: 0.15, delay: i < 10 ? i * 0.03 : 0 }}
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 160px 120px 100px 120px', alignItems: 'center', gap: 0, padding: '10px 16px', borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 0.15s', cursor: 'default' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <EventBadge type={evt.type} />
@@ -344,16 +352,18 @@ export default function AnalyticsDashboard() {
                     <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(evt.timestamp).toLocaleTimeString()}</span>
                     <ConfidenceBar value={evt.confidence} />
                     <span style={{ fontSize: 11, color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{evt.location}</span>
-                  </div>
+                  </motion.div>
                 ))}
+                </AnimatePresence>
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* ── PLUGINS ──────────────────────────────────────────────────────── */}
         {tab === 'plugins' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
+          <motion.div key="plugins" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
             {plugins.map(p => {
               const h = p.health;
               const statusColor = h?.status === 'HEALTHY' ? '#10b981' : h?.status === 'DEGRADED' ? '#f59e0b' : '#ef4444';
@@ -388,12 +398,12 @@ export default function AnalyticsDashboard() {
             {plugins.length === 0 && (
               <div style={{ color: '#64748b', padding: 32 }}>No plugins registered yet. Start the server to initialise.</div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {/* ── SEARCH ───────────────────────────────────────────────────────── */}
         {tab === 'search' && (
-          <div>
+          <motion.div key="search" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <input
                 value={searchQuery}
@@ -411,17 +421,26 @@ export default function AnalyticsDashboard() {
             {!loading && searchResults.length === 0 && searchQuery && (
               <div style={{ color: '#64748b', padding: 32, textAlign: 'center' }}>No results found for "{searchQuery}"</div>
             )}
-            {!loading && searchResults.map(evt => (
-              <div key={evt.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <AnimatePresence initial={false}>
+            {!loading && searchResults.map((evt, i) => (
+              <motion.div key={evt.id}
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 6 }}
+                transition={{ duration: 0.14, delay: i * 0.04 }}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 16 }}>
                 <EventBadge type={evt.type} />
                 <span style={{ fontSize: 12, color: '#94a3b8' }}>{evt.cameraName || evt.cameraId}</span>
                 <span style={{ fontSize: 11, color: '#64748b' }}>{new Date(evt.timestamp).toLocaleString()}</span>
                 <ConfidenceBar value={evt.confidence} />
                 <code style={{ fontSize: 11, color: '#64748b', marginLeft: 'auto', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{JSON.stringify(evt.data)}</code>
-              </div>
+              </motion.div>
             ))}
-          </div>
+            </AnimatePresence>
+          </motion.div>
         )}
+
+        </AnimatePresence>
       </div>
     </div>
   );

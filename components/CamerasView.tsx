@@ -207,110 +207,12 @@ const SingleCameraView: React.FC<{
     const [fps, setFps] = useState(42.5);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-    // Incident Logging States
-    const [isIncidentModalOpen, setIsIncidentModalOpen] = useState(false);
-    const [capturedSnapshot, setCapturedSnapshot] = useState<string | null>(null);
-    const [incidentSeverity, setIncidentSeverity] = useState<'CRITICAL' | 'WARNING' | 'INFO'>('WARNING');
-    const [incidentType, setIncidentType] = useState('UNIDENTIFIED_PERSON');
-    const [incidentMessage, setIncidentMessage] = useState('');
-    const [isSubmittingIncident, setIsSubmittingIncident] = useState(false);
-
     // Dynamic logging helper
     const addLog = (text: string, type: 'info' | 'success' | 'warn' = 'info') => {
         setLogs(prev => [
             { id: crypto.randomUUID(), time: new Date().toLocaleTimeString(), text, type },
             ...prev.slice(0, 19)
         ]);
-    };
-
-    // Capture high-resolution snapshot and prepare for incident logging
-    const handleCaptureSnapshotAndLog = async () => {
-        addLog("Capturing high-resolution incident evidence frame...", "info");
-        try {
-            let base64 = '';
-            
-            // Look for live video tag
-            const videoEl = document.querySelector('video');
-            if (videoEl && videoEl.readyState >= 2) {
-                const canvas = document.createElement('canvas');
-                canvas.width = videoEl.videoWidth || 1920; // High-resolution frame
-                canvas.height = videoEl.videoHeight || 1080;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-                    base64 = canvas.toDataURL('image/jpeg', 0.92);
-                }
-            } else {
-                // Image tag or mock fallback simulation (High-Resolution security visual)
-                const canvas = document.createElement('canvas');
-                canvas.width = 1920; 
-                canvas.height = 1080;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    const img = new Image();
-                    img.crossOrigin = "anonymous";
-                    img.src = camera.id === 'CAM-02' 
-                        ? "https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=90" 
-                        : "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=90";
-                    
-                    await new Promise((resolve) => {
-                        img.onload = () => {
-                            ctx.drawImage(img, 0, 0, 1920, 1080);
-                            resolve(null);
-                        };
-                        img.onerror = () => resolve(null);
-                    });
-                    base64 = canvas.toDataURL('image/jpeg', 0.92);
-                }
-            }
-
-            if (base64) {
-                setCapturedSnapshot(base64);
-                setIncidentMessage(`Manual incident logging on camera ${camera.name} (${camera.id}) located at ${camera.location}. Action required.`);
-                setIsIncidentModalOpen(true);
-                addLog("High-resolution incident evidence frame captured successfully.", "success");
-            } else {
-                throw new Error("Could not capture frame buffer");
-            }
-        } catch (error: any) {
-            console.error("Snapshot capture error:", error);
-            addLog(`Capture failed: ${error.message}`, "warn");
-        }
-    };
-
-    const handleSubmitIncident = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!capturedSnapshot) return;
-        setIsSubmittingIncident(true);
-        addLog("Saving incident report to secure compliance audit logs...", "info");
-
-        try {
-            const response = await fetch('/api/security/alerts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    entityId: camera.id,
-                    severity: incidentSeverity,
-                    message: incidentMessage,
-                    type: incidentType,
-                    snapshot: capturedSnapshot
-                })
-            });
-
-            if (response.ok) {
-                addLog(`Incident successfully filed and archived in database!`, "success");
-                setIsIncidentModalOpen(false);
-                setCapturedSnapshot(null);
-            } else {
-                const errData = await response.json();
-                throw new Error(errData.error || 'Failed to submit incident');
-            }
-        } catch (error: any) {
-            console.error("Incident filing failed:", error);
-            addLog(`Failed to file incident: ${error.message}`, "warn");
-        } finally {
-            setIsSubmittingIncident(false);
-        }
     };
 
     // Capture and analyze live frame via Gemini Object Detection
@@ -323,8 +225,6 @@ const SingleCameraView: React.FC<{
             
             // Look for live video tag
             const videoEl = document.querySelector('video');
-            const imgEl = document.querySelector('img[src*="/stream"]') as HTMLImageElement;
-            
             if (videoEl && videoEl.readyState >= 2) {
                 const canvas = document.createElement('canvas');
                 canvas.width = videoEl.videoWidth || 640;
@@ -332,15 +232,6 @@ const SingleCameraView: React.FC<{
                 const ctx = canvas.getContext('2d');
                 if (ctx) {
                     ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-                    base64 = canvas.toDataURL('image/jpeg', 0.85);
-                }
-            } else if (imgEl && imgEl.complete) {
-                const canvas = document.createElement('canvas');
-                canvas.width = imgEl.naturalWidth || 800;
-                canvas.height = imgEl.naturalHeight || 600;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
                     base64 = canvas.toDataURL('image/jpeg', 0.85);
                 }
             } else {
@@ -731,14 +622,6 @@ const SingleCameraView: React.FC<{
                                 )}
                             </button>
 
-                            <button
-                                onClick={handleCaptureSnapshotAndLog}
-                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-xs tracking-wider transition-all select-none border bg-gradient-to-r from-rose-600 to-red-700 text-white hover:from-rose-500 hover:to-red-650 shadow-lg shadow-rose-600/10 border-rose-500/30"
-                            >
-                                <ShieldAlert size={14} className="animate-pulse" />
-                                <span>LOG INCIDENT WITH SNAPSHOT</span>
-                            </button>
-
                             {/* Drag and Drop File Testing */}
                             <div className="relative border-2 border-dashed border-border hover:border-indigo-500/50 rounded-lg p-3 text-center transition-all bg-app-primary/40 cursor-pointer">
                                 <input 
@@ -898,165 +781,6 @@ const SingleCameraView: React.FC<{
                 )}
 
             </div>
-
-            {/* Incident Log Form Modal */}
-            {isIncidentModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-app-panel border border-border rounded-xl w-full max-w-2xl overflow-hidden shadow-[0_0_50px_rgba(225,29,72,0.15)] flex flex-col max-h-[90vh]">
-                        
-                        {/* Header */}
-                        <div className="p-4 border-b border-border bg-gradient-to-r from-rose-950/20 to-app-primary flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-rose-500">
-                                <ShieldAlert className="w-5 h-5 animate-pulse" />
-                                <span className="font-bold tracking-wider font-mono text-sm uppercase">Manual Incident File Entry</span>
-                            </div>
-                            <button 
-                                onClick={() => setIsIncidentModalOpen(false)}
-                                className="text-text-secondary hover:text-white p-1 rounded-md hover:bg-white/5 transition-all"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <form onSubmit={handleSubmitIncident} className="flex flex-col overflow-y-auto custom-scrollbar flex-1">
-                            <div className="p-6 space-y-6">
-                                
-                                {/* Snapshot Preview */}
-                                <div className="space-y-2">
-                                    <label className="text-[10px] text-text-secondary font-mono uppercase tracking-widest">Captured High-Res Evidence Frame</label>
-                                    <div className="relative border border-border rounded-lg overflow-hidden bg-black aspect-video group">
-                                        <img 
-                                            src={capturedSnapshot || ''} 
-                                            alt="High-Res Incident Snapshot" 
-                                            className="w-full h-full object-cover"
-                                        />
-                                        <div className="absolute top-2 left-2 px-2 py-1 rounded bg-black/60 border border-white/10 text-[10px] font-mono text-cyan-400 backdrop-blur">
-                                            HIGH-RES SNAPSHOT (1920x1080)
-                                        </div>
-                                        <div className="absolute bottom-2 right-2 px-2 py-1 rounded bg-rose-950/80 border border-rose-500/30 text-[10px] font-mono text-rose-400 backdrop-blur">
-                                            SECURE DATA SEC/M-REF
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Form Fields */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    
-                                    {/* Incident Category */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] text-text-secondary font-mono uppercase tracking-widest">Incident Type</label>
-                                        <select
-                                            value={incidentType}
-                                            onChange={(e) => setIncidentType(e.target.value)}
-                                            className="w-full bg-app-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 font-mono"
-                                        >
-                                            <option value="UNIDENTIFIED_PERSON">Unidentified Person</option>
-                                            <option value="RESTRICTED_ZONE_INTRUSION">Restricted Area Intrusion</option>
-                                            <option value="SUSPICIOUS_BEHAVIOR">Suspicious Behavior</option>
-                                            <option value="SAFETY_VIOLATION">Safety Policy Violation</option>
-                                            <option value="ASSET_MISPLACEMENT">Property/Asset Anomaly</option>
-                                            <option value="FIRE_SMOKE_HAZARD">Fire / Smoke Hazard</option>
-                                            <option value="HARDWARE_TAMPERING">Camera/Hardware Tampering</option>
-                                            <option value="OTHER">Other Compliance Hazard</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Severity Selection */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] text-text-secondary font-mono uppercase tracking-widest font-semibold">Severity level</label>
-                                        <div className="flex gap-2">
-                                            {(['INFO', 'WARNING', 'CRITICAL'] as const).map((sev) => (
-                                                <button
-                                                    key={sev}
-                                                    type="button"
-                                                    onClick={() => setIncidentSeverity(sev)}
-                                                    className={`flex-1 py-2 text-xs font-bold font-mono rounded-lg border transition-all ${
-                                                        incidentSeverity === sev
-                                                            ? sev === 'CRITICAL'
-                                                                ? 'bg-red-500/20 border-red-500 text-red-400'
-                                                                : sev === 'WARNING'
-                                                                ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-                                                                : 'bg-blue-500/20 border-blue-500 text-blue-400'
-                                                            : 'bg-app-surface border-border text-text-secondary hover:text-white hover:border-border-hover'
-                                                    }`}
-                                                >
-                                                    {sev}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                </div>
-
-                                {/* Message/Description */}
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] text-text-secondary font-mono uppercase tracking-widest">Incident Description & Operator Notes</label>
-                                    <textarea
-                                        value={incidentMessage}
-                                        onChange={(e) => setIncidentMessage(e.target.value)}
-                                        rows={3}
-                                        required
-                                        className="w-full bg-app-surface border border-border rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none font-sans leading-relaxed"
-                                        placeholder="Describe the incident details, personnel involved, and any immediate physical actions taken..."
-                                    />
-                                </div>
-
-                                {/* Metadata Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-app-primary/40 border border-border/50 p-3 rounded-lg text-[11px] font-mono text-text-secondary">
-                                    <div>
-                                        <span className="block text-[9px] uppercase text-text-secondary/60">Source Camera</span>
-                                        <span className="text-text-primary font-medium">{camera.name}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[9px] uppercase text-text-secondary/60">Location</span>
-                                        <span className="text-text-primary font-medium">{camera.location}</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[9px] uppercase text-text-secondary/60">Operator ID</span>
-                                        <span className="text-text-primary font-medium">OP-ADMIN-01</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[9px] uppercase text-text-secondary/60">Date & Time</span>
-                                        <span className="text-text-primary font-medium">{new Date().toLocaleTimeString()}</span>
-                                    </div>
-                                </div>
-
-                            </div>
-
-                            {/* Footer Buttons */}
-                            <div className="p-4 border-t border-border bg-app-primary flex justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsIncidentModalOpen(false)}
-                                    className="px-4 py-2 text-xs font-semibold rounded-lg hover:bg-white/5 transition-all text-text-secondary hover:text-white"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={isSubmittingIncident}
-                                    className="px-5 py-2 text-xs font-bold font-mono rounded-lg bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-lg shadow-rose-600/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isSubmittingIncident ? (
-                                        <>
-                                            <RefreshCw size={12} className="animate-spin" />
-                                            <span>FILING INCIDENT...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CheckCircle2 size={12} />
-                                            <span>FILE OFFICIAL INCIDENT LOG</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-
-                        </form>
-                    </div>
-                </div>
-            )}
-
         </div>
     );
 };
@@ -1119,28 +843,23 @@ const CameraCard: React.FC<{
             baseBitrate = 1536;
         }
 
-        setCurrentBitrate(Math.round(baseBitrate + (Math.random() * 200 - 100)));
-        setCurrentFps(camera.fps + (Math.random() * 0.8 - 0.4));
+        // Show nominal values — real bitrate comes from the actual RTSP stream metrics
+        setCurrentBitrate(baseBitrate);
+        setCurrentFps(camera.fps);
 
-        const interval = setInterval(() => {
-            setCurrentFps(prev => {
-                const change = (Math.random() * 0.6 - 0.3);
-                const next = prev + change;
-                const maxDiff = 1.5;
-                if (next < camera.fps - maxDiff) return camera.fps - maxDiff;
-                if (next > camera.fps + maxDiff) return camera.fps + maxDiff;
-                return next;
-            });
-
-            setCurrentBitrate(prev => {
-                const pctChange = (Math.random() * 0.1 - 0.05); // ±5%
-                const change = Math.round(baseBitrate * pctChange);
-                const next = prev + change;
-                if (next < baseBitrate * 0.8) return Math.round(baseBitrate * 0.8);
-                if (next > baseBitrate * 1.2) return Math.round(baseBitrate * 1.2);
-                return Math.round(next);
-            });
-        }, 1500);
+        // Poll real stream stats from backend every 5s when camera is online
+        const interval = setInterval(async () => {
+            try {
+                const r = await fetch(`/api/cameras/${camera.id}/stream/stats`);
+                if (r.ok) {
+                    const j = await r.json();
+                    if (typeof j.bitrateKbps === 'number') setCurrentBitrate(j.bitrateKbps);
+                    if (typeof j.fps === 'number') setCurrentFps(j.fps);
+                }
+            } catch {
+                // No stream stats available — keep showing nominal values
+            }
+        }, 5000);
 
         return () => clearInterval(interval);
     }, [isOnline, camera.fps, camera.resolution]);
@@ -2232,149 +1951,31 @@ export const CamerasView: React.FC = () => {
         const portMatch = camera.streamUrl.match(/:(\d+)/);
         const port = portMatch ? portMatch[1] : '554';
 
-        // Prepare our steps
-        const testSteps = [
-            {
-                progress: 25,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[PING] ${ip} tuguniga ICMP echo so'rovi yuborilmoqda...`
-                            : `[PING] Dispatching ICMP echo request frames to target host ${ip}...`
-                    ]);
-                    
-                    const t1 = setTimeout(() => {
-                        if (camera.status === CameraStatus.OFFLINE) {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[PING] ✗ Tarmoq xatosi: Destination Host Unreachable. Paket yo'qolishi = 100%`
-                                    : `[PING] ✗ ICMP Error: Destination Host Unreachable. Packet loss = 100%`,
-                                language === 'uz'
-                                    ? `[ERROR] Kamerani tarmoqdan qidirish bajarilmadi. Ulanishni sinash to'xtatildi.`
-                                    : `[ERROR] Failed to discover device on local subnet. Diagnostics aborted.`
-                            ]);
-                            setTestStatus('failed');
-                            setTestProgress(25);
-                        } else {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[PING] ✓ Muvaffaqiyatli javob olindi. RTT: o'rtacha = 1.4ms, paket yo'qolishi = 0%`
-                                    : `[PING] ✓ Echo response received. RTT: avg = 1.4ms, packet loss = 0%`
-                            ]);
-                            executeStep(1);
-                        }
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t1);
-                }
-            },
-            {
-                progress: 50,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[PORT] TCP socket handshaking boshlanmoqda. Port: ${port}...`
-                            : `[PORT] Initiating TCP socket handshake. Checking port ${port}...`
-                    ]);
-                    
-                    const t2 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[PORT] ✓ Tarmoq soketi ochiq va xizmat so'rovlarni qabul qilmoqda.`
-                                : `[PORT] ✓ Target socket port ${port} is active and listening.`
-                        ]);
-                        executeStep(2);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t2);
-                }
-            },
-            {
-                progress: 75,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[RTSP] RTSP OPTIONS & DESCRIBE shartnomasi yuborilmoqda...`
-                            : `[RTSP] Dispatching RTSP OPTIONS & DESCRIBE sequence commands...`
-                    ]);
-                    
-                    const t3 = setTimeout(() => {
-                        if (camera.status === CameraStatus.ERROR) {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[RTSP] ✗ RTSP protokoli xatosi: 401 Unauthorized (Login yoki parol noto'g'ri)`
-                                    : `[RTSP] ✗ RTSP Authentication Error: 401 Unauthorized (Bad credentials)`,
-                                language === 'uz'
-                                    ? `[ERROR] RTSP oqim xavfsizlik tekshiruvidan o'ta olmadi. Ulanish to'xtatildi.`
-                                    : `[ERROR] Stream auth handshake failed. Session terminated.`
-                            ]);
-                            setTestStatus('failed');
-                            setTestProgress(75);
-                        } else {
-                            setTestLogs(prev => [...prev, 
-                                language === 'uz'
-                                    ? `[RTSP] ✓ RTSP Server: 200 OK. Ruxsatlar: OPTIONS, DESCRIBE, SETUP, PLAY`
-                                    : `[RTSP] ✓ Handshake: 200 OK. Active commands: OPTIONS, DESCRIBE, SETUP, PLAY`,
-                                language === 'uz'
-                                    ? `[RTSP] ✓ SDP Profil muvaffaqiyatli yuklandi va parslash bajarildi.`
-                                    : `[RTSP] ✓ Stream Profile (SDP) loaded and parsed correctly.`
-                            ]);
-                            executeStep(3);
-                        }
-                    }, 1000);
-                    activeTestTimersRef.current.timeouts.push(t3);
-                }
-            },
-            {
-                progress: 90,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[CODEC] ${camera.resolution} oqim uchun H.264 video oqimi dekoderi yuklanmoqda...`
-                            : `[CODEC] Loading H.264 video stream hardware decoder for ${camera.resolution}...`
-                    ]);
-                    
-                    const t4 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[CODEC] ✓ Dekoder muvaffaqiyatli ishga tushirildi. Oqim tezligi: ~2.4 Mbps.`
-                                : `[CODEC] ✓ Decoder pipeline initialized. Bandwidth footprint: ~2.4 Mbps.`
-                        ]);
-                        executeStep(4);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t4);
-                }
-            },
-            {
-                progress: 100,
-                run: () => {
-                    setTestLogs(prev => [...prev, 
-                        language === 'uz'
-                            ? `[SYSTEM] Kadrlarni sinxronizatsiya qilish va buffer sozlanmoqda...`
-                            : `[SYSTEM] Calibrating live frames buffer with central system grid...`
-                    ]);
-                    
-                    const t5 = setTimeout(() => {
-                        setTestLogs(prev => [...prev, 
-                            language === 'uz'
-                                ? `[SUCCESS] ✓ Kamera onlayn holatda! Jonli oqim muvaffaqiyatli ulandi.`
-                                : `[SUCCESS] ✓ Device is fully functional. Live RTSP connection established.`
-                        ]);
-                        setTestStatus('success');
-                        setTestProgress(100);
-                    }, 800);
-                    activeTestTimersRef.current.timeouts.push(t5);
-                }
-            }
-        ];
+        // Run real backend diagnostics
+        cameraService.diagnoseCamera(camera.id, camera.streamUrl).then(result => {
+            const allLogs = result.logs;
+            const msPerLog = Math.max(60, Math.min(180, 2400 / (allLogs.length || 1)));
+            let delay = 0;
 
-        const executeStep = (stepIndex: number) => {
-            if (stepIndex < testSteps.length) {
-                setTestProgress(testSteps[stepIndex].progress);
-                testSteps[stepIndex].run();
-            }
-        };
+            allLogs.forEach((log: string, i: number) => {
+                const t = setTimeout(() => {
+                    setTestLogs(prev => [...prev, log]);
+                    setTestProgress(Math.round(5 + ((i + 1) / allLogs.length) * 90));
+                }, delay);
+                activeTestTimersRef.current.timeouts.push(t);
+                delay += msPerLog;
+            });
 
-        // Start step 0
-        executeStep(0);
+            const finalT = setTimeout(() => {
+                setTestProgress(100);
+                setTestStatus(result.success ? 'success' : 'failed');
+            }, delay);
+            activeTestTimersRef.current.timeouts.push(finalT);
+        }).catch((err: Error) => {
+            setTestLogs(prev => [...prev, `[ERROR] ${err.message}`]);
+            setTestStatus('failed');
+            setTestProgress(0);
+        });
     };
 
     const reloadCameras = async () => {

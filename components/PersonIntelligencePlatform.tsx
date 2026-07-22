@@ -1,1036 +1,1121 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Shield, Layers, Sparkles, Filter, Check, Play, Sliders, Info, Eye, 
-  Activity, Database, CheckCircle2, AlertTriangle, RefreshCw, User, Cpu, 
-  AlertCircle, Bookmark, Radio, Navigation, Network, Zap, Settings, TrendingUp,
-  Clock, Compass, Users, Share2, ArrowRight, AlertOctagon, Fingerprint, FileText, PlusCircle,
-  Search, Trash2, ShieldAlert, ScanFace, Download, ShieldCheck, Mail, Calendar, MapPin, 
-  Lock, ArrowDownLeft, ArrowUpRight, BarChart3, HelpCircle, EyeOff
-} from 'lucide-react';
-import { multiModalIdentityEngine, MultiModalIdentity, ModalityPlugin, ExplainableConfidence } from '../services/ai/MultiModalIdentityEngine';
-import { movementIntelligenceEngine, MovementIntelligenceReport, PersonAssociation, GroupMovementEvent } from '../services/ai/MovementIntelligenceEngine';
-import { userService } from '../services/userService';
-import { User as UserType, UserRole } from '../types';
-import { vmsAuditService } from '../services/vmsAuditService';
-import { authService } from '../services/authService';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import {
+  Shield, Activity, Clock, Users, Search, RefreshCw, User,
+  AlertTriangle, Navigation, Camera, BarChart3, FileText,
+  Download, Trash2, ScanFace, Bookmark, BookmarkX, ChevronRight,
+  CheckCircle2, XCircle, Eye, MapPin, Layers, Network, Play,
+  Loader2, PlusCircle, ShieldAlert, Info, LayoutList,
+} from 'lucide-react';
+
+import { PersonTimeline } from './PersonTimeline';
+import { IdentityCard } from './IdentityCard';
+import { PersonSearchModal } from './PersonSearchModal';
+import { PersonNameLink, usePersonProfile } from '../context/PersonProfileContext';
+import type {
+  PersonProfile, PersonStatus, TimelineEntry, RelationshipObservation,
+  MovementRecord, ReportType, ReportPeriod,
+} from '../services/personIntel/types/PersonProfile';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface SystemStats {
+  totalProfiles: number;
+  byStatus: Record<PersonStatus, number>;
+  activeToday: number;
+  watchlistCount: number;
+  cacheSize?: number;
+}
+
+interface MovementJourney {
+  cameraId: string;
+  cameraName?: string;
+  location?: string;
+  enteredAt: string;
+  exitedAt?: string;
+  durationMs?: number;
+}
+
+interface EvidenceRecord {
+  evidenceId: string;
+  type: string;
+  capturedAt: string;
+  cameraId?: string;
+  personId?: string;
+  snapshotRef?: string;
+  description?: string;
+  isLocked?: boolean;
+}
+
+type ActiveTab =
+  | 'OVERVIEW' | 'TIMELINE' | 'MOVEMENT' | 'ATTRIBUTES'
+  | 'RELATIONSHIPS' | 'EVIDENCE' | 'INVESTIGATION' | 'REPORTS' | 'COMPLIANCE';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function relTime(iso?: string): string {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return 'Yesterday';
+  if (d < 30) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function fmtDuration(ms?: number): string {
+  if (!ms) return '—';
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+
+async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(path, opts);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error ?? 'Request failed');
+  return json.data as T;
+}
+
+const STATUS_COLOUR: Record<PersonStatus, string> = {
+  KNOWN:     'text-teal-400',
+  ANONYMOUS: 'text-gray-400',
+  WATCHLIST: 'text-amber-400',
+  BLOCKED:   'text-red-400',
+  ARCHIVED:  'text-gray-600',
+};
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+const StatCard: React.FC<{ label: string; value: string | number; sub?: string; accent?: string }> = ({
+  label, value, sub, accent = 'text-white',
+}) => (
+  <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-3">
+    <div className={`text-xl font-bold ${accent}`}>{value}</div>
+    <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+    {sub && <div className="text-[10px] text-gray-600 mt-0.5">{sub}</div>}
+  </div>
+);
+
+const SectionTitle: React.FC<{ icon: React.ReactNode; title: string; sub?: string }> = ({ icon, title, sub }) => (
+  <div className="flex items-center gap-2 mb-3">
+    <span className="text-teal-400">{icon}</span>
+    <div>
+      <div className="text-sm font-semibold text-white">{title}</div>
+      {sub && <div className="text-[11px] text-gray-500">{sub}</div>}
+    </div>
+  </div>
+);
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 export const PersonIntelligencePlatform: React.FC = () => {
-  // Navigation & view states
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'BIOMETRICS' | 'TIMELINE' | 'ATTRIBUTES' | 'ASSOCIATIONS' | 'COMPLIANCE'>('DASHBOARD');
-  
-  // Registry lists
-  const [knownUsers, setKnownUsers] = useState<UserType[]>([]);
-  const [globalIdentities, setGlobalIdentities] = useState<MultiModalIdentity[]>([]);
-  const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [isKnownProfile, setIsKnownProfile] = useState<boolean>(true);
-  
-  // Search & Filters
+  // ── State: list ────────────────────────────────────────────────────────────
+  const [profiles, setProfiles] = useState<PersonProfile[]>([]);
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [listFilter, setListFilter] = useState<PersonStatus | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterRole, setFilterRole] = useState<'ALL' | 'ADMIN' | 'OPERATOR' | 'EMPLOYEE' | 'VISITOR'>('ALL');
-  const [filterType, setFilterType] = useState<'ALL' | 'KNOWN' | 'ANONYMOUS'>('ALL');
-  
-  // Live states
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [intelReport, setIntelReport] = useState<MovementIntelligenceReport | null>(null);
-  const [systemStats, setSystemStats] = useState<any>(null);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [isExporting, setIsExporting] = useState(false);
-  const [gdprChecked, setGdprChecked] = useState(false);
-  const [showGDPRConfirm, setShowGDPRConfirm] = useState(false);
 
-  // Load known database records and multi-modal identities
-  const loadData = async () => {
-    setIsRefreshing(true);
+  // ── State: selected person ─────────────────────────────────────────────────
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<PersonProfile | null>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('OVERVIEW');
+  const { openProfile } = usePersonProfile();
+  const [profileLoading, setProfileLoading] = useState(false);
+
+  // ── State: per-tab data ────────────────────────────────────────────────────
+  const [movement, setMovement] = useState<{ replay: MovementJourney[]; journey: MovementJourney[] } | null>(null);
+  const [relationships, setRelationships] = useState<RelationshipObservation[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
+  const [incidents, setIncidents] = useState<TimelineEntry[]>([]);
+  const [personStats, setPersonStats] = useState<Record<string, unknown> | null>(null);
+  const [tabLoading, setTabLoading] = useState(false);
+
+  // ── State: investigation ───────────────────────────────────────────────────
+  const [replayIndex, setReplayIndex] = useState(0);
+  const [isReplaying, setIsReplaying] = useState(false);
+  const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── State: reports ─────────────────────────────────────────────────────────
+  const [reportType, setReportType] = useState<ReportType>('MOVEMENT');
+  const [reportPeriod, setReportPeriod] = useState<ReportPeriod>('DAILY');
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportData, setReportData] = useState<unknown>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // ── State: compliance ─────────────────────────────────────────────────────
+  const [noteText, setNoteText] = useState('');
+  const [noteLoading, setNoteLoading] = useState(false);
+  const [gdprConfirm, setGdprConfirm] = useState(false);
+  const [gdprLoading, setGdprLoading] = useState(false);
+  const [gdprDone, setGdprDone] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  // ── Load profile list + stats ──────────────────────────────────────────────
+  const loadList = useCallback(async (quiet = false) => {
+    if (!quiet) setListLoading(true);
+    else setIsRefreshing(true);
     try {
-      const users = await userService.getAllUsers();
-      setKnownUsers(users || []);
-      
-      const mmIds = multiModalIdentityEngine.getAllIdentities();
-      setGlobalIdentities(mmIds || []);
-      
-      const stats = movementIntelligenceEngine.getSystemStats();
-      setSystemStats(stats);
-      
-      const audits = await vmsAuditService.getLogs();
-      setAuditLogs(audits || []);
+      const [profilesData, statsData] = await Promise.all([
+        apiFetch<{ profiles: PersonProfile[] }>('/api/persons?limit=100'),
+        apiFetch<SystemStats>('/api/persons/statistics/system').catch(() => null),
+      ]);
+      setProfiles(profilesData.profiles ?? (profilesData as any) ?? []);
+      if (statsData) setSystemStats(statsData);
     } catch (e) {
-      console.error("[IntelligencePlatform] Failed to refresh records:", e);
+      console.error('[PIP] Failed to load profiles:', e);
     } finally {
+      setListLoading(false);
       setIsRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(loadData, 10000); // Poll registry every 10 seconds
-    return () => clearInterval(interval);
   }, []);
 
-  // Sync selected person intelligence report
-  useEffect(() => {
-    if (selectedPersonId) {
-      const report = movementIntelligenceEngine.compileMovementReport(selectedPersonId);
-      setIntelReport(report);
-      
-      // Log Operator View access to Audit Trail (GDPR Requirement)
-      const currentUser = authService.getCurrentUser();
-      vmsAuditService.log({
-        userId: currentUser?.id || 'operator_01',
-        userName: currentUser?.fullName || 'Navbatchi Operator',
-        action: `VIEW_PERSON_INTELLIGENCE_DOSSIER`,
-        module: `Person Intelligence Engine`,
-        status: `SUCCESS`,
-        ipAddress: window.location.hostname || 'unknown',
-        details: `Operator viewed intelligence dossier for profile ID: ${selectedPersonId}`
-      }).then(() => {
-        // Refresh local audits
-        vmsAuditService.getLogs().then(setAuditLogs);
-      });
-    } else {
-      setIntelReport(null);
-    }
-  }, [selectedPersonId]);
+  useEffect(() => { loadList(); }, [loadList]);
 
-  // Combined search and registry filtering
-  const filteredRegistry = useMemo(() => {
-    const list: Array<{ id: string; name: string; role: string; department?: string; avatarUrl: string; isKnown: boolean; status?: string }> = [];
-    
-    // Add known users
-    if (filterType !== 'ANONYMOUS') {
-      knownUsers.forEach(u => {
-        list.push({
-          id: u.id,
-          name: u.fullName,
-          role: u.role,
-          department: u.department,
-          avatarUrl: u.avatarUrl,
-          isKnown: true,
-          status: 'verified'
-        });
-      });
-    }
-
-    // Add multi-modal profiles (skip duplicates if already linked to known users)
-    if (filterType !== 'KNOWN') {
-      globalIdentities.forEach(mm => {
-        const alreadyListed = list.some(item => item.id === mm.id || (mm.userId && item.id === mm.userId));
-        if (!alreadyListed) {
-          list.push({
-            id: mm.id,
-            name: mm.label,
-            role: mm.role,
-            avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(mm.label)}&background=0E7490&color=fff`,
-            isKnown: false,
-            status: mm.status
-          });
-        }
-      });
-    }
-
-    return list.filter(item => {
-      const matchSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          item.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (item.department && item.department.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchRole = filterRole === 'ALL' || item.role === filterRole;
-      return matchSearch && matchRole;
-    });
-  }, [knownUsers, globalIdentities, searchQuery, filterRole, filterType]);
-
-  // Set initial selected person if registry is populated
-  useEffect(() => {
-    if (filteredRegistry.length > 0 && !selectedPersonId) {
-      setSelectedPersonId(filteredRegistry[0].id);
-      setIsKnownProfile(filteredRegistry[0].isKnown);
-    }
-  }, [filteredRegistry]);
-
-  // Handle GDPR right to be forgotten
-  const handleGDPRForget = async () => {
-    if (!selectedPersonId) return;
-    const currentUser = authService.getCurrentUser();
-    
+  // ── Load selected person full profile ──────────────────────────────────────
+  const loadProfile = useCallback(async (id: string) => {
+    setProfileLoading(true);
+    setMovement(null); setRelationships([]); setEvidence([]); setIncidents([]);
+    setPersonStats(null); setReplayIndex(0); setIsReplaying(false);
     try {
-      if (isKnownProfile) {
-        // Anonymize in database and log GDPR scrub
-        const originalUser = knownUsers.find(u => u.id === selectedPersonId);
-        if (originalUser) {
-          const anonymized: UserType = {
-            ...originalUser,
-            fullName: `ANONYMOUS_GDPR_${Math.floor(1000 + Math.random() * 9000)}`,
-            hasEmbedding: false,
-            faceDescriptor: undefined,
-            avatarUrl: "https://ui-avatars.com/api/?name=Anonymized+GDPR&background=374151&color=9CA3AF"
-          };
-          await userService.saveUser(anonymized);
-        }
-      } else {
-        // Delete multi-modal identity completely
-        await multiModalIdentityEngine.orchestrateIdentity(selectedPersonId, { x: 0, y: 0, z: 0 }); // trigger re-eval or wipe
-        // In real system we'd delete the doc
-      }
-
-      await vmsAuditService.log({
-        userId: currentUser?.id || 'operator_01',
-        userName: currentUser?.fullName || 'Navbatchi Operator',
-        action: `GDPR_ARTICLE_17_ERASURE`,
-        module: `Person Intelligence Engine`,
-        status: `SUCCESS`,
-        ipAddress: window.location.hostname || 'unknown',
-        details: `Strict compliance erasure completed for subject ID: ${selectedPersonId}. All biometric models scrubbed.`
-      });
-
-      alert("GDPR Unutilish Huquqi (Scrubbing) to'liq bajarildi! Biometrik modellar va shaxsiy ma'lumotlar o'chirildi.");
-      setShowGDPRConfirm(false);
-      setSelectedPersonId(null);
-      loadData();
-    } catch (e: any) {
-      alert("GDPR o'chirishda xatolik yuz berdi: " + e.message);
+      const data = await apiFetch<{ profile: PersonProfile }>(`/api/persons/${id}`);
+      setSelectedProfile(data.profile ?? data as any);
+    } catch (e) {
+      console.error('[PIP] Failed to load profile:', e);
+    } finally {
+      setProfileLoading(false);
     }
-  };
+  }, []);
 
-  // Compile full JSON intelligence dossier for export
-  const handleExportDossier = async () => {
-    if (!selectedPersonId || !intelReport) return;
-    setIsExporting(true);
-    
-    const currentUser = authService.getCurrentUser();
-    
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate cryptographic export signing
-    
-    const dossierData = {
-      exportMetadata: {
-        timestamp: new Date().toISOString(),
-        systemName: "Sentinel VMS Core",
-        authorizedOperator: currentUser?.fullName || "Operator",
-        operatorRole: currentUser?.role || "OPERATOR",
-        securityClearance: "LEVEL_3_CONFIDENTIAL",
-        complianceAuditHash: `SHA256-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
-      },
-      intelligenceReport: intelReport
+  const selectPerson = useCallback((id: string) => {
+    setSelectedId(id);
+    setActiveTab('OVERVIEW');
+    setGdprConfirm(false); setGdprDone(false);
+    loadProfile(id);
+  }, [loadProfile]);
+
+  // ── Load tab-specific data ─────────────────────────────────────────────────
+  const loadTabData = useCallback(async (tab: ActiveTab, id: string) => {
+    if (!id) return;
+    setTabLoading(true);
+    try {
+      if (tab === 'MOVEMENT' || tab === 'INVESTIGATION') {
+        const d = await apiFetch<{ replay: MovementJourney[]; journey: MovementJourney[] }>(`/api/persons/${id}/movement`);
+        setMovement(d);
+        setReplayIndex(0);
+      }
+      if (tab === 'RELATIONSHIPS') {
+        const d = await apiFetch<{ observations: RelationshipObservation[] }>(`/api/persons/${id}/relationships`);
+        setRelationships(d.observations ?? (d as any) ?? []);
+      }
+      if (tab === 'EVIDENCE') {
+        const d = await apiFetch<{ evidence: EvidenceRecord[] }>(`/api/persons/${id}/evidence`);
+        setEvidence(d.evidence ?? (d as any) ?? []);
+      }
+      if (tab === 'OVERVIEW') {
+        const d = await apiFetch<{ incidents: TimelineEntry[] }>(`/api/persons/${id}/incidents?limit=5`);
+        setIncidents(d.incidents ?? (d as any) ?? []);
+        const s = await apiFetch<Record<string, unknown>>(`/api/persons/${id}/statistics`).catch(() => null);
+        if (s) setPersonStats(s);
+      }
+    } catch (e) {
+      console.error('[PIP] Tab data load error:', e);
+    } finally {
+      setTabLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedId && activeTab) loadTabData(activeTab, selectedId);
+  }, [activeTab, selectedId, loadTabData]);
+
+  // ── Replay engine ──────────────────────────────────────────────────────────
+  const startReplay = useCallback(() => {
+    if (!movement?.replay?.length) return;
+    setIsReplaying(true);
+    setReplayIndex(0);
+    const step = () => {
+      setReplayIndex(i => {
+        const next = i + 1;
+        if (next >= (movement?.replay?.length ?? 0)) {
+          setIsReplaying(false);
+          return i;
+        }
+        replayTimer.current = setTimeout(step, 800);
+        return next;
+      });
     };
+    replayTimer.current = setTimeout(step, 800);
+  }, [movement]);
 
-    // Download file
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dossierData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `Dossier_${selectedPersonId}_Export.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  useEffect(() => () => { if (replayTimer.current) clearTimeout(replayTimer.current); }, []);
 
-    await vmsAuditService.log({
-      userId: currentUser?.id || 'operator_01',
-      userName: currentUser?.fullName || 'Navbatchi Operator',
-      action: `EXPORT_CONFIDENTIAL_DOSSIER_JSON`,
-      module: `Person Intelligence Engine`,
-      status: `SUCCESS`,
-      ipAddress: window.location.hostname || 'unknown',
-      details: `Operator exported cryptographic dossier JSON for subject ID: ${selectedPersonId}`
-    });
+  // ── Actions ────────────────────────────────────────────────────────────────
+  const handleWatchlist = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/persons/${id}/watchlist`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      await loadList(true);
+      if (selectedId === id) await loadProfile(id);
+    } catch (e) { console.error(e); }
+  }, [selectedId, loadList, loadProfile]);
 
-    setIsExporting(false);
-    vmsAuditService.getLogs().then(setAuditLogs);
-  };
+  const handleAddNote = useCallback(async () => {
+    if (!selectedId || !noteText.trim()) return;
+    setNoteLoading(true);
+    try {
+      await fetch(`/api/persons/${selectedId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: noteText.trim() }),
+      });
+      setNoteText('');
+    } catch (e) { console.error(e); }
+    finally { setNoteLoading(false); }
+  }, [selectedId, noteText]);
 
-  const selectedPerson = filteredRegistry.find(p => p.id === selectedPersonId);
+  const handleGdprErase = useCallback(async () => {
+    if (!selectedId) return;
+    setGdprLoading(true);
+    try {
+      await fetch(`/api/persons/${selectedId}`, { method: 'DELETE' });
+      setGdprDone(true);
+      setSelectedId(null); setSelectedProfile(null);
+      await loadList(true);
+    } catch (e) { console.error(e); }
+    finally { setGdprLoading(false); }
+  }, [selectedId, loadList]);
 
-  // Selected multi-modal object matching
-  const selectedMMIdentity = useMemo(() => {
-    if (!selectedPersonId) return null;
-    return globalIdentities.find(mm => mm.id === selectedPersonId || mm.userId === selectedPersonId) || null;
-  }, [globalIdentities, selectedPersonId]);
+  const handleExport = useCallback(async () => {
+    if (!selectedProfile) return;
+    setExportLoading(true);
+    try {
+      const dossier = {
+        exportedAt: new Date().toISOString(),
+        profile: selectedProfile,
+        movement: movement?.journey ?? [],
+        relationships,
+        evidence,
+      };
+      const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `dossier-${selectedProfile.personId}.json`; a.click();
+      URL.revokeObjectURL(url);
+    } finally { setExportLoading(false); }
+  }, [selectedProfile, movement, relationships, evidence]);
 
+  const handleGenerateReport = useCallback(async () => {
+    if (!selectedId) return;
+    setReportLoading(true); setReportData(null); setReportError(null);
+    try {
+      const data = await apiFetch<unknown>(`/api/persons/${selectedId}/report/${reportType}?period=${reportPeriod}`);
+      setReportData(data);
+    } catch (e: any) {
+      setReportError(e.message);
+    } finally { setReportLoading(false); }
+  }, [selectedId, reportType, reportPeriod]);
+
+  // ── Filtered profiles for sidebar ──────────────────────────────────────────
+  const filteredProfiles = profiles.filter(p => {
+    const matchStatus = listFilter === 'ALL' || p.status === listFilter;
+    const q = searchQuery.toLowerCase();
+    const matchSearch = !q
+      || (p.fullName ?? '').toLowerCase().includes(q)
+      || p.personId.toLowerCase().includes(q)
+      || (p.department ?? '').toLowerCase().includes(q);
+    return matchStatus && matchSearch;
+  });
+
+  // ── Tabs ───────────────────────────────────────────────────────────────────
+  const TABS: Array<{ id: ActiveTab; label: string; icon: React.ReactNode }> = [
+    { id: 'OVERVIEW',       label: 'Overview',       icon: <Shield className="w-3.5 h-3.5" /> },
+    { id: 'TIMELINE',       label: 'Timeline',        icon: <Clock className="w-3.5 h-3.5" /> },
+    { id: 'MOVEMENT',       label: 'Movement',        icon: <Navigation className="w-3.5 h-3.5" /> },
+    { id: 'ATTRIBUTES',     label: 'Appearance',      icon: <Eye className="w-3.5 h-3.5" /> },
+    { id: 'RELATIONSHIPS',  label: 'Associations',    icon: <Network className="w-3.5 h-3.5" /> },
+    { id: 'EVIDENCE',       label: 'Evidence',        icon: <Camera className="w-3.5 h-3.5" /> },
+    { id: 'INVESTIGATION',  label: 'Investigate',     icon: <ScanFace className="w-3.5 h-3.5" /> },
+    { id: 'REPORTS',        label: 'Reports',         icon: <FileText className="w-3.5 h-3.5" /> },
+    { id: 'COMPLIANCE',     label: 'Compliance',      icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+  ];
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 h-full overflow-y-auto pr-1 pb-10 custom-scrollbar animate-in fade-in duration-300">
-      
-      {/* Page Title & Navigation Banner */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-app-panel border border-border p-6 rounded-2xl relative overflow-hidden">
-        <div className="z-10">
-          <div className="flex items-center gap-2 text-brand-primary">
-            <ShieldCheck className="w-5 h-5 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-widest font-mono">ENTERPRISE IDENTITY SYSTEM</span>
-          </div>
-          <h2 className="text-2xl font-black text-white mt-1">Person Intelligence Platform</h2>
-          <p className="text-xs text-text-muted mt-1 max-w-2xl">
-            Tizim orqali ma'lumotlar fuziyasi (Fusion), spatiotemporal marshrut tahlili, guruhlar aniqlanishi va GDPR xavfsizlik nazoratlarini amalga oshiring.
-          </p>
-        </div>
+    <div className="flex h-full bg-gray-900 text-white overflow-hidden">
 
-        <button 
-          onClick={loadData}
-          disabled={isRefreshing}
-          className="bg-app-surface hover:bg-app-primary border border-border text-text-secondary hover:text-white px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 text-xs font-bold shadow-sm"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Sinxronizatsiya
-        </button>
-
-        <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 rounded-bl-full pointer-events-none" />
-      </div>
-
-      {/* Main Stats Summary Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-brand-primary/10 text-brand-primary rounded-xl">
-            <Network className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Active Persistent IDs</p>
-            <h4 className="text-lg font-black mt-0.5 text-text-primary">{globalIdentities.length}</h4>
-          </div>
-        </div>
-
-        <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
-            <ShieldCheck className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Enrolled Employees</p>
-            <h4 className="text-lg font-black mt-0.5 text-text-primary">{knownUsers.length}</h4>
-          </div>
-        </div>
-
-        <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-yellow-500/10 text-yellow-500 rounded-xl">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Cross-Cam Match Rate</p>
-            <h4 className="text-lg font-black mt-0.5 text-text-primary">94.2%</h4>
-          </div>
-        </div>
-
-        <div className="bg-app-panel border border-border p-5 rounded-2xl flex items-center gap-4">
-          <div className="p-3 bg-red-500/10 text-red-400 rounded-xl">
-            <AlertOctagon className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Restricted Violations</p>
-            <h4 className="text-lg font-black mt-0.5 text-text-primary">{systemStats?.totalAnomalous || 1}</h4>
-          </div>
-        </div>
-      </div>
-
-      {/* Primary Layout Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        
-        {/* Left Registry Selector Column */}
-        <div className="xl:col-span-4 bg-app-panel border border-border rounded-2xl p-5 space-y-4">
-          <div className="flex justify-between items-center pb-2 border-b border-border/80">
-            <h3 className="font-bold text-text-primary text-sm flex items-center gap-2">
-              <Users size={16} className="text-brand-primary" /> Intelligence Registry
-            </h3>
-            <span className="text-[10px] font-mono font-black text-brand-primary bg-brand-primary/5 px-2 py-0.5 rounded border border-brand-primary/10">
-              {filteredRegistry.length} Profiles
-            </span>
+      {/* ── Left Sidebar: Profile Registry ───────────────────────────────── */}
+      <div className="w-72 flex-shrink-0 flex flex-col border-r border-gray-700/50">
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 border-b border-gray-700/50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-teal-400" />
+              <span className="font-semibold text-sm">Person Registry</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowSearchModal(true)}
+                className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                title="Advanced search"
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => loadList(true)}
+                disabled={isRefreshing}
+                className="p-1.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          {/* Registry Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-primary0" />
-            <input 
-              type="text" 
+          {/* System stats row */}
+          {systemStats && (
+            <div className="grid grid-cols-3 gap-1 mb-3">
+              <div className="bg-gray-800/60 rounded p-2 text-center">
+                <div className="text-sm font-bold text-white">{systemStats.totalProfiles}</div>
+                <div className="text-[9px] text-gray-500">Profiles</div>
+              </div>
+              <div className="bg-amber-500/10 rounded p-2 text-center">
+                <div className="text-sm font-bold text-amber-400">{systemStats.watchlistCount ?? 0}</div>
+                <div className="text-[9px] text-gray-500">Watchlist</div>
+              </div>
+              <div className="bg-teal-500/10 rounded p-2 text-center">
+                <div className="text-sm font-bold text-teal-400">{systemStats.activeToday ?? 0}</div>
+                <div className="text-[9px] text-gray-500">Today</div>
+              </div>
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="relative mb-2">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+            <input
+              type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Ism, ID yoki bo'lim..." 
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-app-primary border border-border text-text-primary text-xs focus:outline-none focus:border-brand-primary placeholder:text-text-muted"
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Filter registry…"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-teal-500/60"
             />
           </div>
 
-          {/* Quick Filters */}
-          <div className="grid grid-cols-2 gap-2 text-[10px] font-bold">
-            <div>
-              <label className="text-text-muted uppercase tracking-wider block mb-1">Bo'lim / Tip</label>
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value as any)}
-                className="w-full bg-app-primary border border-border p-1.5 rounded-lg text-text-secondary focus:outline-none focus:border-brand-primary"
+          {/* Status filter chips */}
+          <div className="flex gap-1 flex-wrap">
+            {(['ALL', 'KNOWN', 'ANONYMOUS', 'WATCHLIST', 'BLOCKED'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setListFilter(s)}
+                className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                  listFilter === s
+                    ? 'bg-teal-500/20 border-teal-500/40 text-teal-400'
+                    : 'border-gray-700 text-gray-500 hover:text-gray-300'
+                }`}
               >
-                <option value="ALL">Barcha Shaxslar</option>
-                <option value="KNOWN">Tasdiqlangan xodimlar</option>
-                <option value="ANONYMOUS">Anonim datchiklar</option>
-              </select>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Profile list */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+          {listLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-20 rounded-lg bg-gray-800/60 animate-pulse" />
+            ))
+          ) : filteredProfiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-gray-600">
+              <User className="w-8 h-8 mb-2 opacity-30" />
+              <p className="text-xs">No profiles found</p>
             </div>
-            <div>
-              <label className="text-text-muted uppercase tracking-wider block mb-1">Roli bo'yicha</label>
-              <select
-                value={filterRole}
-                onChange={(e) => setFilterRole(e.target.value as any)}
-                className="w-full bg-app-primary border border-border p-1.5 rounded-lg text-text-secondary focus:outline-none focus:border-brand-primary"
+          ) : (
+            filteredProfiles.map(p => (
+              <IdentityCard
+                key={p.personId}
+                profile={p}
+                compact
+                selected={selectedId === p.personId}
+                onSelect={() => selectPerson(p.personId)}
+                onWatchlist={() => handleWatchlist(p.personId)}
+                onViewProfile={() => openProfile(p.personId)}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── Main Content ──────────────────────────────────────────────────── */}
+      {selectedId && selectedProfile ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Person header */}
+          <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-700/50 bg-gray-900">
+            {/* Avatar */}
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+              selectedProfile.status === 'WATCHLIST' ? 'bg-amber-700' :
+              selectedProfile.status === 'BLOCKED'   ? 'bg-red-700' :
+              selectedProfile.status === 'KNOWN'     ? 'bg-teal-700' : 'bg-gray-600'
+            }`}>
+              {(selectedProfile.fullName ?? selectedProfile.personId).charAt(0).toUpperCase()}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-bold text-white truncate">
+                  <PersonNameLink
+                    personId={selectedProfile.personId}
+                    name={selectedProfile.fullName ?? `Anonymous #${selectedProfile.personId.slice(-6)}`}
+                    className="text-lg font-bold text-white"
+                  />
+                </h2>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                  selectedProfile.status === 'KNOWN'     ? 'bg-teal-500/20 border-teal-500/40 text-teal-400' :
+                  selectedProfile.status === 'WATCHLIST' ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' :
+                  selectedProfile.status === 'BLOCKED'   ? 'bg-red-500/20 border-red-500/40 text-red-400' :
+                  'bg-gray-700 border-gray-600 text-gray-300'
+                }`}>{selectedProfile.status}</span>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                <span className="font-mono">{selectedProfile.personId}</span>
+                {selectedProfile.department && <span>· {selectedProfile.department}</span>}
+                {selectedProfile.position && <span>· {selectedProfile.position}</span>}
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-500">
+                {selectedProfile.lastCameraId && (
+                  <span className="flex items-center gap-1">
+                    <Camera className="w-3 h-3" /> {selectedProfile.lastCameraId}
+                  </span>
+                )}
+                {selectedProfile.lastSeen && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> {relTime(selectedProfile.lastSeen)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Header actions */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => selectedId && openProfile(selectedId)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-cyan-600/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-600/20 transition-colors"
               >
-                <option value="ALL">Barchasi</option>
-                <option value="ADMIN">ADMIN</option>
-                <option value="OPERATOR">OPERATOR</option>
-                <option value="EMPLOYEE">Xodimlar</option>
-              </select>
+                <LayoutList className="w-3.5 h-3.5" /> Profil
+              </button>
+              <button
+                onClick={() => handleWatchlist(selectedId)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                  selectedProfile.status === 'WATCHLIST'
+                    ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 hover:bg-amber-500/30'
+                    : 'bg-gray-800 border border-gray-700 text-gray-400 hover:text-amber-400 hover:border-amber-500/40'
+                }`}
+              >
+                {selectedProfile.status === 'WATCHLIST'
+                  ? <><BookmarkX className="w-3.5 h-3.5" /> Remove Watch</>
+                  : <><Bookmark className="w-3.5 h-3.5" /> Watchlist</>}
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={exportLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition-colors"
+              >
+                {exportLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                Export
+              </button>
             </div>
           </div>
 
-          {/* Registry List */}
-          <div className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
-            {filteredRegistry.length === 0 ? (
-              <div className="p-12 text-center text-text-muted space-y-2">
-                <AlertCircle className="mx-auto text-text-muted/40" size={24} />
-                <p className="text-xs">Hech qanday shaxs profili topilmadi.</p>
+          {/* Tab bar */}
+          <div className="flex items-center gap-0 px-6 border-b border-gray-700/50 overflow-x-auto">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActiveTab(t.id)}
+                className={`flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeTab === t.id
+                    ? 'border-teal-500 text-teal-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {profileLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-teal-400" />
               </div>
             ) : (
-              filteredRegistry.map(person => {
-                const isSelected = person.id === selectedPersonId;
-                return (
-                  <div
-                    key={person.id}
-                    onClick={() => {
-                      setSelectedPersonId(person.id);
-                      setIsKnownProfile(person.isKnown);
-                    }}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer flex justify-between items-center relative overflow-hidden group
-                      ${isSelected ? 'bg-app-surface border-brand-primary shadow-lg shadow-brand-primary/5' : 'bg-app-primary border-border hover:border-brand-primary/30'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <img src={person.avatarUrl} alt="" className="w-9 h-9 rounded-full bg-app-panel object-cover border border-border" />
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-text-primary text-xs truncate">{person.name}</h4>
-                        <span className="font-mono text-[9px] text-text-muted block mt-0.5">{person.id}</span>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.15 }}
+                  className="h-full"
+                >
+
+                  {/* ── OVERVIEW ── */}
+                  {activeTab === 'OVERVIEW' && (
+                    <div className="space-y-6">
+                      {/* Stats row */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <StatCard label="Total Detections" value={selectedProfile.totalDetections ?? 0} accent="text-blue-400" />
+                        <StatCard label="Recognitions" value={selectedProfile.totalRecognitions ?? 0} accent="text-teal-400" />
+                        <StatCard label="Cameras Visited" value={selectedProfile.cameraHistory?.length ?? 0} accent="text-purple-400" />
+                        <StatCard label="Recognition Rate" value={selectedProfile.totalDetections > 0 ? `${Math.round(((selectedProfile.totalRecognitions ?? 0) / selectedProfile.totalDetections) * 100)}%` : '—'} accent="text-green-400" />
+                      </div>
+
+                      {/* Personal stats from API */}
+                      {personStats && (
+                        <div>
+                          <SectionTitle icon={<BarChart3 className="w-4 h-4" />} title="Behavioural Statistics" />
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {Object.entries(personStats as Record<string, unknown>).slice(0, 6).map(([k, v]) => (
+                              <StatCard key={k} label={k.replace(/([A-Z])/g, ' $1').trim()} value={String(v)} />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recent camera visits */}
+                      {selectedProfile.cameraHistory?.length > 0 && (
+                        <div>
+                          <SectionTitle icon={<Camera className="w-4 h-4" />} title="Camera History" sub="Most visited cameras" />
+                          <div className="space-y-2">
+                            {selectedProfile.cameraHistory.slice(0, 5).map(v => (
+                              <div key={v.cameraId} className="flex items-center justify-between bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2">
+                                <div>
+                                  <div className="text-xs font-medium text-white">{v.cameraName || v.cameraId}</div>
+                                  <div className="text-[11px] text-gray-500">{v.location}</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-teal-400">{v.visitCount}×</div>
+                                  <div className="text-[10px] text-gray-600">{fmtDuration(v.totalDurationMs)} total</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Recent incidents */}
+                      {incidents.length > 0 && (
+                        <div>
+                          <SectionTitle icon={<AlertTriangle className="w-4 h-4" />} title="Recent Incidents" />
+                          <div className="space-y-2">
+                            {incidents.map(inc => (
+                              <div key={inc.entryId} className="flex items-start gap-3 bg-red-500/5 border border-red-500/20 rounded-lg px-3 py-2">
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                                <div>
+                                  <div className="text-xs font-medium text-white">{inc.title}</div>
+                                  <div className="text-[11px] text-gray-400">{inc.description}</div>
+                                  <div className="text-[10px] text-gray-600 mt-0.5">{relTime(inc.timestamp)}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {selectedProfile.notes && (
+                        <div>
+                          <SectionTitle icon={<Info className="w-4 h-4" />} title="Operator Notes" />
+                          <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-3 text-sm text-gray-300 leading-relaxed">
+                            {selectedProfile.notes}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── TIMELINE ── */}
+                  {activeTab === 'TIMELINE' && (
+                    <PersonTimeline personId={selectedId} maxHeight="calc(100vh - 260px)" showFilters />
+                  )}
+
+                  {/* ── MOVEMENT ── */}
+                  {activeTab === 'MOVEMENT' && (
+                    <div className="space-y-5">
+                      <SectionTitle icon={<Navigation className="w-4 h-4" />} title="Cross-Camera Journey" sub="Chronological camera path" />
+                      {tabLoading ? (
+                        <div className="space-y-2">
+                          {Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="h-14 rounded-lg bg-gray-800 animate-pulse" />
+                          ))}
+                        </div>
+                      ) : !movement?.journey?.length ? (
+                        <div className="flex flex-col items-center py-12 text-gray-600">
+                          <Navigation className="w-8 h-8 mb-2 opacity-30" />
+                          <p className="text-sm">No movement records</p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-700/50" />
+                          {movement.journey.map((step, i) => (
+                            <div key={i} className="flex gap-4 pb-4 relative">
+                              <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold z-10 flex-shrink-0">
+                                {i + 1}
+                              </div>
+                              <div className="flex-1 bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="text-sm font-medium text-white">{step.cameraName || step.cameraId}</div>
+                                    {step.location && <div className="text-[11px] text-gray-500 flex items-center gap-1"><MapPin className="w-2.5 h-2.5" /> {step.location}</div>}
+                                  </div>
+                                  <div className="text-right text-[11px] text-gray-500">
+                                    <div>{relTime(step.enteredAt)}</div>
+                                    <div className="text-gray-600">{fmtDuration(step.durationMs)}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── ATTRIBUTES / APPEARANCE ── */}
+                  {activeTab === 'ATTRIBUTES' && (
+                    <div className="space-y-5">
+                      <SectionTitle icon={<Eye className="w-4 h-4" />} title="Appearance History" sub="AI-extracted visual attributes" />
+                      {(selectedProfile.appearanceGallery?.length ?? 0) === 0 ? (
+                        <div className="flex flex-col items-center py-12 text-gray-600">
+                          <Eye className="w-8 h-8 mb-2 opacity-30" />
+                          <p className="text-sm">No appearance records</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(selectedProfile.appearanceGallery ?? []).slice(0, 10).map(snap => (
+                            <div key={snap.snapshotId} className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-4">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="text-xs text-gray-400">{snap.cameraId}</div>
+                                <div className="text-[10px] text-gray-600">{relTime(snap.capturedAt)}</div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                                {[
+                                  ['Upper', `${snap.upperClothingColor} ${snap.upperClothingType}`],
+                                  ['Lower', `${snap.lowerClothingColor} ${snap.lowerClothingType}`],
+                                  ['Shoes', snap.shoes],
+                                  ['Build', snap.bodyShape],
+                                  ['Height', snap.estimatedHeightCm ? `~${snap.estimatedHeightCm}cm` : '—'],
+                                  ['Hair', snap.hairColor || '—'],
+                                ].map(([label, val]) => (
+                                  <div key={label} className="flex gap-2">
+                                    <span className="text-gray-600 w-12 flex-shrink-0">{label}</span>
+                                    <span className="text-gray-300 capitalize">{val || '—'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {(snap.helmet || snap.vest || snap.backpack || snap.bag) && (
+                                <div className="flex gap-1.5 mt-2 flex-wrap">
+                                  {snap.helmet && <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded">Helmet</span>}
+                                  {snap.vest && <span className="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded">Safety Vest</span>}
+                                  {snap.backpack && <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">Backpack</span>}
+                                  {snap.bag && <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded">Bag</span>}
+                                </div>
+                              )}
+                              <div className="mt-2">
+                                <div className="flex justify-between text-[10px] text-gray-600 mb-0.5"><span>Confidence</span><span>{(snap.confidence * 100).toFixed(0)}%</span></div>
+                                <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+                                  <div className="h-full bg-teal-500 rounded-full" style={{ width: `${snap.confidence * 100}%` }} />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── RELATIONSHIPS ── */}
+                  {activeTab === 'RELATIONSHIPS' && (
+                    <div className="space-y-5">
+                      <SectionTitle icon={<Network className="w-4 h-4" />} title="Observed Associations" sub="Evidence-based correlations only — no inferred relationships" />
+                      {tabLoading ? (
+                        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-20 rounded-lg bg-gray-800 animate-pulse" />)}</div>
+                      ) : relationships.length === 0 ? (
+                        <div className="flex flex-col items-center py-12 text-gray-600">
+                          <Network className="w-8 h-8 mb-2 opacity-30" />
+                          <p className="text-sm">No associations detected yet</p>
+                          <p className="text-[11px] mt-1 text-gray-700">Associations are computed nightly from ≥3 co-occurrences</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {relationships.map(rel => (
+                            <div key={rel.observationId} className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-4">
+                              <div className="flex items-start justify-between">
+                                <div>
+                                  <div className="text-xs font-medium text-white">{rel.type.replace(/_/g, ' ')}</div>
+                                  <div className="text-[11px] text-gray-400 mt-0.5">{rel.description}</div>
+                                </div>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                  rel.confidence >= 0.8 ? 'bg-teal-500/20 text-teal-400' :
+                                  rel.confidence >= 0.6 ? 'bg-yellow-500/20 text-yellow-400' :
+                                  'bg-gray-700 text-gray-400'
+                                }`}>{(rel.confidence * 100).toFixed(0)}% conf.</span>
+                              </div>
+                              <div className="flex gap-3 mt-2 text-[10px] text-gray-600">
+                                <span>{rel.observationCount} observations</span>
+                                <span>·</span>
+                                <span>{rel.cameraIds?.length ?? 0} cameras</span>
+                                <span>·</span>
+                                <span>First: {relTime(rel.firstObservedAt)}</span>
+                              </div>
+                              <div className="mt-1.5 text-[10px] text-gray-700 italic">{rel.label}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── EVIDENCE ── */}
+                  {activeTab === 'EVIDENCE' && (
+                    <div className="space-y-5">
+                      <SectionTitle icon={<Camera className="w-4 h-4" />} title="Evidence Records" sub="Snapshots, clips, and AI metadata" />
+                      {tabLoading ? (
+                        <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 rounded-lg bg-gray-800 animate-pulse" />)}</div>
+                      ) : evidence.length === 0 ? (
+                        <div className="flex flex-col items-center py-12 text-gray-600">
+                          <Camera className="w-8 h-8 mb-2 opacity-30" />
+                          <p className="text-sm">No evidence linked</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {evidence.map(ev => (
+                            <div key={ev.evidenceId} className="flex items-center gap-3 bg-gray-800/60 border border-gray-700/50 rounded-lg px-3 py-2.5">
+                              <Camera className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs font-medium text-white truncate">{ev.type} — {ev.evidenceId}</div>
+                                <div className="text-[11px] text-gray-500">{ev.cameraId} · {relTime(ev.capturedAt)}</div>
+                                {ev.description && <div className="text-[11px] text-gray-400 mt-0.5 truncate">{ev.description}</div>}
+                              </div>
+                              {ev.isLocked && (
+                                <span className="text-[10px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded flex-shrink-0">LOCKED</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── INVESTIGATION ── */}
+                  {activeTab === 'INVESTIGATION' && (
+                    <div className="space-y-6">
+                      {/* Movement Replay */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <SectionTitle icon={<Play className="w-4 h-4" />} title="Movement Replay" sub="Step through camera-to-camera path" />
+                          {movement?.replay?.length ? (
+                            <button
+                              onClick={isReplaying ? () => { setIsReplaying(false); if (replayTimer.current) clearTimeout(replayTimer.current); } : startReplay}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                                isReplaying
+                                  ? 'bg-red-500/20 border border-red-500/40 text-red-400'
+                                  : 'bg-teal-500/20 border border-teal-500/40 text-teal-400 hover:bg-teal-500/30'
+                              }`}
+                            >
+                              <Play className="w-3 h-3" /> {isReplaying ? 'Stop' : 'Play Replay'}
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {tabLoading ? (
+                          <div className="h-32 rounded-lg bg-gray-800 animate-pulse" />
+                        ) : !movement?.replay?.length ? (
+                          <div className="flex flex-col items-center py-10 text-gray-600 bg-gray-800/40 rounded-lg border border-gray-700/50">
+                            <Navigation className="w-7 h-7 mb-2 opacity-30" />
+                            <p className="text-sm">No replay data</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* Replay timeline */}
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {movement.replay.map((step, i) => (
+                                <React.Fragment key={i}>
+                                  <div
+                                    onClick={() => setReplayIndex(i)}
+                                    className={`flex flex-col items-center cursor-pointer p-2 rounded-lg border transition-all ${
+                                      i === replayIndex
+                                        ? 'bg-teal-500/20 border-teal-500/50 scale-105'
+                                        : i < replayIndex
+                                        ? 'bg-gray-700/50 border-gray-600 opacity-60'
+                                        : 'bg-gray-800 border-gray-700 opacity-40'
+                                    }`}
+                                  >
+                                    <Camera className="w-3 h-3 text-teal-400 mb-0.5" />
+                                    <span className="text-[9px] text-gray-300 max-w-[60px] truncate">{step.cameraName || step.cameraId}</span>
+                                    <span className="text-[8px] text-gray-600">{relTime(step.enteredAt)}</span>
+                                  </div>
+                                  {i < movement.replay.length - 1 && (
+                                    <ChevronRight className={`w-3 h-3 ${i < replayIndex ? 'text-teal-500' : 'text-gray-700'}`} />
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+
+                            {/* Current step detail */}
+                            {movement.replay[replayIndex] && (
+                              <div className="bg-teal-500/10 border border-teal-500/30 rounded-lg p-4">
+                                <div className="text-xs text-teal-400 font-medium mb-1">
+                                  Step {replayIndex + 1} of {movement.replay.length}
+                                </div>
+                                <div className="text-sm font-semibold text-white">
+                                  {movement.replay[replayIndex].cameraName || movement.replay[replayIndex].cameraId}
+                                </div>
+                                <div className="text-[11px] text-gray-400 mt-1">
+                                  Entered: {new Date(movement.replay[replayIndex].enteredAt).toLocaleString()}
+                                  {movement.replay[replayIndex].exitedAt && ` · Exited: ${new Date(movement.replay[replayIndex].exitedAt!).toLocaleString()}`}
+                                  {movement.replay[replayIndex].durationMs && ` · Duration: ${fmtDuration(movement.replay[replayIndex].durationMs)}`}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cross-search actions */}
+                      <div>
+                        <SectionTitle icon={<ScanFace className="w-4 h-4" />} title="Cross-Person Investigation" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => { setActiveTab('RELATIONSHIPS'); loadTabData('RELATIONSHIPS', selectedId); }}
+                            className="flex items-center gap-2 p-3 rounded-lg bg-gray-800 border border-gray-700 hover:border-teal-500/40 text-left transition-colors"
+                          >
+                            <Network className="w-4 h-4 text-teal-400" />
+                            <div>
+                              <div className="text-xs font-medium text-white">View Associations</div>
+                              <div className="text-[10px] text-gray-500">Co-occurrence analysis</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => { setActiveTab('EVIDENCE'); loadTabData('EVIDENCE', selectedId); }}
+                            className="flex items-center gap-2 p-3 rounded-lg bg-gray-800 border border-gray-700 hover:border-blue-500/40 text-left transition-colors"
+                          >
+                            <Camera className="w-4 h-4 text-blue-400" />
+                            <div>
+                              <div className="text-xs font-medium text-white">Browse Evidence</div>
+                              <div className="text-[10px] text-gray-500">Snapshots &amp; clips</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => setShowSearchModal(true)}
+                            className="flex items-center gap-2 p-3 rounded-lg bg-gray-800 border border-gray-700 hover:border-purple-500/40 text-left transition-colors"
+                          >
+                            <Users className="w-4 h-4 text-purple-400" />
+                            <div>
+                              <div className="text-xs font-medium text-white">Similarity Search</div>
+                              <div className="text-[10px] text-gray-500">Find related persons</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => setActiveTab('TIMELINE')}
+                            className="flex items-center gap-2 p-3 rounded-lg bg-gray-800 border border-gray-700 hover:border-green-500/40 text-left transition-colors"
+                          >
+                            <Activity className="w-4 h-4 text-green-400" />
+                            <div>
+                              <div className="text-xs font-medium text-white">Full Timeline</div>
+                              <div className="text-[10px] text-gray-500">All observed events</div>
+                            </div>
+                          </button>
+                        </div>
                       </div>
                     </div>
+                  )}
 
-                    <div className="text-right">
-                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border uppercase
-                        ${person.status === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15' : 'bg-amber-500/10 text-amber-500 border-amber-500/15'}`}>
-                        {person.isKnown ? 'tasdiqlangan' : 'datchik'}
-                      </span>
-                      <span className="block text-[9px] text-text-muted font-semibold mt-1 truncate max-w-[80px]">{person.role}</span>
+                  {/* ── REPORTS ── */}
+                  {activeTab === 'REPORTS' && (
+                    <div className="space-y-5">
+                      <SectionTitle icon={<FileText className="w-4 h-4" />} title="Generate Report" sub="Structured dossier from real AI observations" />
+                      <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-4 space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-gray-400 mb-1.5 block">Report Type</label>
+                            <select
+                              value={reportType}
+                              onChange={e => setReportType(e.target.value as ReportType)}
+                              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500/60"
+                            >
+                              {(['MOVEMENT', 'ATTENDANCE', 'VISIT', 'INCIDENT', 'INVESTIGATION', 'EVIDENCE', 'RECOGNITION', 'BEHAVIOR_SUMMARY'] as ReportType[]).map(t => (
+                                <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-400 mb-1.5 block">Period</label>
+                            <select
+                              value={reportPeriod}
+                              onChange={e => setReportPeriod(e.target.value as ReportPeriod)}
+                              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500/60"
+                            >
+                              <option value="DAILY">Daily</option>
+                              <option value="WEEKLY">Weekly</option>
+                              <option value="MONTHLY">Monthly</option>
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleGenerateReport}
+                          disabled={reportLoading}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                        >
+                          {reportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                          Generate {reportType.replace(/_/g, ' ')} Report
+                        </button>
+                      </div>
+
+                      {reportError && (
+                        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">
+                          <XCircle className="w-4 h-4 flex-shrink-0" /> {reportError}
+                        </div>
+                      )}
+
+                      {reportData && (
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-medium text-teal-400 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Report generated
+                            </div>
+                            <button
+                              onClick={() => {
+                                const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url; a.download = `report-${selectedId}-${reportType}.json`; a.click();
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors"
+                            >
+                              <Download className="w-3 h-3" /> Download JSON
+                            </button>
+                          </div>
+                          <pre className="text-[11px] text-gray-300 bg-gray-800 border border-gray-700 rounded-lg p-4 overflow-auto max-h-96">
+                            {JSON.stringify(reportData, null, 2)}
+                          </pre>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })
+                  )}
+
+                  {/* ── COMPLIANCE ── */}
+                  {activeTab === 'COMPLIANCE' && (
+                    <div className="space-y-5">
+                      {/* Add note */}
+                      <div>
+                        <SectionTitle icon={<PlusCircle className="w-4 h-4" />} title="Operator Notes" sub="Appended to timeline as OPERATOR_ACTION" />
+                        <div className="flex gap-2">
+                          <textarea
+                            value={noteText}
+                            onChange={e => setNoteText(e.target.value)}
+                            placeholder="Add an operator note…"
+                            rows={2}
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-teal-500/60 resize-none"
+                          />
+                          <button
+                            onClick={handleAddNote}
+                            disabled={noteLoading || !noteText.trim()}
+                            className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm transition-colors disabled:opacity-40 flex-shrink-0"
+                          >
+                            {noteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Export dossier */}
+                      <div className="bg-gray-800/60 border border-gray-700/50 rounded-lg p-4">
+                        <SectionTitle icon={<Download className="w-4 h-4" />} title="Export Dossier" sub="JSON export of full profile, movement, evidence" />
+                        <button
+                          onClick={handleExport}
+                          disabled={exportLoading}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-sm transition-colors disabled:opacity-40"
+                        >
+                          {exportLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                          Download Dossier
+                        </button>
+                      </div>
+
+                      {/* GDPR Erasure */}
+                      <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4">
+                        <SectionTitle icon={<Trash2 className="w-4 h-4 text-red-400" />} title="GDPR Article 17 — Right to Erasure" />
+                        {gdprDone ? (
+                          <div className="flex items-center gap-2 text-sm text-green-400">
+                            <CheckCircle2 className="w-4 h-4" /> Profile archived and biometric data scheduled for deletion.
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs text-gray-400 mb-3 leading-relaxed">
+                              This will archive the profile and queue all biometric data (face descriptors, embeddings, appearance snapshots) for permanent deletion. This action is logged and irreversible.
+                            </p>
+                            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer mb-3">
+                              <input
+                                type="checkbox"
+                                checked={gdprConfirm}
+                                onChange={e => setGdprConfirm(e.target.checked)}
+                                className="accent-red-500"
+                              />
+                              I confirm this erasure request is lawful and authorised.
+                            </label>
+                            <button
+                              onClick={handleGdprErase}
+                              disabled={!gdprConfirm || gdprLoading}
+                              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm transition-colors disabled:opacity-40"
+                            >
+                              {gdprLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                              Execute Erasure
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                </motion.div>
+              </AnimatePresence>
             )}
           </div>
         </div>
-
-        {/* Right Consolidated Intelligence Dossier Column */}
-        <div className="xl:col-span-8 space-y-6">
-          {selectedPerson ? (
-            <div className="bg-app-panel border border-border rounded-2xl p-6 space-y-6">
-              
-              {/* Dynamic Header Card */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-app-primary border border-border rounded-xl">
-                <div className="flex items-center gap-4">
-                  <img src={selectedPerson.avatarUrl} alt="" className="w-16 h-16 rounded-xl object-cover border-2 border-brand-primary bg-app-panel shadow" />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[9px] text-brand-primary font-bold tracking-widest uppercase">INTELLIGENCE RECORD Dossier</span>
-                      {selectedPerson.status === 'verified' && (
-                        <span className="p-0.5 bg-emerald-500/15 text-emerald-400 rounded-full" title="Biometriya tasdiqlangan">
-                          <CheckCircle2 size={12} />
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-xl font-black text-white mt-0.5">{selectedPerson.name}</h2>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-text-muted">
-                      <span>Roli: <strong className="text-text-secondary">{selectedPerson.role}</strong></span>
-                      {selectedPerson.department && (
-                        <>
-                          <span className="text-border">|</span>
-                          <span>Bo'lim: <strong className="text-text-secondary">{selectedPerson.department}</strong></span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 bg-app-surface px-4 py-2.5 rounded-xl border border-border">
-                  <div className="text-right">
-                    <span className="text-[9px] text-text-muted font-bold block uppercase">Spatiotemporal Confidence</span>
-                    <span className="text-xl font-mono font-black text-brand-primary">
-                      {selectedMMIdentity ? (selectedMMIdentity.confidence.overallScore * 100).toFixed(0) : '91'}%
-                    </span>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-brand-primary/10 flex items-center justify-center text-brand-primary">
-                    <Fingerprint className="w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-
-              {/* Central Tab Bar */}
-              <div className="flex border-b border-border gap-4 overflow-x-auto whitespace-nowrap pb-1">
-                {[
-                  { id: 'DASHBOARD', label: 'Tahliliy Ko\'rsatkichlar', icon: BarChart3 },
-                  { id: 'BIOMETRICS', label: 'Biometriya (ArcFace / Gait)', icon: ScanFace },
-                  { id: 'TIMELINE', label: 'Harakat Yo\'nalishlari', icon: Navigation },
-                  { id: 'ATTRIBUTES', label: 'Libos & Belgilar (AI)', icon: Sliders },
-                  { id: 'ASSOCIATIONS', label: 'Sherikchilik Tarmog\'i', icon: Share2 },
-                  { id: 'COMPLIANCE', label: 'GDPR & Audit', icon: ShieldAlert },
-                ].map(tab => {
-                  const Icon = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id as any)}
-                      className={`pb-2.5 px-1 font-bold text-xs flex items-center gap-1.5 border-b-2 transition-all relative
-                        ${isActive ? 'text-brand-primary border-brand-primary' : 'text-text-muted hover:text-text-secondary border-transparent'}`}
-                    >
-                      <Icon size={14} />
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Tab 1: Dashboard Overviews */}
-              {activeTab === 'DASHBOARD' && (
-                <div className="space-y-6">
-                  {/* Summary Box */}
-                  <div className="p-4 bg-app-primary border border-border rounded-xl space-y-2">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wider flex items-center gap-1.5 text-brand-primary">
-                      <Bookmark size={14} /> Tizim Fikri & Analitika xulosasi
-                    </h4>
-                    <p className="text-xs text-text-secondary leading-relaxed">
-                      {intelReport?.summaryNotes || "Ushbu shaxs tizim datchiklari tomonidan doimiy kuzatilmoqda. Jismoniy harakat yo'nalishlari nominal oraliqda. Noqonuniy kirish yoki xavfsizlik cheklovlari buzilishi qayd etilmadi."}
-                    </p>
-                  </div>
-
-                  {/* Personal Stats Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="bg-app-primary border border-border p-4 rounded-xl space-y-1">
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Tizimdagi kuzatuvlar</span>
-                      <h5 className="text-xl font-black text-white">{intelReport?.totalObservations || 7} marta</h5>
-                      <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-0.5">
-                        <CheckCircle2 size={10} /> Datchiklar on-line
-                      </p>
-                    </div>
-
-                    <div className="bg-app-primary border border-border p-4 rounded-xl space-y-1">
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Sherikchilik darajasi</span>
-                      <h5 className="text-xl font-black text-white">{(intelReport?.associations.length || 0) > 0 ? `${intelReport?.associations.length} ta sherik` : 'Yo\'q'}</h5>
-                      <p className="text-[10px] text-text-muted">Aralash ijtimoiy zichlik</p>
-                    </div>
-
-                    <div className="bg-app-primary border border-border p-4 rounded-xl space-y-1">
-                      <span className="text-[10px] text-text-muted uppercase font-bold tracking-wider">Guruh harakati</span>
-                      <h5 className="text-xl font-black text-white">{(intelReport?.groups.length || 0)} ta holat</h5>
-                      <p className="text-[10px] text-text-muted">Sinxron fuzion nazorati</p>
-                    </div>
-                  </div>
-
-                  {/* Visual Anomaly Progress */}
-                  <div className="bg-app-primary border border-border p-4 rounded-xl space-y-3">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-text-secondary">Shubhali Harakatlar Koeffitsienti</span>
-                      <span className={`font-mono font-black ${intelReport && intelReport.anomalyScore > 0.3 ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {intelReport ? (intelReport.anomalyScore * 100).toFixed(0) : '15'}% (Nominal)
-                      </span>
-                    </div>
-                    <div className="w-full bg-border/40 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${intelReport && intelReport.anomalyScore > 0.3 ? 'bg-red-500' : 'bg-emerald-500'}`}
-                        style={{ width: `${intelReport ? intelReport.anomalyScore * 100 : 15}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-text-muted leading-relaxed">
-                      * Ushbu koeffitsient shaxsning ruxsat etilmagan zonalarda uzoq vaqt qolishi (Dwell Time), kechki vaqtda Server xonasiga tashrifi va shubhali sheriklar bilan aloqalari asosida real vaqtda baholanadi.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 2: Biometrics Signature */}
-              {activeTab === 'BIOMETRICS' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    
-                    {/* InsightFace similarity index */}
-                    <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                        <ScanFace size={14} /> ArcFace Face Recognition Vector
-                      </h4>
-                      <p className="text-[10px] text-text-muted">
-                        ArcFace-r100 512-dimensipli yuz xususiyatlari vektori muvaffaqiyatli kodlangan. LFW testlarida 99.8% aniqlik.
-                      </p>
-
-                      <div className="space-y-3 bg-app-surface p-4 rounded-xl border border-border text-xs">
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-text-secondary">Liveness Verification (Jonlilik):</span>
-                          <span className="font-mono font-bold text-emerald-400">99.4% (Genuine)</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-text-secondary">Descriptor Status:</span>
-                          <span className="font-mono font-bold text-cyan-400">REGISTERED</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="font-semibold text-text-secondary">Spoofing Himoyasi:</span>
-                          <span className="text-[9px] bg-status-safe-bg/10 text-status-safe-text px-2 py-0.5 rounded font-bold uppercase">AKTIV</span>
-                        </div>
-                      </div>
-
-                      {/* Embeddings status action buttons */}
-                      <div className="flex gap-2">
-                        <button className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold transition-all shadow-md flex items-center justify-center gap-1">
-                          <ScanFace size={12} /> Biometriyani yangilash
-                        </button>
-                        <button className="flex-1 py-2 rounded-lg bg-red-950/40 hover:bg-red-950/80 text-red-400 text-[11px] font-bold border border-red-900/30 transition-all flex items-center justify-center gap-1">
-                          <Trash2 size={12} /> Biometriyani tozalash
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* GaitGL silhouette energy maps */}
-                    <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                        <Compass size={14} /> GaitGL Walking Signature
-                      </h4>
-                      <p className="text-[10px] text-text-muted font-mono">
-                        Silhouette energy maps extracted from spatial-temporal walk sequences.
-                      </p>
-
-                      <div className="space-y-2 text-xs bg-app-surface p-4 rounded-xl border border-border">
-                        <div className="flex justify-between">
-                          <span className="font-bold text-text-secondary">Qadam uzunligi (Stride):</span>
-                          <span className="font-mono font-bold text-cyan-400">{selectedMMIdentity?.gaitSignature?.strideLengthCm || '72'} cm</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-bold text-text-secondary">Temp (Cadence):</span>
-                          <span className="font-mono font-bold text-cyan-400">{selectedMMIdentity?.gaitSignature?.cadenceStepsMin || '114'} qadam/min</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="font-bold text-text-secondary">Simmetriya Indeksi:</span>
-                          <span className="font-mono font-bold text-cyan-400">{((selectedMMIdentity?.gaitSignature?.symmetryIndex || 0.94) * 100).toFixed(0)}%</span>
-                        </div>
-                      </div>
-
-                      {/* Graphical wave visualizer using css flex heights */}
-                      <div className="h-12 flex items-end gap-1 px-3 py-1 bg-app-surface border border-border rounded-lg overflow-hidden">
-                        {Array.from({ length: 24 }).map((_, i) => {
-                          const height = 20 + Math.sin(i * 0.7) * 40 + Math.random() * 15;
-                          return (
-                            <div 
-                              key={i} 
-                              className="flex-1 bg-brand-primary/80 rounded-t"
-                              style={{ height: `${height}%` }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* RTMPose-M 17-Keypoint Skeleton Vectors */}
-                  <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                      <User size={14} /> RTMPose-M 17-Keypoint Skeleton Vectors
-                    </h4>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                      <div className="md:col-span-1 h-44 bg-app-surface border border-border rounded-xl flex items-center justify-center relative overflow-hidden">
-                        {(selectedMMIdentity?.poseSkeleton?.length || 0) > 0 ? (
-                          <div className="relative w-20 h-36">
-                            {selectedMMIdentity!.poseSkeleton.slice(0, 17).map((kp, i) => (
-                               <div 
-                                 key={i} 
-                                 className="absolute w-1.5 h-1.5 rounded-full bg-brand-primary"
-                                 style={{ left: `${kp.x}%`, top: `${kp.y}%` }}
-                               />
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-text-muted font-mono">Haqiqiy pose ma'lumoti mavjud emas</span>
-                        )}
-                        {(selectedMMIdentity?.poseSkeleton?.length || 0) > 0 && (
-                          <div className="absolute bottom-1 right-1 text-[8px] font-mono text-emerald-400 bg-app-primary px-1.5 rounded">OK</div>
-                        )}
-                      </div>
-
-                      {/* Display Keypoints Coordinates in JetBrains Mono list */}
-                      <div className="md:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-2.5 max-h-40 overflow-y-auto pr-1">
-                        {(selectedMMIdentity?.poseSkeleton || []).slice(0, 12).map((kp, idx) => (
-                          <div key={idx} className="bg-app-surface border border-border/80 p-2 rounded-lg text-[10px] font-mono flex justify-between items-center">
-                            <div>
-                              <span className="text-text-muted">{kp.name}:</span>
-                              <span className="text-text-primary block font-bold">X:{kp.x} Y:{kp.y}</span>
-                            </div>
-                            <span className="text-emerald-500 font-bold">{(kp.confidence * 100).toFixed(0)}%</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 3: Spatiotemporal Timeline */}
-              {activeTab === 'TIMELINE' && (
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wider flex items-center gap-1.5 text-brand-primary">
-                      <Clock size={14} /> Chronological Travel History
-                    </h4>
-                    <span className="text-[10px] text-text-muted font-mono uppercase tracking-wider bg-app-primary border border-border px-2 py-1 rounded-lg">
-                      CROSS-CAMERA TRACE SIGHTINGS
-                    </span>
-                  </div>
-
-                  {intelReport && intelReport.routes.length > 0 ? (
-                    <div className="relative pl-6 border-l-2 border-border/60 space-y-5 py-2">
-                      {intelReport.routes.map((route, idx) => (
-                        <div key={idx} className={`p-4 rounded-xl border relative transition-all
-                          ${route.isAbnormal ? 'bg-status-critical-bg/20 border-status-critical-text/40' : 'bg-app-primary border-border hover:border-brand-primary/30'}`}
-                        >
-                          {/* Circle indicator on vertical line */}
-                          <div className={`absolute -left-[33px] top-6 w-3 h-3 rounded-full border-2 
-                            ${route.isAbnormal ? 'bg-status-critical-text border-status-critical-text animate-pulse' : 'bg-brand-primary border-app-surface'}`}
-                          />
-
-                          <div className="flex justify-between items-start text-xs font-bold">
-                            <div>
-                              <span className="font-mono text-[9px] uppercase block tracking-wider text-text-muted">{route.id}</span>
-                              <h5 className="text-text-primary text-xs sm:text-sm mt-0.5 flex items-center gap-1.5">
-                                {route.path[0]?.cameraName} ➔ {route.path[route.path.length - 1]?.cameraName}
-                              </h5>
-                            </div>
-                            <span className="font-mono text-[10px] text-text-muted bg-app-surface border border-border/80 px-2.5 py-0.5 rounded">
-                              {new Date(route.startTime).toLocaleTimeString()} - {new Date(route.endTime).toLocaleTimeString()}
-                            </span>
-                          </div>
-
-                          {route.isAbnormal && (
-                            <div className="mt-2.5 p-2 bg-status-critical-bg text-status-critical-text rounded-lg text-[10px] sm:text-xs font-semibold flex items-center gap-1.5">
-                              <AlertTriangle size={13} /> {route.anomalyReason}
-                            </div>
-                          )}
-
-                          <div className="mt-3 text-xs space-y-1 text-text-muted border-t border-border/50 pt-2.5">
-                            <div><span className="font-bold text-text-secondary">Harakatlangan yo'lagi:</span> {route.path.map(p => p.cameraName).join(' ➔ ')}</div>
-                            <div className="flex justify-between items-center text-[10px] mt-1.5">
-                              <span>Tashrif muddati (Dwell): <strong className="text-brand-primary font-mono">{route.durationSec} soniya</strong></span>
-                              <span>Fuzion ishonch: <strong className="text-emerald-500 font-mono">{(route.confidence * 100).toFixed(0)}%</strong></span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="py-12 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
-                      Ushbu shaxsga tegishli harakatlar xronologiyasi topilmadi.
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tab 4: AI Appearance Attributes */}
-              {activeTab === 'ATTRIBUTES' && (
-                <div className="space-y-6 animate-in fade-in">
-                  <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                    <Sliders size={14} /> Appearance Intelligence (26 Attributes)
-                  </h4>
-                  <p className="text-xs text-text-muted">
-                    26-Attributli neural tasniflagich orqali kiyim, aksessuarlar va tana o'lchamlarini real vaqtda ajratish.
-                  </p>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-app-primary border border-border p-3.5 rounded-xl">
-                      <span className="text-[10px] text-text-muted uppercase font-bold block">Upper garment (Ustki kiyim)</span>
-                      <span className="text-xs text-text-primary font-bold mt-1 block">Black / Dark Blue jacket</span>
-                    </div>
-                    <div className="bg-app-primary border border-border p-3.5 rounded-xl">
-                      <span className="text-[10px] text-text-muted uppercase font-bold block">Lower garment (Shim)</span>
-                      <span className="text-xs text-text-primary font-bold mt-1 block">Dark Blue jeans</span>
-                    </div>
-                    <div className="bg-app-primary border border-border p-3.5 rounded-xl">
-                      <span className="text-[10px] text-text-muted uppercase font-bold block">Backpack (Sumka)</span>
-                      <span className="text-xs text-emerald-400 font-bold mt-1 block flex items-center gap-1">
-                        <Check size={12} /> Carrying Backpack
-                      </span>
-                    </div>
-                    <div className="bg-app-primary border border-border p-3.5 rounded-xl">
-                      <span className="text-[10px] text-text-muted uppercase font-bold block">PPE Gear (Dubulg'a/Nimcha)</span>
-                      <span className="text-xs text-amber-500 font-bold mt-1 block flex items-center gap-1">
-                        <AlertCircle size={12} /> Protective gear omitted
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bg-app-primary border border-border p-4 rounded-xl text-xs space-y-2">
-                    <span className="font-bold text-text-secondary uppercase tracking-wider block text-[10px]">Attributlar o'zgarishi tarixi</span>
-                    <p className="text-text-muted leading-relaxed">
-                      Datchiklar shaxsning turli vaqtlardagi kiyim o'zgarishlarini saqlab boradi, bu esa niqoblanishga qarshi kurashda ReID ishonchini 30% ga oshiradi.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 5: Companions & Association */}
-              {activeTab === 'ASSOCIATIONS' && (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    
-                    {/* SVG Association Graph */}
-                    <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                        <Share2 size={14} /> Social Association Network
-                      </h4>
-                      
-                      {intelReport && intelReport.associations.length > 0 ? (
-                        <div className="h-44 bg-app-surface border border-border rounded-xl relative flex items-center justify-center overflow-hidden">
-                          <svg className="w-full h-full" viewBox="0 0 200 120">
-                            {/* Lines from center to nodes */}
-                            {intelReport.associations.map((assoc, i) => {
-                              const angle = (i * 2 * Math.PI) / intelReport.associations.length;
-                              const x = 100 + 55 * Math.cos(angle);
-                              const y = 60 + 35 * Math.sin(angle);
-                              return (
-                                <line
-                                  key={i}
-                                  x1="100"
-                                  y1="60"
-                                  x2={x}
-                                  y2={y}
-                                  stroke="#06b6d4"
-                                  strokeWidth="1"
-                                  strokeDasharray="2,2"
-                                />
-                              );
-                            })}
-
-                            {/* Center Node */}
-                            <circle cx="100" cy="60" r="12" fill="#06b6d4" fillOpacity="0.15" stroke="#06b6d4" strokeWidth="2" />
-                            <text x="100" y="63" textAnchor="middle" fill="#06b6d4" fontSize="7" fontWeight="bold">TARGET</text>
-
-                            {/* Neighbor Nodes */}
-                            {intelReport.associations.map((assoc, i) => {
-                              const angle = (i * 2 * Math.PI) / intelReport.associations.length;
-                              const x = 100 + 55 * Math.cos(angle);
-                              const y = 60 + 35 * Math.sin(angle);
-                              return (
-                                <g key={i}>
-                                  <circle cx={x} cy={y} r="9" fill="#111827" stroke="#fbbf24" strokeWidth="1" />
-                                  <text x={x} y={y + 2.5} textAnchor="middle" fill="#ffffff" fontSize="5" fontWeight="bold">
-                                    {assoc.targetPersonName.slice(0, 3)}
-                                  </text>
-                                </g>
-                              );
-                            })}
-                          </svg>
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
-                          Sherikchilik aloqalari topilmadi.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Associations list details */}
-                    <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                        <Users size={14} /> High-Probability Companions
-                      </h4>
-
-                      <div className="space-y-2.5 max-h-44 overflow-y-auto pr-1">
-                        {intelReport && intelReport.associations.length > 0 ? (
-                          intelReport.associations.map((assoc, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-2.5 bg-app-surface border border-border rounded-xl text-xs">
-                              <div>
-                                <span className="font-bold text-text-primary block">{assoc.targetPersonName}</span>
-                                <span className="text-[10px] text-text-muted font-semibold mt-0.5 block">Status: {assoc.targetRole}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="font-mono text-brand-primary font-black block">{assoc.coOccurrenceCount} marta</span>
-                                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">{(assoc.confidence * 100).toFixed(0)}% trust</span>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="py-10 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
-                            Hech qanday sherik ro'yxatdan o'tmadi.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Group movement events histories */}
-                  <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                      <Layers size={14} /> Group Entry / Departure logs
-                    </h4>
-
-                    {intelReport && intelReport.groups.length > 0 ? (
-                      <div className="space-y-3">
-                        {intelReport.groups.map((grp, idx) => (
-                          <div key={idx} className="p-3 bg-app-surface border border-border rounded-xl flex justify-between items-center text-xs">
-                            <div>
-                              <span className="font-bold text-text-primary block">{grp.groupName}</span>
-                              <span className="text-[10px] text-text-muted mt-0.5 block">Sinf: {grp.members.map(m => m.personName).join(', ')}</span>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-[9px] bg-brand-primary/10 text-brand-primary px-2.5 py-0.5 rounded font-black border border-brand-primary/10 uppercase">{grp.status}</span>
-                              <span className="block font-mono text-[10px] text-text-muted mt-1">{new Date(grp.timestamp).toLocaleTimeString()}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="py-6 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
-                        Guruhlar fuziyasi bo'yicha hodisalar qayd etilmadi.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 6: Compliance Audit & Incidents */}
-              {activeTab === 'COMPLIANCE' && (
-                <div className="space-y-6">
-                  
-                  {/* Incident History & Security logs */}
-                  <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                      <ShieldCheck size={14} /> Security Incidents & Violations
-                    </h4>
-                    
-                    <div className="py-4 text-center text-xs text-text-muted border border-border border-dashed rounded-xl">
-                      Xavfsizlik qoidalari buzilishi (Restricted Zone violation) ushbu shaxsga nisbatan topilmadi.
-                    </div>
-                  </div>
-
-                  {/* GDPR Erasure and Confidential Export tools */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    
-                    {/* GDPR Section */}
-                    <div className="bg-red-950/20 border border-red-900/30 p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-red-400 text-xs uppercase tracking-wide flex items-center gap-1.5">
-                        <Trash2 size={14} /> GDPR Article 17 (Right to be Forgotten)
-                      </h4>
-                      <p className="text-[11px] text-red-300/70 leading-relaxed">
-                        Evropa Ittifoqining GDPR va milliy shaxsiy ma'lumotlarni muhofaza qilish qonunlariga muvofiq, shaxs o'z ma'lumotlarini o'chirishni talab qilganda ushbu tugmani bosing. Biometrik yuz modellari va persistent ReID deskriptorlari butunlay tozalab tashlanadi.
-                      </p>
-
-                      <div className="space-y-3 pt-2">
-                        <label className="flex items-center gap-2 cursor-pointer text-xs text-red-300">
-                          <input 
-                            type="checkbox"
-                            checked={gdprChecked}
-                            onChange={(e) => setGdprChecked(e.target.checked)}
-                            className="rounded bg-app-primary border-red-900 text-red-600 focus:ring-0"
-                          />
-                          <span>Men barcha biometrik ma'lumotlar o'chirilishiga roziman.</span>
-                        </label>
-
-                        <button
-                          onClick={() => setShowGDPRConfirm(true)}
-                          disabled={!gdprChecked}
-                          className="w-full bg-red-900 hover:bg-red-800 text-white font-bold text-xs py-2 rounded-lg transition-all disabled:opacity-50"
-                        >
-                          Shaxsni butunlay o'chirish (GDPR Erasure)
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Exporter Section */}
-                    <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                      <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                        <Download size={14} /> Confidential Spatiotemporal Dossier Exporter
-                      </h4>
-                      <p className="text-[11px] text-text-muted leading-relaxed">
-                        Tizim orqali shaxsga oid barcha fuzion ma'lumotlar, kameraga tashrif buyurish xronologiyasi va sherikchilik tarmog'ini o'z ichiga oluvchi kriptografik imzoli JSON ma'lumotnomasini eksport qiling.
-                      </p>
-
-                      <div className="pt-4">
-                        <button
-                          onClick={handleExportDossier}
-                          disabled={isExporting || !intelReport}
-                          className="w-full bg-brand-primary hover:bg-brand-secondary text-white font-bold text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-primary/10"
-                        >
-                          {isExporting ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Download size={14} /> Dossier JSON-ni yuklab olish</>}
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Audit Logs Trail View for current person profile */}
-                  <div className="bg-app-primary border border-border p-5 rounded-xl space-y-4">
-                    <h4 className="font-bold text-text-primary text-xs uppercase tracking-wide flex items-center gap-1.5 text-brand-primary">
-                      <FileText size={14} /> operator compliance Audit trails
-                    </h4>
-                    <p className="text-[10px] text-text-muted">
-                      GDPR and security policies demand logging every viewing/export of personal data. Below is the strict compliance audit trail of who accessed this profile dossier.
-                    </p>
-
-                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                      {auditLogs.filter(log => log.details.includes(selectedPersonId)).length > 0 ? (
-                        auditLogs.filter(log => log.details.includes(selectedPersonId)).map((log, idx) => (
-                          <div key={idx} className="p-2.5 bg-app-surface border border-border rounded-lg text-[10px] font-mono flex justify-between items-center">
-                            <div>
-                              <span className="text-text-primary block font-bold">{log.userName} (IP: {log.ipAddress || 'unknown'})</span>
-                              <span className="text-text-muted block mt-0.5">{log.action}: {log.details}</span>
-                            </div>
-                            <span className="text-text-muted">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="py-4 text-center text-[10px] text-text-muted font-mono">
-                          Compliance audit is empty or waiting for logs propagation.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-              )}
-
-            </div>
-          ) : (
-            <div className="bg-app-panel border border-border rounded-2xl p-16 text-center text-text-muted space-y-3">
-              <HelpCircle size={32} className="mx-auto text-text-muted/40 animate-bounce" />
-              <p className="font-medium text-sm">Batafsil ma'lumot va tahlillarni ko'rish uchun chap ro'yxatdan shaxsni tanlang.</p>
-            </div>
-          )}
+      ) : (
+        /* ── Empty state ── */
+        <div className="flex-1 flex flex-col items-center justify-center text-gray-600">
+          <Shield className="w-16 h-16 mb-4 opacity-20" />
+          <p className="text-lg font-medium mb-1">No person selected</p>
+          <p className="text-sm">Choose a profile from the registry or use search</p>
+          <button
+            onClick={() => setShowSearchModal(true)}
+            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-sm transition-colors"
+          >
+            <Search className="w-4 h-4" /> Open Search
+          </button>
         </div>
+      )}
 
-      </div>
-
-      {/* GDPR article 17 compliance confirm modal */}
-      <AnimatePresence>
-        {showGDPRConfirm && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-app-panel border border-red-900 w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl text-center"
-            >
-              <div className="w-12 h-12 rounded-full bg-red-950 text-red-500 flex items-center justify-center mx-auto border border-red-900">
-                <Trash2 size={24} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-white">Qaytarib bo'lmaydigan GDPR Tozalash!</h3>
-                <p className="text-xs text-text-muted mt-2 leading-relaxed">
-                  Siz tanlangan shaxs ({selectedPerson?.name}) ga tegishli barcha biometrik ma'lumotlarni, InsightFace ArcFace yuz deskriptorlarini, rasm avatarini va fuzion ma'lumotlarini butunlay o'chirib yuborish arafasidasiz. Ushbu amalni ortga qaytarib bo'lmaydi.
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowGDPRConfirm(false)}
-                  className="flex-1 py-2 bg-app-surface border border-border text-text-secondary hover:text-white rounded-lg text-xs font-bold"
-                >
-                  Bekor qilish
-                </button>
-                <button
-                  onClick={handleGDPRForget}
-                  className="flex-1 py-2 bg-red-900 hover:bg-red-800 text-white rounded-lg text-xs font-bold shadow-lg shadow-red-900/20"
-                >
-                  Ha, Butunlay O'chirish
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* ── Search Modal ─────────────────────────────────────────────────── */}
+      <PersonSearchModal
+        open={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+        onSelect={p => { selectPerson(p.personId); setShowSearchModal(false); }}
+      />
 
     </div>
   );

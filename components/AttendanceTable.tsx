@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { AttendanceRecord, AttendanceStatus } from '../types';
 import { MoreVertical, User as UserIcon, Search, ChevronLeft, ChevronRight, Filter } from 'lucide-react';
 import { useLanguage } from '../services/i18n';
+import { PersonNameLink } from '../context/PersonProfileContext';
 
 interface AttendanceTableProps {
   data: AttendanceRecord[];
@@ -118,7 +119,7 @@ export const AttendanceTable: React.FC<AttendanceTableProps> = ({ data, external
                             </div>
                         )}
                         <div>
-                        <p className="font-semibold text-text-primary">{record.userName}</p>
+                        <PersonNameLink personId={record.userId} name={record.userName} className="font-semibold text-text-primary block" />
                         <p className="text-xs text-text-muted">{record.department}</p>
                         </div>
                     </div>

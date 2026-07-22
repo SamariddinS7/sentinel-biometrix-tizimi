@@ -12,6 +12,7 @@ import { User } from '../types';
 import { userService } from '../services/userService';
 import { useLanguage } from '../services/i18n';
 import { analyzeBiometricFrame } from '../services/geminiService';
+import { usePersonProfile } from '../context/PersonProfileContext';
 
 // Declare global face-api from CDN
 declare const faceapi: any;
@@ -64,6 +65,7 @@ export const FaceDetectorView: React.FC<{ onBack: () => void }> = ({ onBack }) =
   const seenTrackIds = useRef<Set<number>>(new Set());
 
   const { language } = useLanguage();
+  const { openProfile } = usePersonProfile();
   const selectedTrack = tracks.find(t => t.trackId === selectedTrackId);
 
   // 1. Initialize WebSocket & Listeners

@@ -84,6 +84,8 @@ const calculateProjectedFrustum = (
 export const AreaMapView: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    // Stores lerped (interpolated) render positions for each track so movement is smooth
+    const renderPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
     const { language } = useLanguage();
     
     // View Mode State
@@ -690,24 +692,31 @@ export const AreaMapView: React.FC = () => {
                 }
             });
 
-            // 4. Draw Tracks
+            // 4. Draw Tracks (with lerp-interpolated smooth movement)
+            const LERP_FACTOR = 0.14; // ~0.5s smooth glide at 60fps
             tracks.forEach(track => {
                 const isSelected = selectedObject?.type === 'track' && selectedObject.id === track.trackId;
-                const lastPos = track.path[track.path.length - 1];
-                if (!lastPos) return;
-                
+                const targetPos = track.path[track.path.length - 1];
+                if (!targetPos) return;
+
+                // Lerp render position toward target for smooth movement
+                const prev = renderPositionsRef.current.get(track.trackId);
+                const renderPos = prev
+                    ? { x: prev.x + (targetPos.x - prev.x) * LERP_FACTOR, y: prev.y + (targetPos.y - prev.y) * LERP_FACTOR }
+                    : { x: targetPos.x, y: targetPos.y };
+                renderPositionsRef.current.set(track.trackId, renderPos);
+
                 const roleColor = getRoleColor(track.role);
 
-                // Draw Trajectory with Fade
+                // Draw Trajectory with Fade (using raw path for history, lerped pos for head)
                 if (track.path.length > 1) {
                     ctx.lineJoin = 'round';
                     ctx.lineCap = 'round';
                     
-                    // Draw segments with increasing opacity
                     for (let i = 0; i < track.path.length - 1; i++) {
                         const p1 = track.path[i];
-                        const p2 = track.path[i+1];
-                        const alpha = Math.pow(i / track.path.length, 3); // Cubic fade for smoother tail
+                        const p2 = i === track.path.length - 2 ? renderPos : track.path[i + 1];
+                        const alpha = Math.pow(i / track.path.length, 3);
 
                         ctx.beginPath();
                         ctx.moveTo(p1.x, p1.y);
@@ -717,37 +726,41 @@ export const AreaMapView: React.FC = () => {
                         ctx.lineWidth = 3;
                         ctx.stroke();
                     }
-                    ctx.globalAlpha = 1.0; // Reset
+                    ctx.globalAlpha = 1.0;
                 }
 
-                // Draw Head (Current Position)
+                // Draw Head at lerped position
                 ctx.beginPath();
-                ctx.arc(lastPos.x, lastPos.y, 8, 0, Math.PI * 2);
+                ctx.arc(renderPos.x, renderPos.y, 8, 0, Math.PI * 2);
                 ctx.fillStyle = isSelected ? '#ffffff' : roleColor;
                 ctx.fill();
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 2;
                 ctx.stroke();
-                
-                // Add direction indicator (small pointer)
+
+                // Direction indicator
                 if (track.path.length > 1) {
                     const prevPos = track.path[track.path.length - 2];
-                    const angle = Math.atan2(lastPos.y - prevPos.y, lastPos.x - prevPos.x);
+                    const angle = Math.atan2(renderPos.y - prevPos.y, renderPos.x - prevPos.x);
                     ctx.beginPath();
-                    ctx.moveTo(lastPos.x + Math.cos(angle)*8, lastPos.y + Math.sin(angle)*8);
-                    ctx.lineTo(lastPos.x + Math.cos(angle + 2.5)*6, lastPos.y + Math.sin(angle + 2.5)*6);
-                    ctx.lineTo(lastPos.x + Math.cos(angle - 2.5)*6, lastPos.y + Math.sin(angle - 2.5)*6);
+                    ctx.moveTo(renderPos.x + Math.cos(angle)*8, renderPos.y + Math.sin(angle)*8);
+                    ctx.lineTo(renderPos.x + Math.cos(angle + 2.5)*6, renderPos.y + Math.sin(angle + 2.5)*6);
+                    ctx.lineTo(renderPos.x + Math.cos(angle - 2.5)*6, renderPos.y + Math.sin(angle - 2.5)*6);
                     ctx.fillStyle = '#fff';
                     ctx.fill();
                 }
-                
-                // Name Label
+
+                // Name Label at lerped position
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 10px monospace';
                 ctx.shadowColor = 'black';
                 ctx.shadowBlur = 4;
-                ctx.fillText(track.personName, lastPos.x + 12, lastPos.y + 4);
+                ctx.fillText(track.personName, renderPos.x + 12, renderPos.y + 4);
                 ctx.shadowBlur = 0;
+            });
+            // Clean up render positions for tracks that are no longer active
+            renderPositionsRef.current.forEach((_, id) => {
+                if (!tracks.find(t => t.trackId === id)) renderPositionsRef.current.delete(id);
             });
 
             ctx.restore();

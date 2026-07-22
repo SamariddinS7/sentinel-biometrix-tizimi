@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Skeleton } from './Skeleton';
 import { 
   Cpu, Server, HardDrive, Activity, RefreshCw, 
   CheckCircle, AlertTriangle, ShieldAlert, CpuIcon,
@@ -152,9 +153,48 @@ export const SystemHealthView: React.FC = () => {
 
   if (loading && !telemetry) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
-        <p className="text-sm text-text-muted font-mono">Tizim telemetriyasi yuklanmoqda...</p>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-64" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <div className="flex gap-4">
+            <Skeleton className="h-10 w-24" />
+            <Skeleton className="h-10 w-24" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-app-panel border border-border/40 rounded-xl p-4 flex items-center gap-4 animate-pulse">
+              <div className="bg-slate-800 h-12 w-12 rounded-lg" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-28" />
+                <Skeleton className="h-1.5 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-app-panel border border-border/40 rounded-xl p-4 space-y-4">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          </div>
+          <div className="space-y-4">
+            <div className="bg-app-panel border border-border/40 rounded-xl p-4 space-y-4">
+              <Skeleton className="h-5 w-32" />
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b border-border/20">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-4 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

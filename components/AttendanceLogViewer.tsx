@@ -5,6 +5,7 @@ import { AttendanceRecord, AttendanceStatus } from '../types';
 import { ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Search, User as UserIcon, Clock, CheckCircle2, AlertTriangle, X } from 'lucide-react';
 import { analyzeSecurityLogs, SecurityAuditReport } from '../services/geminiService';
 import { useLanguage } from '../services/i18n';
+import { PersonNameLink } from '../context/PersonProfileContext';
 
 export const AttendanceLogViewer: React.FC<{ globalSearchTerm?: string }> = ({ globalSearchTerm }) => {
   const [logs, setLogs] = useState<AttendanceRecord[]>([]);
@@ -171,7 +172,7 @@ export const AttendanceLogViewer: React.FC<{ globalSearchTerm?: string }> = ({ g
                              </div>
                         )}
                         <div>
-                            <p className="font-bold text-text-primary">{log.userName}</p>
+                            <PersonNameLink personId={(log as any).userId ?? log.id} name={log.userName} className="font-bold text-text-primary block" />
                             <p className="text-xs text-text-primary0">{log.department}</p>
                         </div>
                       </div>
