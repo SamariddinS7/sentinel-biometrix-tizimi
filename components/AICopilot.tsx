@@ -1190,7 +1190,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       {/* ════════════════════════════════════════════════════════════════════════
           TAB 4: ENTERPRISE INTEGRATION PLATFORM (Sections 42–52)
       ════════════════════════════════════════════════════════════════════════ */}
-      {mainTab === 'platform' && <EnterpriseIntegrationPlatform />}
+      {mainTab === 'platform'     && <EnterpriseIntegrationPlatform />}
+      {mainTab === 'architecture' && <EnterpriseArchitecturePlatform />}
     </div>
   );
 };
