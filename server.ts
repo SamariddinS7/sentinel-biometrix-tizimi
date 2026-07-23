@@ -40,6 +40,7 @@ import { incidentService } from "./services/incidentService";
 import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
 import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
 import { personProfileStore } from "./services/personIntel/PersonProfileStore";
+import { personAutoProfileService } from "./services/personIntel/PersonAutoProfileService";
 
 // AI Copilot & Vision Intelligence
 import { copilotApiRouter } from "./services/copilot/CopilotApiRouter";
@@ -3151,6 +3152,13 @@ Reply with ONLY valid JSON, no explanation.`;
     initPersonIntelPlatform().catch(err => {
       process.stderr.write(`[WARN] Person Intelligence Platform bootstrap failed: ${err}\n`);
     });
+    // Start auto-profile service — creates person profiles for every camera
+    // even when the ONNX person detector is unavailable (e.g. Replit container)
+    setTimeout(() => {
+      personAutoProfileService.start().catch(err => {
+        process.stderr.write(`[WARN] PersonAutoProfileService failed to start: ${err}\n`);
+      });
+    }, 8_000);
     vmsSystemManager.bootstrap().catch(err => {
       process.stderr.write(`[CRITICAL] VMS lifecycle bootstrap failed: ${err}\n`);
     });

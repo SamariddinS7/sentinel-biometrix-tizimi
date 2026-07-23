@@ -151,7 +151,9 @@ export type CopilotActionType =
   | "GET_PERSON_STATISTICS"
   | "PERSON_PROFILE_REPORT"
   | "MERGE_PERSONS"
-  | "FIND_PERSON_BY_APPEARANCE";
+  | "FIND_PERSON_BY_APPEARANCE"
+  | "LIST_CAMERA_PERSONS"
+  | "SET_PERSON_STATUS";
 
 export interface CopilotContext {
   userRole: string;
@@ -293,11 +295,11 @@ async function collectSystemContext(): Promise<Record<string, unknown>> {
     ctx.evidenceCount = 0;
   }
 
-  // Person profiles — recently seen & currently present
+  // Person profiles — recently seen & currently present, with per-camera breakdown
   try {
     const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
-    const profiles = await personProfileStore.list({ limit: 20 });
-    ctx.recentPersons = profiles.map((p: any) => ({
+    const profiles = await personProfileStore.list({ limit: 100 });
+    ctx.recentPersons = profiles.slice(0, 30).map((p: any) => ({
       personId: p.personId,
       fullName: p.fullName ?? "Noma'lum",
       status: p.status,
@@ -305,13 +307,30 @@ async function collectSystemContext(): Promise<Record<string, unknown>> {
       lastCameraId: p.lastCameraId,
       currentlyPresent: p.currentlyPresent,
       totalDetections: p.totalDetections,
+      department: p.department,
+      notes: p.notes ? p.notes.slice(0, 120) : "",
     }));
     ctx.personCount = profiles.length;
     ctx.presentPersonCount = profiles.filter((p: any) => p.currentlyPresent).length;
+
+    // Per-camera breakdown of currently present persons
+    const cameraSummary: Record<string, { count: number; persons: any[] }> = {};
+    for (const p of profiles.filter((p: any) => p.currentlyPresent)) {
+      const camId = p.lastCameraId ?? "unknown";
+      if (!cameraSummary[camId]) cameraSummary[camId] = { count: 0, persons: [] };
+      cameraSummary[camId].count++;
+      cameraSummary[camId].persons.push({
+        personId: p.personId,
+        fullName: p.fullName ?? "Noma'lum",
+        status: p.status,
+      });
+    }
+    ctx.cameraPersonSummary = cameraSummary;
   } catch {
     ctx.recentPersons = [];
     ctx.personCount = 0;
     ctx.presentPersonCount = 0;
+    ctx.cameraPersonSummary = {};
   }
 
   ctx.timestamp = new Date().toISOString();
@@ -510,7 +529,7 @@ NAVIGATION: NAVIGATE_TO_VIEW(view:"cameras"|"analytics"|"investigation"|"event_t
 
 WORKFLOW: EXECUTE_WORKFLOW(workflowId:"FIRE_RESPONSE"|"INTRUSION_RESPONSE"|"UNKNOWN_PERSON"|"MEDICAL_EMERGENCY"|"THEFT_RESPONSE", params?)
 
-PERSON PROFILE MANAGEMENT:
+PERSON PROFILE MANAGEMENT (full control):
 VIEW_PERSON_PROFILE(personId) — get full profile, open in UI
 UPDATE_PERSON_PROFILE(personId, fullName?, department?, position?, notes?) — update identity fields
 ADD_PERSON_NOTE(personId, note) — append operator note to profile
@@ -523,8 +542,13 @@ GET_PERSON_STATISTICS(personId) — detections, visits, behavior stats
 PERSON_PROFILE_REPORT(personId, reportType:"MOVEMENT"|"ATTENDANCE"|"INCIDENT"|"INVESTIGATION") — generate report
 MERGE_PERSONS(primaryId, secondaryId) — merge two duplicate identities
 FIND_PERSON_BY_APPEARANCE(color?, clothing?, description?) — appearance-based search
+LIST_CAMERA_PERSONS(cameraId) — list all persons currently visible on a specific camera
+SET_PERSON_STATUS(personId, status:"KNOWN"|"ANONYMOUS"|"WATCHLIST"|"VIP"|"BLACKLIST"|"EMPLOYEE"|"CONTRACTOR"|"VISITOR") — change person status
 
-CURRENTLY PRESENT PERSONS: ${JSON.stringify((systemCtx as any).recentPersons ?? [])}
+CAMERA-LEVEL PERSON SUMMARY (who is where RIGHT NOW):
+${JSON.stringify((systemCtx as any).cameraPersonSummary ?? {})}
+
+RECENTLY SEEN PERSONS: ${JSON.stringify((systemCtx as any).recentPersons ?? [])}
 
 HIGH-RISK ACTIONS (requiresConfirmation: true): LOCK_AREA, DISPATCH_RESOURCE, CLOSE_INCIDENT, MERGE_INCIDENTS, STOP_RECORDING, LOCK_EVIDENCE, SHARE_EVIDENCE, EXECUTE_WORKFLOW, ARCHIVE_PERSON, WATCHLIST_PERSON, MERGE_PERSONS
 
@@ -726,7 +750,7 @@ const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
     "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
     "SEARCH_INCIDENTS", "SEARCH_TIMELINE", "SEARCH_FACE", "SEARCH_APPEARANCE", "SEARCH_EVIDENCE_DB",
     "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
-    "FIND_PERSON_BY_APPEARANCE",
+    "FIND_PERSON_BY_APPEARANCE", "LIST_CAMERA_PERSONS",
   ],
   OPERATOR: [
     "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
@@ -746,6 +770,7 @@ const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
     // Person profile (read + operator-level writes)
     "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
     "ADD_PERSON_NOTE", "UPDATE_PERSON_PROFILE", "PERSON_PROFILE_REPORT", "FIND_PERSON_BY_APPEARANCE",
+    "LIST_CAMERA_PERSONS", "SET_PERSON_STATUS",
   ],
   SUPERVISOR: [
     "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
@@ -771,6 +796,7 @@ const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
     "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
     "ADD_PERSON_NOTE", "UPDATE_PERSON_PROFILE", "WATCHLIST_PERSON", "ARCHIVE_PERSON",
     "ENROLL_PERSON", "PERSON_PROFILE_REPORT", "MERGE_PERSONS", "FIND_PERSON_BY_APPEARANCE",
+    "LIST_CAMERA_PERSONS", "SET_PERSON_STATUS",
   ],
   ADMIN: ["*" as any], // All actions
 };
@@ -1246,6 +1272,49 @@ async function _dispatch(
     const attrs = { color: params.color, clothing: params.clothing, description: params.description };
     const results = await personInvestigationEngine.findByAppearance(attrs, 0.4);
     return { success: true, message: `Ko'rinish bo'yicha qidiruv: ${results.length} ta natija topildi.`, data: { results, attrs, view: "identities" } };
+  }
+
+  // ── List persons on a specific camera ──────────────────────────────────────
+  if (actionType === "LIST_CAMERA_PERSONS") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const cameraId = params.cameraId as string;
+    if (!cameraId) return { success: false, message: "cameraId talab qilinadi." };
+    const profiles = await personProfileStore.list({ cameraId, limit: 50 });
+    const present = profiles.filter((p: any) => p.currentlyPresent);
+    const summary = present.map((p: any) => ({
+      personId: p.personId,
+      fullName: p.fullName ?? "Noma'lum",
+      status: p.status,
+      lastSeen: p.lastSeen,
+      totalDetections: p.totalDetections,
+      notes: p.notes,
+    }));
+    return {
+      success: true,
+      message: `Kamera ${cameraId} da hozir ${present.length} ta shaxs ko'rinmoqda (jami ${profiles.length} ta ro'yxatda).`,
+      data: { cameraId, currentlyPresent: present.length, total: profiles.length, persons: summary, view: "identities" },
+    };
+  }
+
+  // ── Set person status ──────────────────────────────────────────────────────
+  if (actionType === "SET_PERSON_STATUS") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const personId = params.personId as string;
+    const status = params.status as string;
+    if (!personId) return { success: false, message: "personId talab qilinadi." };
+    if (!status)   return { success: false, message: "status talab qilinadi." };
+    await personProfileStore.updateField(personId, { status } as any);
+    // Also add a registration event note so the audit trail reflects the change
+    await personProfileStore.addNote(
+      personId,
+      `Holat o'zgartirildi → ${status} (Copilot orqali ${context.userName} tomonidan)`,
+      context.userName,
+    );
+    return {
+      success: true,
+      message: `Shaxs ${personId} holati "${status}" ga o'zgartirildi.`,
+      data: { personId, status, changedBy: context.userName, view: "identities" },
+    };
   }
 
   return { success: false, message: `Noma'lum amal turi: '${actionType}'.` };
