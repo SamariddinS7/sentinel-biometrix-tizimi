@@ -53,6 +53,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-23T07:51:11.152Z"
+    },
+    {
+      "id": "9f56399d-314d-40f5-aa2a-603b26537380",
+      "fullName": "twert",
+      "email": "dfga@werfgh",
+      "passwordHash": "$2b$12$CWG/JVVAvnxyfdxLcgh2suYQRBF9IqVkAxc7dUjjUuYESKwFfA2TS",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-23T16:49:55.646Z"
     }
   ]
 }

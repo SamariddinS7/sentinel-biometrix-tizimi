@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { PersonAttributeProfile } from '../components/PersonAttributeProfile';
+import { PersonFullProfile } from '../components/PersonFullProfile';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Context
@@ -38,7 +38,7 @@ export const PersonProfileProvider: React.FC<{ children: React.ReactNode }> = ({
     <PersonProfileContext.Provider value={{ openProfile }}>
       {children}
       {openId && (
-        <PersonAttributeProfile
+        <PersonFullProfile
           personId={openId}
           onClose={() => setOpenId(null)}
         />

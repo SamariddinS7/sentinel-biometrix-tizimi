@@ -401,6 +401,123 @@ personIntelApiRouter.post('/:id/notes', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 23. POST /api/persons/:id/ai-analysis — Gemini-powered behavioral analysis
+// ─────────────────────────────────────────────────────────────────────────────
+personIntelApiRouter.post('/:id/ai-analysis', async (req: Request, res: Response) => {
+  const personId = String(req.params.id);
+  const profile = await personProfileStore.get(personId);
+  if (!profile) return fail(res, 404, 'Person not found');
+
+  // Build a compact profile summary to send to Gemini
+  const snap = profile.currentAppearance ?? profile.appearanceGallery?.[0];
+  const summary = {
+    personId: profile.personId,
+    status: profile.status,
+    firstSeen: profile.firstSeen,
+    lastSeen: profile.lastSeen,
+    totalDetections: profile.totalDetections,
+    totalRecognitions: profile.totalRecognitions,
+    camerasVisited: profile.cameraHistory?.length ?? 0,
+    zonesVisited: profile.visitedZones ?? [],
+    currentlyPresent: profile.currentlyPresent,
+    department: profile.department ?? null,
+    position: profile.position ?? null,
+    recentAppearance: snap ? {
+      bodyShape: snap.bodyShape,
+      estimatedHeightCm: snap.estimatedHeightCm,
+      upperClothingColor: snap.upperClothingColor,
+      lowerClothingColor: snap.lowerClothingColor,
+      helmet: snap.helmet,
+      vest: snap.vest,
+      mask: snap.mask,
+      carriedObjects: snap.carriedObjects ?? [],
+      confidence: snap.confidence,
+    } : null,
+    cameraHistory: profile.cameraHistory?.slice(0, 8).map(cv => ({
+      cameraId: cv.cameraId,
+      location: cv.location,
+      visitCount: cv.visitCount,
+      totalDurationMs: cv.totalDurationMs,
+      lastSeenAt: cv.lastSeenAt,
+    })) ?? [],
+    notes: profile.notes ?? '',
+  };
+
+  // Try Gemini; fall back to rule-based if key is missing
+  try {
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    const isValidKey = (k?: string) => !!k && k.length > 10 && !k.startsWith('your-');
+
+    if (isValidKey(apiKey)) {
+      const { GoogleGenAI } = await import('@google/genai');
+      const genai = new GoogleGenAI({ apiKey: apiKey! });
+
+      const prompt = `You are an enterprise security AI analyst. Analyze this person's surveillance profile and provide a structured behavioral assessment.
+
+Person Profile (JSON):
+${JSON.stringify(summary, null, 2)}
+
+Respond ONLY with valid JSON in this exact structure:
+{
+  "summary": "2-3 sentence behavioral summary in Uzbek language",
+  "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  "riskScore": 0.0-1.0,
+  "patterns": ["pattern 1 in Uzbek", "pattern 2", ...],
+  "recommendations": ["recommendation 1 in Uzbek", "recommendation 2", ...],
+  "monitoringFlags": ["flag 1 in Uzbek", ...]
+}
+
+Rules:
+- summary must be in Uzbek
+- patterns: up to 5 behavioral patterns you observe
+- recommendations: up to 4 security recommendations  
+- monitoringFlags: specific flags if risk is MEDIUM+, empty array if LOW
+- Base risk purely on the data; do not invent facts`;
+
+      const result = await genai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: { temperature: 0.3, maxOutputTokens: 1024 },
+      });
+
+      const text = result.text?.trim() ?? '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return ok(res, parsed);
+      }
+    }
+  } catch (err) {
+    // Fall through to rule-based
+  }
+
+  // Rule-based fallback
+  const detections = profile.totalDetections ?? 0;
+  const cameras = profile.cameraHistory?.length ?? 0;
+  const isWatchlist = profile.status === 'WATCHLIST' || profile.status === 'BLOCKED';
+  const hasPPE = snap?.helmet || snap?.vest;
+  const riskScore = Math.min(1, (isWatchlist ? 0.6 : 0) + (detections > 100 ? 0.15 : detections > 20 ? 0.05 : 0) + (cameras > 5 ? 0.1 : 0));
+  const riskLevel = riskScore >= 0.7 ? 'HIGH' : riskScore >= 0.4 ? 'MEDIUM' : 'LOW';
+
+  ok(res, {
+    summary: `Shaxs jami ${detections} marta aniqlangan va ${cameras} ta kamerada ko'rilgan. Holat: ${profile.status}. ${hasPPE ? 'Himoya kiyimi aniqlangan.' : ''} Tizim qoidaga asoslangan tahlil amalga oshirdi (Gemini API ulangan emas).`,
+    riskLevel,
+    riskScore,
+    patterns: [
+      `${detections} marta aniqlangan, ${cameras} ta kamerada faollik`,
+      cameras > 3 ? 'Ko\'p kameralarda harakatlanish' : 'Mahalliy harakatlanish naqshi',
+      profile.visitedZones?.length ? `${profile.visitedZones.length} ta zonada tashrif` : 'Zona ma\'lumotlari cheklangan',
+    ].filter(Boolean),
+    recommendations: [
+      isWatchlist ? 'Ushbu shaxs kuzatuv ro\'yxatida — barcha harakatlarni kuzatib boring' : 'Standart kuzatuv davom etsin',
+      detections > 50 ? 'Yuqori faollik — harakat naqshini chuqur tahlil qiling' : 'Oddiy faollik darajasi',
+      'GEMINI_API_KEY ni ulang — to\'liq AI tahlil uchun',
+    ],
+    monitoringFlags: isWatchlist ? ['WATCHLIST — kengaytirilgan kuzatuv'] : [],
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 22. POST /api/persons/:id/watchlist
 // ─────────────────────────────────────────────────────────────────────────────
 personIntelApiRouter.post('/:id/watchlist', async (req: Request, res: Response) => {
