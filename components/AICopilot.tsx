@@ -455,6 +455,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({
   const isVoiceModeRef = useRef(false);
   const speakFnRef = useRef<((text: string, turnId?: string) => void) | null>(null);
   const sendQueryRef = useRef<((queryText?: string) => Promise<void>) | null>(null);
+  const startListeningRef = useRef<(() => void) | null>(null);
+  const [lastAiText, setLastAiText] = useState<string>('');
 
   // ── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -540,8 +542,9 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       const data: CopilotResponse = await res.json();
       const responseTurnId = `copilot-${Date.now()}`;
       setConversation(prev => [...prev, { id: responseTurnId, role: 'copilot', text: '', timestamp: new Date(), response: data }]);
-      // auto-speak in Jarvis voice mode
+      // auto-speak in voice conversation mode
       if (isVoiceModeRef.current && data.answer) {
+        setLastAiText(data.answer);
         setVoiceStatus('speaking');
         setSpeakingTurnId(responseTurnId);
         speakFnRef.current?.(data.answer, responseTurnId);
@@ -760,13 +763,24 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       || voices.find(v => v.lang.startsWith('en'))
       || voices[0];
     if (preferred) utterance.voice = preferred;
-    utterance.onstart  = () => { setIsSpeaking(true);  setVoiceStatus('speaking'); if (turnId) setSpeakingTurnId(turnId); };
-    utterance.onend    = () => { setIsSpeaking(false); setVoiceStatus('idle'); setSpeakingTurnId(null); };
-    utterance.onerror  = () => { setIsSpeaking(false); setVoiceStatus('idle'); setSpeakingTurnId(null); };
+    utterance.onstart = () => { setIsSpeaking(true); setVoiceStatus('speaking'); if (turnId) setSpeakingTurnId(turnId); };
+    utterance.onend   = () => {
+      setIsSpeaking(false);
+      setSpeakingTurnId(null);
+      // ── Suhbat halqasi: javob tugagach mic avtomatik ochiladi ──
+      if (isVoiceModeRef.current) {
+        setVoiceStatus('listening');
+        setTimeout(() => startListeningRef.current?.(), 450);
+      } else {
+        setVoiceStatus('idle');
+      }
+    };
+    utterance.onerror = () => { setIsSpeaking(false); setVoiceStatus('idle'); setSpeakingTurnId(null); };
     window.speechSynthesis.speak(utterance);
   }, []);
 
   useEffect(() => { speakFnRef.current = speakText; }, [speakText]);
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
   const stopSpeaking = useCallback(() => {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -832,15 +846,20 @@ export const AICopilot: React.FC<AICopilotProps> = ({
   const toggleVoiceMode = useCallback(() => {
     setIsVoiceMode(prev => {
       if (prev) {
-        recognitionRef.current?.stop();
+        // ── Suhbatni to'xtatish: hamma narsani to'xtat ──
+        recognitionRef.current?.abort?.();
+        recognitionRef.current?.stop?.();
         if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         setIsListening(false);
         setIsSpeaking(false);
         setVoiceStatus('idle');
         setVoiceTranscript('');
         setSpeakingTurnId(null);
+        setLastAiText('');
       } else {
+        // ── Suhbatni boshlash: Copilot tabiga o'tib, mic ni och ──
         setMainTab('copilot');
+        setTimeout(() => startListeningRef.current?.(), 600);
       }
       return !prev;
     });
@@ -905,14 +924,14 @@ export const AICopilot: React.FC<AICopilotProps> = ({
                 onClick={toggleVoiceMode}
                 className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
                   isVoiceMode
-                    ? 'text-cyan-300 bg-cyan-500/15 border-cyan-500/30 shadow shadow-cyan-500/20'
+                    ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30 shadow shadow-emerald-500/20'
                     : 'text-white/30 border-white/10 hover:text-white/60 hover:border-white/20'
                 }`}
-                title={isVoiceMode ? "Jarvis rejimini o'chirish" : "Jarvis ovozli boshqaruvni yoqish"}
+                title={isVoiceMode ? "Ovozli suhbatni to'xtatish" : "Jonli ovozli suhbatni boshlash"}
               >
                 {isVoiceMode
-                  ? <><Volume2 className="w-3 h-3 animate-pulse" /> Jarvis faol</>
-                  : <><Mic className="w-3 h-3" /> Jarvis</>}
+                  ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> Suhbat faol</>
+                  : <><Mic className="w-3 h-3" /> Suhbat</>}
               </button>
               <button
                 onClick={() => setConversation(prev => [prev[0]])}
@@ -992,131 +1011,179 @@ export const AICopilot: React.FC<AICopilotProps> = ({
             <div ref={copilotBottomRef} />
           </div>
 
-          {/* ── Jarvis voice status overlay ─────────────────────────────── */}
-          <AnimatePresence>
-            {isVoiceMode && voiceStatus !== 'idle' && (
+          {/* ══════════════════════════════════════════════════════════════
+              JONLI SUHBAT REJIMI — to'liq ovozli dialog HUD
+          ══════════════════════════════════════════════════════════════ */}
+          <AnimatePresence mode="wait">
+            {isVoiceMode ? (
               <motion.div
-                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                className="shrink-0 mx-4 mb-2 rounded-2xl border border-cyan-500/20 bg-[#070e1a] overflow-hidden"
+                key="voice-hud"
+                initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.25 }}
+                className="shrink-0 mx-3 mb-3 rounded-3xl border border-white/10 bg-[#060d18] overflow-hidden"
               >
-                <div className="flex items-center gap-4 px-4 py-3">
-                  {/* animated Jarvis rings */}
-                  <div className="relative w-12 h-12 shrink-0 flex items-center justify-center">
+                {/* ── Orb + holat satri ── */}
+                <div className="flex items-center gap-4 px-5 py-4">
+
+                  {/* Jonli animatsion orb */}
+                  <div className="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                    {/* listening rings – ko'k */}
                     {voiceStatus === 'listening' && (
                       <>
-                        <span className="absolute inset-0 rounded-full border-2 border-cyan-500/50 animate-ping" style={{ animationDuration: '1s' }} />
-                        <span className="absolute inset-1.5 rounded-full border border-cyan-400/30 animate-ping" style={{ animationDuration: '1.4s' }} />
-                        <span className="absolute inset-3 rounded-full bg-cyan-500/10 animate-pulse" />
+                        <span className="absolute inset-0 rounded-full border-2 border-cyan-400/60 animate-ping" style={{ animationDuration: '0.9s' }} />
+                        <span className="absolute inset-2 rounded-full border border-cyan-400/35 animate-ping" style={{ animationDuration: '1.3s' }} />
+                        <span className="absolute inset-3.5 rounded-full bg-cyan-500/15 animate-pulse" />
                       </>
                     )}
+                    {/* processing rings – sariq */}
                     {voiceStatus === 'processing' && (
                       <>
-                        <span className="absolute inset-0 rounded-full border-2 border-yellow-500/50 animate-ping" style={{ animationDuration: '0.8s' }} />
-                        <span className="absolute inset-2 rounded-full border border-yellow-400/30 animate-pulse" />
+                        <span className="absolute inset-0 rounded-full border-2 border-amber-400/60 animate-ping" style={{ animationDuration: '0.7s' }} />
+                        <span className="absolute inset-2 rounded-full border border-amber-400/30 animate-pulse" />
                       </>
                     )}
+                    {/* speaking rings – yashil */}
                     {voiceStatus === 'speaking' && (
                       <>
-                        <span className="absolute inset-0 rounded-full border-2 border-emerald-500/50 animate-ping" style={{ animationDuration: '1.2s' }} />
-                        <span className="absolute inset-1.5 rounded-full border border-emerald-400/30 animate-ping" style={{ animationDuration: '0.9s' }} />
-                        <span className="absolute inset-3 rounded-full bg-emerald-500/10 animate-pulse" />
+                        <span className="absolute inset-0 rounded-full border-2 border-emerald-400/60 animate-ping" style={{ animationDuration: '1.1s' }} />
+                        <span className="absolute inset-2 rounded-full border border-emerald-400/35 animate-ping" style={{ animationDuration: '0.85s' }} />
+                        <span className="absolute inset-3.5 rounded-full bg-emerald-500/15 animate-pulse" />
                       </>
                     )}
-                    <div className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center ${
-                      voiceStatus === 'listening'  ? 'bg-cyan-500/25'    :
-                      voiceStatus === 'processing' ? 'bg-yellow-500/20'  : 'bg-emerald-500/20'
+                    {/* idle */}
+                    {voiceStatus === 'idle' && (
+                      <span className="absolute inset-2 rounded-full bg-white/5 animate-pulse" style={{ animationDuration: '2s' }} />
+                    )}
+                    {/* markaziy ikon */}
+                    <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                      voiceStatus === 'listening'  ? 'bg-cyan-500/30'   :
+                      voiceStatus === 'processing' ? 'bg-amber-500/25'  :
+                      voiceStatus === 'speaking'   ? 'bg-emerald-500/25': 'bg-white/8'
                     }`}>
-                      {voiceStatus === 'listening'  && <Mic      className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />}
-                      {voiceStatus === 'processing' && <Loader2  className="w-3.5 h-3.5 text-yellow-400 animate-spin" />}
-                      {voiceStatus === 'speaking'   && <Volume2  className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />}
+                      {voiceStatus === 'listening'  && <Mic     className="w-4 h-4 text-cyan-300" />}
+                      {voiceStatus === 'processing' && <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />}
+                      {voiceStatus === 'speaking'   && <Volume2 className="w-4 h-4 text-emerald-300" />}
+                      {voiceStatus === 'idle'       && <Mic     className="w-4 h-4 text-white/30" />}
                     </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[11px] font-bold uppercase tracking-widest mb-0.5 ${
+
+                  {/* Matn maydoni */}
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <p className={`text-[10px] font-bold uppercase tracking-[0.15em] ${
                       voiceStatus === 'listening'  ? 'text-cyan-400'    :
-                      voiceStatus === 'processing' ? 'text-yellow-400'  : 'text-emerald-400'
+                      voiceStatus === 'processing' ? 'text-amber-400'   :
+                      voiceStatus === 'speaking'   ? 'text-emerald-400' : 'text-white/30'
                     }`}>
-                      {voiceStatus === 'listening'  ? 'Tinglayapman...'        :
-                       voiceStatus === 'processing' ? 'Tahlil qilinmoqda...'  : 'Javob o\'qilmoqda...'}
+                      {voiceStatus === 'listening'  ? '● Tinglayapman'       :
+                       voiceStatus === 'processing' ? '◌ Tahlil qilinmoqda' :
+                       voiceStatus === 'speaking'   ? '◉ Javob berilmoqda'  : '○ Tayyor'}
                     </p>
-                    {voiceTranscript && (
-                      <p className="text-[12px] text-white/55 truncate">"{voiceTranscript}"</p>
+
+                    {/* Foydalanuvchi gapi */}
+                    {voiceTranscript && voiceStatus === 'listening' && (
+                      <p className="text-[12px] text-white/70 leading-snug line-clamp-2">
+                        <span className="text-cyan-400/60 mr-1">Siz:</span>{voiceTranscript}
+                      </p>
                     )}
-                    {voiceStatus === 'speaking' && (
-                      <p className="text-[10px] text-emerald-400/50 italic">To'xtatish uchun bosing</p>
+
+                    {/* AI javobi ko'rinmoqda */}
+                    {voiceStatus === 'speaking' && lastAiText && (
+                      <p className="text-[11px] text-emerald-300/60 leading-snug line-clamp-2 italic">
+                        {lastAiText.replace(/[*#`_~]/g, '').slice(0, 100)}{lastAiText.length > 100 ? '…' : ''}
+                      </p>
+                    )}
+
+                    {/* processing paytida nega kutayotganini ko'rsat */}
+                    {voiceStatus === 'processing' && voiceTranscript && (
+                      <p className="text-[11px] text-white/40 leading-snug truncate">
+                        <span className="text-amber-400/60 mr-1">Savol:</span>{voiceTranscript}
+                      </p>
+                    )}
+
+                    {voiceStatus === 'idle' && (
+                      <p className="text-[11px] text-white/25 italic">Gaplashing, men tayyorman...</p>
                     )}
                   </div>
-                  {voiceStatus === 'speaking' && (
-                    <button onClick={stopSpeaking}
-                      className="shrink-0 p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all border border-white/8">
-                      <VolumeX className="w-4 h-4" />
+
+                  {/* O'ng tugmalar */}
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    {/* Speaking paytida to'xtatish + davom etish */}
+                    {voiceStatus === 'speaking' && (
+                      <button
+                        onClick={() => { stopSpeaking(); setTimeout(() => startListeningRef.current?.(), 200); }}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-cyan-500/20 text-emerald-300 hover:text-cyan-300 text-[10px] font-semibold border border-emerald-500/25 hover:border-cyan-500/25 transition-all"
+                        title="To'xtatib, gapiring"
+                      >
+                        <Mic className="w-3 h-3" /> Interrupt
+                      </button>
+                    )}
+                    {/* Suhbatni to'xtatish */}
+                    <button
+                      onClick={toggleVoiceMode}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[10px] font-semibold border border-red-500/25 transition-all"
+                      title="Suhbatni to'xtatish"
+                    >
+                      <Square className="w-3 h-3" fill="currentColor" /> Stop
                     </button>
+                  </div>
+                </div>
+
+                {/* ── Qadam indikatori ── */}
+                <div className="flex items-center gap-0 border-t border-white/5">
+                  {(['listening', 'processing', 'speaking'] as const).map((st, i) => (
+                    <div key={st} className={`flex-1 h-1 transition-all duration-500 ${
+                      voiceStatus === st ? (
+                        st === 'listening'  ? 'bg-cyan-500' :
+                        st === 'processing' ? 'bg-amber-500' : 'bg-emerald-500'
+                      ) : (
+                        (voiceStatus === 'processing' && i === 0) ||
+                        (voiceStatus === 'speaking'   && i <= 1)
+                          ? 'bg-white/15' : 'bg-white/5'
+                      )
+                    }`} />
+                  ))}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div key="text-input" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="shrink-0 px-4 pb-4 pt-2 border-t border-white/10 bg-app-panel/30">
+                  {attachedImage && (
+                    <div className="mb-2 relative inline-block">
+                      <img src={attachedImage.preview} alt="attachment" className="h-16 rounded-lg object-cover border border-white/20" />
+                      <button onClick={() => setAttachedImage(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
                   )}
-                  {voiceStatus === 'listening' && (
-                    <button onClick={stopListening}
-                      className="shrink-0 p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-all border border-red-500/30">
-                      <Square className="w-4 h-4" fill="currentColor" />
+                  <div className="flex items-end gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 focus-within:border-cyan-500/40 transition-colors">
+                    <button onClick={() => copilotFileRef.current?.click()} className="shrink-0 text-white/25 hover:text-cyan-400 transition-colors mb-0.5" title="Tasvir yuklash">
+                      <ImageIcon className="w-5 h-5" />
                     </button>
-                  )}
+                    <textarea
+                      ref={textareaRef}
+                      value={copilotInput}
+                      onChange={e => setCopilotInput(e.target.value)}
+                      onKeyDown={handleCopilotKeyDown}
+                      placeholder="Savol yoki buyruq kiriting… (Shift+Enter qatorni o'zgartiradi)"
+                      rows={1}
+                      style={{ resize: 'none', minHeight: '24px', maxHeight: '120px' }}
+                      className="flex-1 bg-transparent text-[13px] text-white/90 placeholder-white/20 outline-none leading-relaxed"
+                      onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
+                    />
+                    <button
+                      onClick={() => sendQuery()}
+                      disabled={(!copilotInput.trim() && !attachedImage) || isProcessing}
+                      className="shrink-0 w-7 h-7 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all"
+                    >
+                      {isProcessing ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}
+                    </button>
+                  </div>
+                  <input ref={copilotFileRef} type="file" accept="image/*" className="hidden" onChange={handleCopilotImageUpload} />
+                  <p className="text-[10px] text-white/15 mt-1.5 text-center">Hech qachon soxta kuzatuvlarni ixtiro qilmaydi · Har bir qaror asoslangan</p>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-
-          <div className="shrink-0 px-4 pb-4 pt-2 border-t border-white/10 bg-app-panel/30">
-            {attachedImage && (
-              <div className="mb-2 relative inline-block">
-                <img src={attachedImage.preview} alt="attachment" className="h-16 rounded-lg object-cover border border-white/20" />
-                <button onClick={() => setAttachedImage(null)} className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-                  <X className="w-3 h-3 text-white" />
-                </button>
-              </div>
-            )}
-            <div className="flex items-end gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2 focus-within:border-cyan-500/40 transition-colors">
-              <button onClick={() => copilotFileRef.current?.click()} className="shrink-0 text-white/25 hover:text-cyan-400 transition-colors mb-0.5" title="Tasvir yuklash">
-                <ImageIcon className="w-5 h-5" />
-              </button>
-              <textarea
-                ref={textareaRef}
-                value={copilotInput}
-                onChange={e => setCopilotInput(e.target.value)}
-                onKeyDown={handleCopilotKeyDown}
-                placeholder="Savol yoki buyruq kiriting… (Shift+Enter qatorni o'zgartiradi)"
-                rows={1}
-                style={{ resize: 'none', minHeight: '24px', maxHeight: '120px' }}
-                className="flex-1 bg-transparent text-[13px] text-white/90 placeholder-white/20 outline-none leading-relaxed"
-                onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
-              />
-              {/* voice push-to-talk button */}
-              <button
-                onClick={isListening ? stopListening : startListening}
-                disabled={voiceStatus === 'processing' || isProcessing}
-                className={`shrink-0 mb-0.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
-                  isListening
-                    ? 'text-red-400 animate-pulse'
-                    : voiceStatus === 'processing'
-                    ? 'text-yellow-400'
-                    : isVoiceMode
-                    ? 'text-cyan-400 hover:text-cyan-300'
-                    : 'text-white/25 hover:text-cyan-400'
-                }`}
-                title={isListening ? "Tinglashni to'xtatish" : "Ovozli buyruq berish"}
-              >
-                {isListening
-                  ? <Square className="w-5 h-5" fill="currentColor" />
-                  : <Mic className="w-5 h-5" />}
-              </button>
-              <button
-                onClick={() => sendQuery()}
-                disabled={(!copilotInput.trim() && !attachedImage) || isProcessing}
-                className="shrink-0 w-7 h-7 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all"
-              >
-                {isProcessing ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Send className="w-4 h-4 text-white" />}
-              </button>
-            </div>
-            <input ref={copilotFileRef} type="file" accept="image/*" className="hidden" onChange={handleCopilotImageUpload} />
-            <p className="text-[10px] text-white/15 mt-1.5 text-center">Hech qachon soxta kuzatuvlarni ixtiro qilmaydi · Har bir qaror asoslangan</p>
-          </div>
         </>
       )}
 
