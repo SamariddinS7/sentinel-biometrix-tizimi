@@ -44,6 +44,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-23T07:23:03.393Z"
+    },
+    {
+      "id": "a24baa98-7cb7-436a-baa9-602da17dfc56",
+      "fullName": "erqwer",
+      "email": "qwe@sfdv",
+      "passwordHash": "$2b$12$PRxP5o2PKILA2kFX/BEvue/ICqyamuXGhICrmBSoUow5vykNrNrMe",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-23T07:51:11.152Z"
     }
   ]
 }
