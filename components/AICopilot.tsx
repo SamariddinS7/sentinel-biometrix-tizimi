@@ -780,7 +780,6 @@ export const AICopilot: React.FC<AICopilotProps> = ({
   }, []);
 
   useEffect(() => { speakFnRef.current = speakText; }, [speakText]);
-  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
   const stopSpeaking = useCallback(() => {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -837,6 +836,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({
 
     recognition.start();
   }, []);
+
+  useEffect(() => { startListeningRef.current = startListening; }, [startListening]);
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
