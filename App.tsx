@@ -20,6 +20,7 @@ import { SOCInvestigationCenter } from './components/soc/SOCInvestigationCenter'
 import { SOCResourceManager } from './components/soc/SOCResourceManager';
 import { SOCMultiSite } from './components/soc/SOCMultiSite';
 import { SOCReports } from './components/soc/SOCReports';
+import { LivePersonsMonitor } from './components/LivePersonsMonitor';
 import { AuthPage } from './components/AuthPage';
 import { authService } from './services/authService';
 import { notificationService } from './services/notificationService';
@@ -177,7 +178,7 @@ const AppContent: React.FC = () => {
     'map' | 'builder' |
     'identity_fusion' | 'appearance_intel' | 'multi_modal_intel' |
     'event_timeline' | 'investigation' | 'resources' |
-    'multi_site' | 'reports'
+    'multi_site' | 'reports' | 'identities'
   >('dashboard');
 
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
@@ -261,6 +262,7 @@ const AppContent: React.FC = () => {
           case 'resources':         return 'Resurslar Boshqaruvi';
           case 'multi_site':        return 'Ko\'p Saytli Boshqaruv';
           case 'reports':           return 'Hisobotlar';
+          case 'identities':        return 'Jonli Shaxslar Monitori';
           default: return '';
       }
   };
@@ -341,7 +343,8 @@ const AppContent: React.FC = () => {
 
           <div>
             <p className="px-4 text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">Intellekt</p>
-            <SidebarItem icon={FolderSearch} label="Tekshiruv Markazi"      active={currentView === 'investigation'}     onClick={() => { setCurrentView('investigation');     setIsSidebarOpen(false); }} />
+            <SidebarItem icon={Users}        label="Jonli Shaxslar"          active={currentView === 'identities'}        onClick={() => { setCurrentView('identities');        setIsSidebarOpen(false); }} />
+            <SidebarItem icon={FolderSearch} label="Tekshiruv Markazi"       active={currentView === 'investigation'}     onClick={() => { setCurrentView('investigation');     setIsSidebarOpen(false); }} />
             <SidebarItem icon={Layers}       label="Identity Fusion"         active={currentView === 'identity_fusion'}   onClick={() => { setCurrentView('identity_fusion');   setIsSidebarOpen(false); }} />
             <SidebarItem icon={Eye}          label="Appearance Intelligence" active={currentView === 'appearance_intel'}  onClick={() => { setCurrentView('appearance_intel');  setIsSidebarOpen(false); }} />
             <SidebarItem icon={Network}      label="Multi-Modal Engine"      active={currentView === 'multi_modal_intel'} onClick={() => { setCurrentView('multi_modal_intel'); setIsSidebarOpen(false); }} />
@@ -528,6 +531,15 @@ const AppContent: React.FC = () => {
                       {currentView === 'resources'         && <SOCResourceManager />}
                       {currentView === 'multi_site'        && <SOCMultiSite />}
                       {currentView === 'reports'           && <SOCReports />}
+                      {currentView === 'identities'        && (
+                        <LivePersonsMonitor
+                          onNavigateCopilot={(query) => {
+                            setIsAIPanelOpen(true);
+                            // Store query for copilot to pick up
+                            (window as any).__copilotPendingQuery = query;
+                          }}
+                        />
+                      )}
                   </motion.div>
                 </AnimatePresence>
             </div>

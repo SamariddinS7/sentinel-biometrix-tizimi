@@ -39,6 +39,7 @@ import { incidentService } from "./services/incidentService";
 // Person Intelligence Platform
 import { personIntelApiRouter } from "./services/personIntel/PersonIntelApiRouter";
 import { initPersonIntelPlatform } from "./services/personIntel/PersonIntelBootstrap";
+import { personProfileStore } from "./services/personIntel/PersonProfileStore";
 
 // AI Copilot & Vision Intelligence
 import { copilotApiRouter } from "./services/copilot/CopilotApiRouter";
@@ -2520,6 +2521,96 @@ Reply with ONLY valid JSON, no explanation.`;
       typeof cameraId === 'string' ? cameraId : undefined,
     );
     res.json({ count: persons.length, persons });
+  });
+
+  // GET /api/ai/persons/live-profiles — merged live tracks + PersonProfileStore data
+  // Returns rich profile cards for every recently detected person
+  app.get("/api/ai/persons/live-profiles", authenticateToken, async (req, res) => {
+    try {
+      // 1. Recent profiles from PersonProfileStore (last 100, sorted by lastSeen desc)
+      const storeProfiles = await personProfileStore.list({ limit: 100 });
+
+      // 2. Live tracks from the tracking engine
+      const liveTracks = personDetectionOrchestrator.getCurrentPersons();
+
+      // Build cameraId+trackId → live track map for presence detection
+      const liveTrackIds = new Set<string>(liveTracks.map((t: any) => `${t.cameraId}:${t.trackId}`));
+      // Also resolve trackId → personId from ProfileStore
+      const livePersonIds = new Set<string>();
+      for (const track of liveTracks) {
+        const personId = personProfileStore.resolveTrackId(track.trackId);
+        if (personId) livePersonIds.add(personId);
+      }
+
+      // 3. Merge: profile store is authoritative, live track adds currentlyPresent
+      const merged = storeProfiles.map((profile: any) => {
+        const nowMs = Date.now();
+        const lastSeenMs = profile.lastSeen ? new Date(profile.lastSeen).getTime() : 0;
+        const recentlySeen = nowMs - lastSeenMs < 5 * 60 * 1000;
+        const currentlyPresent = livePersonIds.has(profile.personId) || recentlySeen;
+
+        // Find a live track for confidence
+        const liveTrack = liveTracks.find((t: any) =>
+          personProfileStore.resolveTrackId(t.trackId) === profile.personId
+        );
+
+        return {
+          personId:        profile.personId,
+          fusionId:        profile.fusionId ?? profile.personId,
+          fullName:        profile.fullName ?? `Shaxs-${(profile.personId ?? '').slice(-5)}`,
+          status:          profile.status ?? 'ANONYMOUS',
+          role:            profile.role,
+          currentlyPresent,
+          lastSeen:        profile.lastSeen ?? new Date().toISOString(),
+          firstSeen:       profile.firstSeen,
+          lastCameraId:    profile.lastCameraId ?? liveTrack?.cameraId,
+          lastCameraName:  profile.lastCameraName,
+          totalDetections: profile.totalDetections ?? 0,
+          cameraHistory:   profile.cameraHistory ?? [],
+          currentAppearance: profile.currentAppearance ?? null,
+          confidence:      liveTrack?.confidence ?? null,
+          notes:           profile.notes ?? '',
+        };
+      });
+
+      // 4. Add live tracks that have NO profile yet (just appeared this session)
+      for (const track of liveTracks) {
+        const personId = personProfileStore.resolveTrackId(track.trackId);
+        const hasProfile = personId
+          ? merged.some((p: any) => p.personId === personId)
+          : false;
+        if (!hasProfile && !personId) {
+          merged.push({
+            personId:        track.trackId,
+            fusionId:        track.trackId,
+            fullName:        `Iz-${track.trackId.slice(-6)}`,
+            status:          'ANONYMOUS',
+            role:            undefined,
+            currentlyPresent: true,
+            lastSeen:        new Date().toISOString(),
+            firstSeen:       new Date().toISOString(),
+            lastCameraId:    track.cameraId,
+            lastCameraName:  undefined,
+            totalDetections: track.totalFrames ?? 1,
+            cameraHistory:   [],
+            currentAppearance: null,
+            confidence:      track.confidence,
+            notes:           '',
+          });
+        }
+      }
+
+      // Sort: currently present first, then by lastSeen desc
+      merged.sort((a: any, b: any) => {
+        if (a.currentlyPresent !== b.currentlyPresent) return a.currentlyPresent ? -1 : 1;
+        return new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime();
+      });
+
+      res.json({ count: merged.length, persons: merged });
+    } catch (e: any) {
+      infraLog.error({ err: e.message }, '[live-profiles] error');
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // GET /api/ai/tracks/active — all active tracks with Kalman state
