@@ -328,6 +328,8 @@ export class InferencePipeline {
         (Math.abs(obj.trackId.split('').reduce((h: number, c: string) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0)) % 99999) + 1;
       const mappedTrack = {
         trackId: numericTrackId,
+        rawTrackId: obj.trackId,
+        fusionId: fusedIdResult?.id ?? null,
         bbox: {
           x: obj.boundingBox.xMin * 640,
           y: obj.boundingBox.yMin * 480,
@@ -347,6 +349,7 @@ export class InferencePipeline {
           hasEmbedding: true,
           avatarUrl: identity.metadata?.avatarUrl || ''
         } : null,
+        appearance: fusedIdResult?.appearance ?? null,
         similarity: recognitionConfidence,
         firstSeen: timestampMs - (obj.framesActiveCount * 40),
         lastSeen: timestampMs,

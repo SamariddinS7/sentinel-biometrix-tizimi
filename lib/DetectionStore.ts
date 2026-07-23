@@ -1,3 +1,15 @@
+export type DetectedAppearance = {
+    upperClothingColor: string;
+    lowerClothingColor: string;
+    clothingType: string;
+    bodySize: string;
+    bodyShape: string;
+    helmet: boolean;
+    vest: boolean;
+    backpack: boolean;
+    shoes: string;
+};
+
 export type BoundingBox = {
     id: string | number;
     x: number; // Source X
@@ -10,6 +22,14 @@ export type BoundingBox = {
     vx?: number;
     vy?: number;
     crossed?: boolean;
+    /** Fusion identity ID (F-XXXXX) — present when AI has resolved an identity */
+    fusionId?: string;
+    /** AI-extracted appearance attributes for this detection */
+    appearance?: DetectedAppearance;
+    /** Millisecond timestamp when this person was first seen on this camera */
+    firstSeenMs?: number;
+    /** Camera ID this detection belongs to */
+    cameraId?: string;
 };
 
 export type Heatpoint = {

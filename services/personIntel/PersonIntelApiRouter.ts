@@ -199,6 +199,27 @@ personIntelApiRouter.post('/merge', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/persons/by-fusion/:fusionId — look up profile by F-XXXXX fusion ID
+// Used by PersonProfilePanel when a bounding-box click supplies a fusionId.
+// ─────────────────────────────────────────────────────────────────────────────
+personIntelApiRouter.get('/by-fusion/:fusionId', async (req: Request, res: Response) => {
+  const fusionId = String(req.params.fusionId);
+  const profile  = await personProfileStore.getByFusionId(fusionId);
+  if (!profile) return fail(res, 404, 'Person not found');
+  ok(res, profile);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/persons/by-track/:trackId — look up profile by raw track ID
+// ─────────────────────────────────────────────────────────────────────────────
+personIntelApiRouter.get('/by-track/:trackId', async (req: Request, res: Response) => {
+  const trackId = String(req.params.trackId);
+  const profile  = await personProfileStore.getByTrackId(trackId);
+  if (!profile) return fail(res, 404, 'Person not found');
+  ok(res, profile);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 10. GET /api/persons/:id — full profile
 // ─────────────────────────────────────────────────────────────────────────────
 personIntelApiRouter.get('/:id', async (req: Request, res: Response) => {

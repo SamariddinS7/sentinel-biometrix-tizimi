@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { detectionStore } from '../lib/DetectionStore';
+import { detectionStore, BoundingBox } from '../lib/DetectionStore';
 import { useLanguage } from '../services/i18n';
 import { userService } from '../services/userService';
 
@@ -67,7 +67,11 @@ export const useDetectionEngine = (
                             h: track.bbox.h,
                             label: track.identity?.fullName || (language === 'uz' ? `Odam #${track.trackId}` : `Person #${track.trackId}`),
                             confidence: track.detectionScore,
-                            color: 'cyan'
+                            color: track.identity ? '#10b981' : 'cyan',
+                            fusionId: track.fusionId ?? undefined,
+                            appearance: track.appearance ?? undefined,
+                            firstSeenMs: track.firstSeen ?? undefined,
+                            cameraId,
                         }));
                         
                         detectionStore.set(cameraId, {
@@ -232,6 +236,54 @@ export const useDetectionEngine = (
     }, [cameraId, isActive, config.detectPeople, language, mediaRef]);
 };
 
+/** Transparent interactive HTML layer — renders clickable hit areas over each detection bbox */
+export const DetectionHitLayer: React.FC<{
+    cameraId: string;
+    onPersonClick: (box: BoundingBox) => void;
+}> = ({ cameraId, onPersonClick }) => {
+    const [objects, setObjects] = useState<BoundingBox[]>([]);
+    const [src, setSrc] = useState<{ w: number; h: number }>({ w: 640, h: 480 });
+
+    useEffect(() => {
+        let rafId: number;
+        const poll = () => {
+            const state = detectionStore.get(cameraId);
+            setObjects(state.objects);
+            setSrc({ w: state.sourceWidth || 640, h: state.sourceHeight || 480 });
+            rafId = requestAnimationFrame(poll);
+        };
+        rafId = requestAnimationFrame(poll);
+        return () => cancelAnimationFrame(rafId);
+    }, [cameraId]);
+
+    return (
+        <div className="absolute inset-0 z-[1000]" style={{ pointerEvents: 'none' }}>
+            {objects.map((obj) => {
+                const leftPct  = (obj.x / src.w) * 100;
+                const topPct   = (obj.y / src.h) * 100;
+                const widthPct = ((obj.w || 0) / src.w) * 100;
+                const heightPct = ((obj.h || 0) / src.h) * 100;
+                return (
+                    <div
+                        key={obj.id}
+                        onClick={(e) => { e.stopPropagation(); onPersonClick(obj); }}
+                        title={obj.label}
+                        style={{
+                            position: 'absolute',
+                            left:   `${leftPct}%`,
+                            top:    `${topPct}%`,
+                            width:  `${widthPct}%`,
+                            height: `${heightPct}%`,
+                            pointerEvents: 'auto',
+                            cursor: 'pointer',
+                        }}
+                    />
+                );
+            })}
+        </div>
+    );
+};
+
 export const CanvasOverlay: React.FC<{
     cameraId: string;
     mediaRef: React.RefObject<HTMLElement>;
@@ -364,9 +416,17 @@ export const UnifiedCameraOverlay: React.FC<{
     mediaRef: React.RefObject<HTMLElement>;
     isActive: boolean;
     config: any;
-}> = ({ cameraId, mediaRef, isActive, config }) => {
+    onPersonClick?: (box: BoundingBox) => void;
+}> = ({ cameraId, mediaRef, isActive, config, onPersonClick }) => {
     const { language } = useLanguage();
     useDetectionEngine(cameraId, mediaRef as any, isActive, config, language);
 
-    return <CanvasOverlay cameraId={cameraId} mediaRef={mediaRef} config={config} debug={false} />;
+    return (
+        <>
+            <CanvasOverlay cameraId={cameraId} mediaRef={mediaRef} config={config} debug={false} />
+            {onPersonClick && config.detectPeople && (
+                <DetectionHitLayer cameraId={cameraId} onPersonClick={onPersonClick} />
+            )}
+        </>
+    );
 };

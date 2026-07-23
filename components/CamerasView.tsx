@@ -14,6 +14,8 @@ import { coverageEngine } from '../services/coverageEngine';
 import { CameraSearchModal } from './CameraSearchModal';
 import { UnifiedCameraOverlay } from './CanvasOverlay';
 import { detectObjectsWithRFDetr, DETRObject } from '../services/geminiService';
+import { PersonProfilePanel } from './PersonProfilePanel';
+import type { BoundingBox } from '../lib/DetectionStore';
 
 declare const faceapi: any;
 
@@ -121,6 +123,7 @@ const SingleCameraView: React.FC<{
     const [uploadedImage, setUploadedImage] = useState<string | null>(null);
     const viewfinderRef = useRef<HTMLDivElement>(null);
     const analysisConfig = { detectPeople: true, recognizeFaces: true, enableCounting: true, showHeatmap: false };
+    const [selectedDetection, setSelectedDetection] = useState<BoundingBox | null>(null);
 
     const [detections, setDetections] = useState<DETRObject[]>([ 
         { id: 1, label: 'Person', confidence: 0.99, top: 20, left: 30, width: 15, height: 55 },
@@ -535,7 +538,13 @@ const SingleCameraView: React.FC<{
                         )}
 
                         {isOnline && (
-                            <UnifiedCameraOverlay cameraId={camera.id} mediaRef={viewfinderRef} isActive={isOnline} config={analysisConfig} />
+                            <UnifiedCameraOverlay
+                                cameraId={camera.id}
+                                mediaRef={viewfinderRef}
+                                isActive={isOnline}
+                                config={analysisConfig}
+                                onPersonClick={setSelectedDetection}
+                            />
                         )}
                     </div>
                     
@@ -782,6 +791,16 @@ const SingleCameraView: React.FC<{
 
             </div>
         </div>
+
+        {/* Person Profile Panel — opens when a bounding box is clicked */}
+        {selectedDetection && (
+            <PersonProfilePanel
+                detection={selectedDetection}
+                cameraId={camera.id}
+                cameraName={camera.name}
+                onClose={() => setSelectedDetection(null)}
+            />
+        )}
     );
 };
 
@@ -814,6 +833,7 @@ const CameraCard: React.FC<{
     const containerRef = useRef<HTMLDivElement>(null);
     const isOnline = camera.status === CameraStatus.ONLINE;
     const isLarge = sizeMode === 'large';
+    const [selectedDetection, setSelectedDetection] = useState<BoundingBox | null>(null);
 
     // Real-time telemetry simulation
     const [currentFps, setCurrentFps] = useState(camera.fps);
@@ -1039,7 +1059,13 @@ const CameraCard: React.FC<{
                 )}
                 
                 {/* Real-time Dynamic AI Computer Vision Analytics Overlay */}
-                <UnifiedCameraOverlay cameraId={camera.id} mediaRef={containerRef} isActive={isOnline} config={analysisConfig} />
+                <UnifiedCameraOverlay
+                    cameraId={camera.id}
+                    mediaRef={containerRef}
+                    isActive={isOnline}
+                    config={analysisConfig}
+                    onPersonClick={setSelectedDetection}
+                />
 
                 {/* Overlay Tech Specs (Visible on hover) */}
                 <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 duration-200">
@@ -1092,6 +1118,16 @@ const CameraCard: React.FC<{
                 </div>
             </div>
         </div>
+
+        {/* Person Profile Panel — opens when a bounding box is clicked in this card */}
+        {selectedDetection && (
+            <PersonProfilePanel
+                detection={selectedDetection}
+                cameraId={camera.id}
+                cameraName={camera.name}
+                onClose={() => setSelectedDetection(null)}
+            />
+        )}
     );
 };
 
