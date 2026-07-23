@@ -619,18 +619,29 @@ const PolicySection: React.FC = () => {
 };
 
 // ─── Nav & Root ───────────────────────────────────────────────────────────────
-const NAV_ITEMS: Array<{ id: PlatformSection; label: string; icon: React.ReactNode }> = [
-  { id: 'overview',  label: 'Platforma',    icon: <Workflow size={13} />      },
-  { id: 'agents',    label: 'Agentlar',     icon: <Bot size={13} />           },
-  { id: 'cameras',   label: 'Kameralar',    icon: <Camera size={13} />        },
-  { id: 'comms',     label: 'Aloqa',        icon: <MessageSquare size={13} /> },
-  { id: 'docs',      label: 'Hujjatlar',    icon: <FileText size={13} />      },
-  { id: 'gateway',   label: 'API Gateway',  icon: <Server size={13} />        },
-  { id: 'plugins',   label: 'Plaginlar',    icon: <Puzzle size={13} />        },
-  { id: 'models',    label: 'AI Modellari', icon: <Brain size={13} />         },
-  { id: 'ecosystem', label: 'Ekosistema',   icon: <Building2 size={13} />     },
-  { id: 'voice',     label: 'Ovoz',         icon: <Mic size={13} />           },
-  { id: 'policy',    label: 'Siyosat',      icon: <Shield size={13} />        },
+
+interface NavItem {
+  id: PlatformSection;
+  section: string;
+  label: string;
+  sub: string;
+  icon: React.ReactNode;
+  color: string;
+  count: number;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: 'overview',  section: '§42', label: 'Platforma',    sub: "Protokollar, tamoyillar",      icon: <Workflow size={14} />,      color: 'text-cyan-400',    count: 19 },
+  { id: 'agents',    section: '§43', label: 'Agentlar',     sub: "Kompyuter + Brauzer agent",    icon: <Bot size={14} />,           color: 'text-blue-400',    count: 12 },
+  { id: 'cameras',   section: '§44', label: 'Kameralar',    sub: "11 ishlab chiqaruvchi",        icon: <Camera size={14} />,        color: 'text-purple-400',  count: 11 },
+  { id: 'comms',     section: '§45', label: 'Aloqa',        sub: "7 kanal, bildirishnoma",       icon: <MessageSquare size={14} />, color: 'text-yellow-400',  count:  7 },
+  { id: 'docs',      section: '§46', label: 'Hujjatlar',    sub: "8 format, bilim bazasi",       icon: <FileText size={14} />,      color: 'text-emerald-400', count:  8 },
+  { id: 'gateway',   section: '§47', label: 'API Gateway',  sub: "7 mas\u2019uliyat, 4 uslub",  icon: <Server size={14} />,        color: 'text-orange-400',  count:  7 },
+  { id: 'plugins',   section: '§48', label: 'Plaginlar',    sub: "8 plagin turi, hot-reload",    icon: <Puzzle size={14} />,        color: 'text-pink-400',    count:  8 },
+  { id: 'models',    section: '§49', label: 'AI Modellari', sub: "7 manba, model boshqaruvi",   icon: <Brain size={14} />,         color: 'text-violet-400',  count:  7 },
+  { id: 'ecosystem', section: '§50', label: 'Ekosistema',   sub: "14 korporativ integratsiya",  icon: <Building2 size={14} />,     color: 'text-rose-400',    count: 14 },
+  { id: 'voice',     section: '§51', label: 'Ovoz',         sub: "6 kirish, 8 chiqish turi",    icon: <Mic size={14} />,           color: 'text-teal-400',    count:  6 },
+  { id: 'policy',    section: '§52', label: 'Siyosat',      sub: "4 xavf darajasi, audit",      icon: <Shield size={14} />,        color: 'text-amber-400',   count:  4 },
 ];
 
 const SECTION_MAP: Record<PlatformSection, React.ReactNode> = {
@@ -649,28 +660,91 @@ const SECTION_MAP: Record<PlatformSection, React.ReactNode> = {
 
 export const EnterpriseIntegrationPlatform: React.FC = () => {
   const [active, setActive] = useState<PlatformSection>('overview');
+  const activeItem = NAV_ITEMS.find(n => n.id === active)!;
+
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
-      <nav className="w-[108px] shrink-0 bg-white/2 border-r border-white/8 py-3 flex flex-col gap-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(item => (
-          <button key={item.id} onClick={() => setActive(item.id)}
-            className={`flex flex-col items-center gap-1 py-2 px-1.5 mx-1.5 rounded-xl text-center transition-all border ${
-              active === item.id
-                ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/25'
-                : 'text-white/35 hover:text-white/65 border-transparent hover:bg-white/5'
-            }`}>
-            <span className="shrink-0">{item.icon}</span>
-            <span className="text-[9.5px] font-semibold leading-tight">{item.label}</span>
-          </button>
-        ))}
+      {/* ── Sidebar nav ─────────────────────────────────────────────────────── */}
+      <nav className="w-[172px] shrink-0 border-r border-white/8 flex flex-col overflow-hidden"
+           style={{ background: 'rgba(255,255,255,0.018)' }}>
+        {/* Header */}
+        <div className="px-3 py-2.5 border-b border-white/6 shrink-0">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-white/25">Integratsiya · §42–52</p>
+          <p className="text-[10px] text-white/45 mt-0.5">11 bo\u2019lim · 103 xususiyat</p>
+        </div>
+        {/* Items */}
+        <div className="flex-1 overflow-y-auto py-1.5 space-y-0.5">
+          {NAV_ITEMS.map(item => {
+            const isActive = active === item.id;
+            return (
+              <button key={item.id} onClick={() => setActive(item.id)}
+                className={`w-full flex items-start gap-2.5 px-3 py-2.5 text-left transition-all relative group ${
+                  isActive ? 'bg-cyan-500/12' : 'hover:bg-white/4'
+                }`}>
+                {/* Active left bar */}
+                {isActive && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-cyan-400" />
+                )}
+                {/* Icon box */}
+                <span className={`shrink-0 mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                  isActive
+                    ? `${item.color} bg-white/10 border border-white/12`
+                    : 'text-white/30 bg-white/4 border border-white/6 group-hover:text-white/55'
+                }`}>
+                  {item.icon}
+                </span>
+                {/* Text */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11.5px] font-semibold leading-tight truncate ${
+                      isActive ? 'text-white/90' : 'text-white/45 group-hover:text-white/70'
+                    }`}>{item.label}</span>
+                    <span className={`shrink-0 text-[9px] font-mono px-1 py-0.5 rounded border ${
+                      isActive ? 'text-cyan-400/70 bg-cyan-500/10 border-cyan-500/20' : 'text-white/20 bg-white/4 border-white/8'
+                    }`}>{item.section}</span>
+                  </div>
+                  <p className={`text-[9.5px] leading-tight mt-0.5 truncate ${
+                    isActive ? 'text-white/45' : 'text-white/22 group-hover:text-white/38'
+                  }`}>{item.sub}</p>
+                </div>
+                {/* Count */}
+                <span className={`shrink-0 self-center text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                  isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/6 text-white/25'
+                }`}>{item.count}</span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Footer */}
+        <div className="px-3 py-2 border-t border-white/6 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full bg-emerald-400`} />
+            <span className="text-[9px] text-white/30 truncate">{activeItem.label} — {activeItem.sub}</span>
+          </div>
+        </div>
       </nav>
-      <div className="flex-1 overflow-y-auto p-4 min-h-0">
-        <AnimatePresence mode="wait">
-          <motion.div key={active} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
-            {SECTION_MAP[active]}
-          </motion.div>
-        </AnimatePresence>
+
+      {/* ── Content area ────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+        {/* Breadcrumb bar */}
+        <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-white/6 bg-white/2">
+          <span className={`${activeItem.color}`}>{activeItem.icon}</span>
+          <span className="text-[11px] font-semibold text-white/70">{activeItem.label}</span>
+          <ChevronRight size={11} className="text-white/20" />
+          <span className="text-[10px] text-white/35">{activeItem.sub}</span>
+          <span className="ml-auto text-[9px] font-mono text-white/25 bg-white/5 px-2 py-0.5 rounded border border-white/8">
+            {activeItem.section}
+          </span>
+        </div>
+        {/* Section content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <AnimatePresence mode="wait">
+            <motion.div key={active} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+              {SECTION_MAP[active]}
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
