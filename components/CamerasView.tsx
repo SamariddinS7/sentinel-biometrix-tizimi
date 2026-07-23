@@ -349,6 +349,7 @@ const SingleCameraView: React.FC<{
     const StatusIcon = statusConfig.icon;
 
     return (
+        <>
         <div className="h-full flex flex-col bg-app-panel border border-border rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             {/* Main Header */}
             <div className="p-4 border-b border-border bg-app-primary flex justify-between items-center z-10">
@@ -801,6 +802,7 @@ const SingleCameraView: React.FC<{
                 onClose={() => setSelectedDetection(null)}
             />
         )}
+        </>
     );
 };
 
@@ -936,6 +938,7 @@ const CameraCard: React.FC<{
     const StatusIcon = statusConfig.icon;
 
     return (
+        <>
         <div 
             draggable
             onDragStart={(e) => onDragStart(e, camera.id)}
@@ -1128,6 +1131,7 @@ const CameraCard: React.FC<{
                 onClose={() => setSelectedDetection(null)}
             />
         )}
+        </>
     );
 };
 

@@ -1,70 +1,40 @@
-# Sentinel Biometrik Tizimi
+# Sentinel Biometrik Tizimi — AI Video Management System
 
-An enterprise AI Video Management System (VMS) with biometrics, face recognition, digital twin 3D views, and Gemini AI-powered anomaly detection. The UI is in Uzbek.
+## Overview
+Enterprise-grade AI Video Management System (VMS) and Security Dashboard. Features real-time camera monitoring, AI-driven anomaly detection, facial recognition, behavioral analytics, and a SOC operations center.
 
 ## Stack
+- **Frontend**: React 18 + Vite (dev server on port 5000)
+- **Backend**: Node.js/Express 5 with TypeScript (tsx)
+- **Realtime**: WebSocket (ws)
+- **AI/ML**: Google Gemini API, ONNX Runtime (YOLOv8n), Tesseract.js OCR
+- **Database**: Firebase/Firestore (primary), PostgreSQL (optional, falls back to Firestore if not set)
+- **Analytics**: 8 built-in AI plugins (fire/PPE/vehicle/OCR/behavior/object-state/crowd/heatmap)
 
-- **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend:** Express 5 (TypeScript, `tsx` runtime)
-- **Database:** Firebase Firestore (config in `firebase-applet-config.json`)
-- **AI:** Google Gemini (`@google/genai`), YOLOv8n ONNX local inference, custom AI pipeline
-- **3D:** Three.js + React Three Fiber (digital twin views)
-- **Auth:** Firebase Auth + JWT for API routes
-
-## How to run on Replit
-
-The workflow `Start application` is already configured and runs `npm run dev`.
-
-To start it manually:
-
+## How to run
 ```
-npm install
 npm run dev
 ```
+Server and Vite dev server both run on **port 5000**. The `Start application` workflow handles this.
 
-The server starts on port **5000**. Express serves both the REST/WebSocket API and the Vite dev middleware from a single process (`server.ts`).
+## Environment variables / secrets
+| Key | Required | Purpose |
+|-----|----------|---------|
+| `GEMINI_API_KEY` | Recommended | Enables Gemini AI features; falls back to rule-based processing if absent |
+| `JWT_SECRET` | Recommended | Persistent JWT signing; auto-generates a random one per session if absent |
+| `SESSION_SECRET` | Optional | Express session secret |
+| `POSTGRES_URL` | Optional | PostgreSQL primary DSN; falls back to Firestore if not set |
+| `REDIS_URL` | Optional | Redis for caching; falls back to in-process LRU cache |
+| `NATS_URL` | Optional | NATS for message bus; falls back to in-process mode |
 
-## Environment variables / Secrets
+Firebase config is baked into `firebase-applet-config.json` — no additional setup needed.
 
-Set these as Replit Secrets (never commit values to the repo):
-
-| Variable | Required | Notes |
-|---|---|---|
-| `JWT_SECRET` | Recommended | Strong random string (64+ chars). Without it, a per-session random secret is generated — all sessions expire on restart. |
-| `GEMINI_API_KEY` | Optional | From Google AI Studio. Enables Gemini-powered threat analysis. Must start with `AIzaSy`. Without it, rule-based fallbacks are used. |
-| `VMS_ENCRYPTION_KEY` | Optional | AES key for stored VMS credentials. |
-| `BOOTSTRAP_ADMIN_EMAIL` | Optional | Admin account email for email+password login. |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Optional | Admin account password. |
-
-Firebase config is already present in `firebase-applet-config.json` and requires no additional setup for the bundled Firebase project.
-
-## Login
-
-The login screen is at `/`. Two options:
-- **"To'g'ridan-to'g'ri kirish (Admin)"** button — direct admin bypass, always available.
-- Email + password — requires `BOOTSTRAP_ADMIN_EMAIL` / `BOOTSTRAP_ADMIN_PASSWORD` to be set, or valid Firebase credentials.
-
-## Key directories
-
-- `components/` — React UI components (camera grid, dashboard, alerts, digital twin, etc.)
-- `services/` — Application services (auth, camera, AI pipeline, Firestore, alarm broker, etc.)
-- `services/ai/` — AI inference pipeline, face/biometric engines, YOLOv8n + ByteTrack, plugins
-- `backend/` — Pure computation modules (area maps, digital twin math, face recognition, security)
-- `models/` — ONNX model files (`yolov8n.onnx`)
-- `server.ts` — Express API gateway + Vite dev server integration (single entry point)
-- `types.ts` — Shared TypeScript types across frontend and backend
-
-## Architecture notes
-
-- `server.ts` is the single backend entry point — it starts Express, Vite dev middleware, WebSocket broker, and all AI services together.
-- AI services initialize at startup: YOLOv8n loads from `yolov8n.onnx`; Gemini is optional.
-- Firebase Firestore is used for alerts, identities, and audit logs.
-- The WebSocket server handles real-time camera frame relay and AI event streaming.
-
-## Stabilization status
-
-Architecture stabilization completed 2026-07-16. See `STABILIZATION_REPORT.md` for full details.
+## Key files
+- `server.ts` — Express + WebSocket server entry point
+- `index.tsx` / `App.tsx` — React frontend entry
+- `services/` — Backend services (AI, camera, analytics, auth, infra)
+- `components/` — React UI components
+- `firebase-applet-config.json` — Firebase project config (already populated)
 
 ## User preferences
-
-<!-- Add user preferences here -->
+- Keep existing project structure and stack
