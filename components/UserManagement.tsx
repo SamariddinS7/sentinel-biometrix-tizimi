@@ -4,13 +4,154 @@ import { userService } from '../services/userService';
 import { insightFaceService } from '../services/insightFaceService';
 import { UserRole, User } from '../types';
 import { analyzeBiometricFrame, BiometricAnalysisResult } from '../services/geminiService';
-import { MoreHorizontal, Plus, Search, Fingerprint, X, User as UserIcon, Camera, Upload, CheckCircle2, Loader2, RefreshCw, AlertCircle, Film, Image as ImageIcon, Trash2, ShieldAlert, Sparkles, ScanFace, LayoutList } from 'lucide-react';
+import { MoreHorizontal, Plus, Search, Fingerprint, X, User as UserIcon, Camera, Upload, CheckCircle2, Loader2, RefreshCw, AlertCircle, Film, Image as ImageIcon, Trash2, ShieldAlert, Sparkles, ScanFace, LayoutList, UserX, Eye } from 'lucide-react';
 import { useLanguage } from '../services/i18n';
 import { PersonNameLink, usePersonProfile } from '../context/PersonProfileContext';
+
+// ── Anonymous/Unknown Persons Panel ─────────────────────────────────────────
+
+interface AnonProfile {
+  personId: string;
+  fullName: string;
+  status: string;
+  firstSeen: string;
+  lastSeen: string;
+  lastCameraId: string;
+  totalDetections: number;
+  currentlyPresent: boolean;
+}
+
+const UnknownPersonsPanel: React.FC<{ searchQuery: string }> = ({ searchQuery }) => {
+  const [persons, setPersons] = useState<AnonProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { openProfile } = usePersonProfile();
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch('/api/persons?status=ANONYMOUS&limit=200');
+      if (r.ok) {
+        const j = await r.json();
+        setPersons(j?.data?.profiles ?? []);
+      }
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return persons.filter(p =>
+      p.personId.toLowerCase().includes(q) ||
+      p.fullName.toLowerCase().includes(q) ||
+      (p.lastCameraId ?? '').toLowerCase().includes(q),
+    );
+  }, [persons, searchQuery]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-text-muted">
+        <Loader2 className="w-6 h-6 animate-spin mr-2 text-cyan-500" />
+        <span className="text-sm">Yuklanmoqda...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-app-panel shadow-sm rounded-xl border border-border overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-app-primary/60">
+        <div className="flex items-center gap-2 text-sm text-text-muted">
+          <UserX size={14} className="text-amber-400" />
+          <span>Kamerada aniqlangan, lekin ro'yxatda yo'q shaxslar</span>
+        </div>
+        <button onClick={load} className="p-1.5 rounded hover:bg-white/10 text-text-muted hover:text-white transition-all">
+          <RefreshCw size={13} />
+        </button>
+      </div>
+      <div className="overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left text-sm min-w-[600px]">
+          <thead className="bg-app-primary border-b border-border">
+            <tr>
+              <th className="px-6 py-3 font-semibold text-text-secondary whitespace-nowrap">ID / Ism</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary whitespace-nowrap">Birinchi ko'ringan</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary whitespace-nowrap">Oxirgi kamera</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary whitespace-nowrap">Aniqlashlar</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary whitespace-nowrap">Holat</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary text-right">Profil</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800">
+            {filtered.length > 0 ? filtered.map(p => (
+              <tr key={p.personId} className="hover:bg-app-surface/40 transition-colors group">
+                <td className="px-6 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                      <UserX size={14} className="text-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium text-white truncate">{p.fullName}</p>
+                      <p className="text-[10px] font-mono text-text-muted">{p.personId}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-3 text-text-secondary text-xs whitespace-nowrap">
+                  {p.firstSeen ? new Date(p.firstSeen).toLocaleString('uz-UZ') : '—'}
+                </td>
+                <td className="px-6 py-3 text-text-secondary text-xs whitespace-nowrap font-mono">
+                  {p.lastCameraId || '—'}
+                </td>
+                <td className="px-6 py-3">
+                  <span className="text-cyan-400 font-bold tabular-nums">{p.totalDetections ?? 0}×</span>
+                </td>
+                <td className="px-6 py-3">
+                  {p.currentlyPresent ? (
+                    <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />JONLI
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                      ANONIM
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-3 text-right">
+                  <button
+                    onClick={() => openProfile(p.personId)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-lg hover:bg-cyan-500/10 text-text-muted hover:text-cyan-400"
+                    title="Profilni ko'rish"
+                  >
+                    <Eye size={14} />
+                  </button>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center">
+                  <div className="flex flex-col items-center gap-2 text-text-muted">
+                    <UserX size={28} className="opacity-20" />
+                    <p className="text-sm">
+                      {searchQuery
+                        ? "Qidiruv bo'yicha noma'lum shaxs topilmadi."
+                        : "Hali hech qanday noma'lum shaxs aniqlanmagan."}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+// ── Main component ───────────────────────────────────────────────────────────
 
 export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ globalSearchTerm }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'staff' | 'unknown'>('staff');
   const { language, t } = useLanguage();
   const { openProfile } = usePersonProfile();
 
@@ -230,79 +371,110 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-white">Foydalanuvchilarni Boshqarish</h2>
         <div className="flex gap-2">
-            <button 
+            {activeTab === 'staff' && (
+              <button
                 onClick={() => setIsModalOpen(true)}
                 className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium shadow-lg shadow-cyan-500/20"
-            >
-            <Plus className="w-4 h-4" />
-            Yangi Xodim Qo'shish
-            </button>
+              >
+                <Plus className="w-4 h-4" />
+                Yangi Xodim Qo'shish
+              </button>
+            )}
         </div>
       </div>
 
-      <div className="flex gap-4 mb-6">
+      {/* Tab switcher */}
+      <div className="flex border-b border-border gap-1">
+        <button
+          onClick={() => setActiveTab('staff')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'staff'
+              ? 'border-cyan-400 text-cyan-400'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          <UserIcon size={14} />
+          Xodimlar ro'yxati
+        </button>
+        <button
+          onClick={() => setActiveTab('unknown')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all ${
+            activeTab === 'unknown'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          <UserX size={14} />
+          Noma'lum shaxslar
+        </button>
+      </div>
+
+      <div className="flex gap-4">
         <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-primary0" />
-            <input 
-                type="text" 
+            <input
+                type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ism, ID yoki bo'lim bo'yicha qidirish..." 
+                placeholder={activeTab === 'staff' ? "Ism, ID yoki bo'lim bo'yicha qidirish..." : "ID yoki kamera bo'yicha qidirish..."}
                 className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-app-panel border border-border text-text-primary focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent placeholder:text-text-muted"
             />
         </div>
       </div>
 
-      <div className="bg-app-panel shadow-sm rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left text-sm min-w-[700px]">
-            <thead className="bg-app-primary border-b border-border">
-              <tr>
-                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Shaxs</th>
-                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Rol</th>
-                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Bo'lim</th>
-                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Biometrik Holat</th>
-                <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Qo'shilgan Sana</th>
-                <th className="px-6 py-4 font-semibold text-text-secondary text-right">Amallar</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {filteredUsers.length > 0 ? filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-app-surface/40 transition-colors group">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <img src={user.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-app-surface object-cover border border-border shrink-0" />
-                      <div className="min-w-0">
-                        <PersonNameLink personId={user.id} name={user.fullName} className="font-medium text-text-primary truncate block" />
-                        <p className="text-xs text-text-primary0 truncate">{user.id}</p>
+      {activeTab === 'unknown' && <UnknownPersonsPanel searchQuery={searchQuery} />}
+
+      {activeTab === 'staff' && (
+        <div className="bg-app-panel shadow-sm rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left text-sm min-w-[700px]">
+              <thead className="bg-app-primary border-b border-border">
+                <tr>
+                  <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Shaxs</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Rol</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Bo'lim</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Biometrik Holat</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary whitespace-nowrap">Qo'shilgan Sana</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary text-right">Amallar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {filteredUsers.length > 0 ? filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-app-surface/40 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <img src={user.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-app-surface object-cover border border-border shrink-0" />
+                        <div className="min-w-0">
+                          <PersonNameLink personId={user.id} name={user.fullName} className="font-medium text-text-primary truncate block" />
+                          <p className="text-xs text-text-primary0 truncate">{user.id}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border whitespace-nowrap
-                      ${user.role === UserRole.ADMIN ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 
-                        user.role === UserRole.OPERATOR ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-app-surface text-text-secondary border-border'}
-                    `}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-text-secondary whitespace-nowrap">{user.department}</td>
-                  <td className="px-6 py-4">
-                    {user.hasEmbedding ? (
-                      <div className="flex items-center gap-1.5 text-emerald-500 whitespace-nowrap">
-                        <Fingerprint className="w-4 h-4" />
-                        <span className="text-xs font-medium">Vektor Kodlangan</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-text-primary0 whitespace-nowrap">
-                        <Fingerprint className="w-4 h-4" />
-                        <span className="text-xs">Kiritilmagan</span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-text-primary0 whitespace-nowrap">{user.enrolledDate}</td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border whitespace-nowrap
+                        ${user.role === UserRole.ADMIN ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                          user.role === UserRole.OPERATOR ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-app-surface text-text-secondary border-border'}
+                      `}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-text-secondary whitespace-nowrap">{user.department}</td>
+                    <td className="px-6 py-4">
+                      {user.hasEmbedding ? (
+                        <div className="flex items-center gap-1.5 text-emerald-500 whitespace-nowrap">
+                          <Fingerprint className="w-4 h-4" />
+                          <span className="text-xs font-medium">Vektor Kodlangan</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 text-text-primary0 whitespace-nowrap">
+                          <Fingerprint className="w-4 h-4" />
+                          <span className="text-xs">Kiritilmagan</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-text-primary0 whitespace-nowrap">{user.enrolledDate}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => openProfile(user.id)}
                           className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded"
@@ -310,37 +482,38 @@ export const UserManagement: React.FC<{ globalSearchTerm?: string }> = ({ global
                         >
                           <LayoutList className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDeleteUser(user.id)}
-                          className="text-text-primary0 hover:text-red-400 p-2 hover:bg-red-950/30 rounded" 
+                          className="text-text-primary0 hover:text-red-400 p-2 hover:bg-red-950/30 rounded"
                           title="Shaxsni Unutish (GDPR Erasure)"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => setRescanUser(user)}
-                          className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded" 
+                          className="text-text-primary0 hover:text-cyan-400 p-2 hover:bg-cyan-950/30 rounded"
                           title="Yuzni Qayta Skanerlash"
                         >
                           <ScanFace className="w-4 h-4" />
                         </button>
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-text-primary0">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <Search size={24} className="opacity-20" />
-                      <p>Sizning so'rovingiz bo'yicha hech kim topilmadi.</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                      </div>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-text-primary0">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Search size={24} className="opacity-20" />
+                        <p>Sizning so'rovingiz bo'yicha hech kim topilmadi.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {rescanUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in duration-200">

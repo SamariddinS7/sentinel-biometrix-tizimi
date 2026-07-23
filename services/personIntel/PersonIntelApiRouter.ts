@@ -18,6 +18,7 @@ import { personRelationshipEngine } from './PersonRelationshipEngine';
 import { personSearchEngine }       from './PersonSearchEngine';
 import { personReportEngine }       from './PersonReportEngine';
 import { vmsAuditService }          from '../vmsAuditService';
+import { getNextUnknownPersonId }   from './UnknownPersonCounter';
 import type { PersonSearchQuery, ReportType, ReportPeriod } from './types/PersonProfile';
 
 export const personIntelApiRouter = Router();
@@ -229,10 +230,10 @@ personIntelApiRouter.post('/find-or-create', async (req: Request, res: Response)
   // 4. Auto-create a new profile for this live detection
   const isKnown = !!(name && name !== 'UNKNOWN' && userId);
   const now = new Date().toISOString();
-  // Use userId as base if known, otherwise generate from trackId
+  // Use userId as base if known, otherwise assign a permanent sequential UNK-XXXX id
   const personId = isKnown
     ? `USR-${String(userId).slice(0, 8)}`
-    : `TRK-${String(trackId || Date.now()).slice(-8)}`;
+    : await getNextUnknownPersonId();
 
   // Check if personId already exists (race condition guard)
   const existing = await personProfileStore.get(personId);
@@ -312,17 +313,62 @@ personIntelApiRouter.get('/by-track/:trackId', async (req: Request, res: Respons
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 10. GET /api/persons/:id — full profile
+// 10. GET /api/persons/:id — full profile (auto-creates if not found)
 // ─────────────────────────────────────────────────────────────────────────────
 personIntelApiRouter.get('/:id', async (req: Request, res: Response) => {
   const personId = String(req.params.id);
-  const profile  = await personProfileStore.get(personId);
-  if (!profile) return fail(res, 404, 'Person not found');
+  let profile    = await personProfileStore.get(personId);
+
+  // Try secondary lookups: fusionId → trackId
+  if (!profile) profile = await personProfileStore.getByFusionId(personId);
+  if (!profile) profile = await personProfileStore.getByTrackId(personId);
+
+  // Auto-create a persistent profile for any detected person not yet in the store
+  if (!profile) {
+    const isKnownId = personId.startsWith('USR-') || personId.startsWith('UNK-');
+    const newPersonId = isKnownId ? personId : await getNextUnknownPersonId();
+    const now = new Date().toISOString();
+
+    profile = await personProfileStore.upsert({
+      personId:   newPersonId,
+      fusionId:   personId.startsWith('F-') ? personId : undefined,
+      fullName:   `Noma'lum shaxs ${newPersonId}`,
+      status:     'ANONYMOUS',
+      role:       'UNKNOWN',
+      faceGallery:       [],
+      appearanceGallery: [],
+      firstSeen:         now,
+      lastSeen:          now,
+      lastCameraId:      '',
+      currentlyPresent:  false,
+      totalDetections:   1,
+      totalRecognitions: 0,
+      cameraHistory:     [],
+      visitedZones:      [],
+      visitedBuildings:  [],
+      totalMovementRecords: 0,
+      notes:             '',
+      customAttributes:  {},
+      registrationHistory: [{
+        eventId:   `RE-${Date.now()}`,
+        timestamp: now,
+        operator:  operator(req),
+        action:    'AUTO_CREATED',
+        details:   `Profile auto-created on first access. Original ID: ${personId}.`,
+      }],
+      profileVersion: 0,
+      createdAt:  now,
+      updatedAt:  now,
+    });
+
+    // Register the original ID as a track mapping so future lookups resolve correctly
+    if (newPersonId !== personId) personProfileStore.registerTrackMapping(personId, newPersonId);
+  }
 
   await vmsAuditService.log({
     userId: operator(req), userName: operator(req), action: 'PERSON_PROFILE_ACCESSED',
     module: 'PersonIntelApiRouter', ipAddress: String(req.ip), status: 'INFO',
-    details: `Profile ${personId} (${profile.fullName}) accessed.`,
+    details: `Profile ${profile.personId} (${profile.fullName}) accessed.`,
   });
 
   ok(res, { profile });

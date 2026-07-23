@@ -30,8 +30,38 @@ export const usePersonProfile = () => useContext(PersonProfileContext);
 export const PersonProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const openProfile = useCallback((personId: string) => {
-    if (personId) setOpenId(personId);
+  /**
+   * Opens the profile modal for any person ID — known, anonymous, or raw track ID.
+   * Calls find-or-create so a persistent profile always exists before the modal opens.
+   */
+  const openProfile = useCallback(async (personId: string) => {
+    if (!personId) return;
+
+    try {
+      // Determine how to pass the ID to find-or-create
+      const isFusionId = /^F-\d+$/.test(personId);
+      const body = isFusionId
+        ? { fusionId: personId }
+        : { trackId: personId };
+
+      const res = await fetch('/api/persons/find-or-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const j = await res.json();
+        // Use the canonical personId returned by the server (may be a new UNK-XXXX id)
+        const resolvedId: string = j?.data?.personId ?? personId;
+        setOpenId(resolvedId);
+      } else {
+        // Fallback: open with original id; modal will auto-create via GET
+        setOpenId(personId);
+      }
+    } catch {
+      setOpenId(personId);
+    }
   }, []);
 
   return (

@@ -148,7 +148,13 @@ const AccessoryBadge: React.FC<{ label: string; icon: React.ReactNode; color: st
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function fetchPerson(id: string): Promise<PersonProfile | null> {
-  try { const r = await fetch(`/api/persons/${id}`); return r.ok ? r.json() : null; } catch { return null; }
+  try {
+    const r = await fetch(`/api/persons/${encodeURIComponent(id)}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    // API returns { success: true, data: { profile: {...} } }
+    return j?.data?.profile ?? null;
+  } catch { return null; }
 }
 async function fetchStats(id: string): Promise<PersonStatistics | null> {
   try { const r = await fetch(`/api/persons/${id}/statistics`); if (!r.ok) return null; const j = await r.json(); return j.data?.statistics ?? null; } catch { return null; }

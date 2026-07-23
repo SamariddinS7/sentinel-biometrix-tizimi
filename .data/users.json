@@ -62,6 +62,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-23T16:49:55.646Z"
+    },
+    {
+      "id": "36231531-57c3-4e4e-981d-75b9cc3fa71b",
+      "fullName": "gere",
+      "email": "besrw@vsdtb",
+      "passwordHash": "$2b$12$oU57eF2QHqy8VNasMcWxDePlpxBpdr/SsLN4z3vE3dd5wIf0hAOEi",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-23T17:47:48.754Z"
     }
   ]
 }
