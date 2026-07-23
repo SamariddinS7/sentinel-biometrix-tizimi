@@ -35,6 +35,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-23T05:13:43.759Z"
+    },
+    {
+      "id": "df392343-1383-46d8-b932-7d6d39b34237",
+      "fullName": "rfert",
+      "email": "werf@hgvkhsdc",
+      "passwordHash": "$2b$12$aGrcrvnwltm4IOgfZ6N8JOkzYV22x76mZuZhgCobQJxNLVdpUxBBm",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-23T07:23:03.393Z"
     }
   ]
 }

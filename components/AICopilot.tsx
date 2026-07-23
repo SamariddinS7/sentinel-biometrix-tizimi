@@ -90,9 +90,11 @@ const CHAT_SETTINGS_KEY = 'sentinel_ai_chat_settings';
 const QUICK_PROMPTS = [
   { label: "Tizim holati",      query: "Tizim holati qanday? Barcha komponentlar ishlayaptimi?",            icon: <Activity className="w-3.5 h-3.5" /> },
   { label: "Faol alarmlar",     query: "Hozir qanday faol alarmlar bor? Eng muhimini ko'rsat.",             icon: <Bell className="w-3.5 h-3.5" /> },
-  { label: "Shubhali faoliyat", query: "Oxirgi soatda shubhali faoliyat aniqlangan kameral bormi?",         icon: <AlertTriangle className="w-3.5 h-3.5" /> },
-  { label: "Xavfsizlik",        query: "Umumiy xavfsizlik holati haqida brifing ber.",                      icon: <Shield className="w-3.5 h-3.5" /> },
+  { label: "Shaxslar ro'yxati", query: "Hozir kameralarda ko'ringan shaxslar ro'yxatini ko'rsat.",          icon: <Users className="w-3.5 h-3.5" /> },
+  { label: "Noma'lum shaxslar", query: "Identifikatsiya qilinmagan ANONYMOUS statusli shaxslar bormi?",     icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+  { label: "Shaxs profili",     query: "Birinchi aniqlangan shaxsning to'liq profilini ko'rsat.",           icon: <Database className="w-3.5 h-3.5" /> },
   { label: "Kamera tekshiruv",  query: "Qaysi kameralar oflayn yoki muammo bor?",                          icon: <Camera className="w-3.5 h-3.5" /> },
+  { label: "Xavfsizlik",        query: "Umumiy xavfsizlik holati haqida brifing ber.",                      icon: <Shield className="w-3.5 h-3.5" /> },
   { label: "Hisobot tayyorla",  query: "Bugungi xavfsizlik hisobotini tayyorla.",                           icon: <FileText className="w-3.5 h-3.5" /> },
 ];
 
@@ -578,8 +580,35 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       });
       const data = await res.json();
       setActionFeedback({ success: data.success, message: data.message });
-      if (data.success && action.type === 'NAVIGATE_TO_VIEW' && data.data?.view && onNavigate) {
-        onNavigate(data.data.view as string);
+
+      if (data.success) {
+        const d = data.data;
+        // Navigate to view
+        if (action.type === 'NAVIGATE_TO_VIEW' && d?.view && onNavigate) {
+          onNavigate(d.view as string);
+        }
+        // Person profile actions — navigate to identities and inject a summary turn
+        const personNavTypes = ['VIEW_PERSON_PROFILE','ENROLL_PERSON','FIND_PERSON_BY_APPEARANCE',
+          'GET_PERSON_TIMELINE','GET_PERSON_MOVEMENT','GET_PERSON_STATISTICS','PERSON_PROFILE_REPORT',
+          'WATCHLIST_PERSON','ADD_PERSON_NOTE','UPDATE_PERSON_PROFILE','ARCHIVE_PERSON','MERGE_PERSONS'];
+        if (personNavTypes.includes(action.type)) {
+          const targetView = (d?.view as string) || 'identities';
+          if (onNavigate) onNavigate(targetView);
+          // Inject a copilot summary of the action result into the conversation
+          const summaryTurn: ConversationTurn = {
+            id: `action-result-${Date.now()}`, role: 'copilot', text: '', timestamp: new Date(),
+            response: {
+              answer: data.message,
+              reasoning: [{ step: 'Execute', summary: `Amal bajarildi: ${action.type}`, sources: ['person_profile_store'] }],
+              sourcesUsed: ['person_profile_store'],
+              proposedActions: [],
+              confidence: 1,
+              agentsInvoked: ['ActionExecutor'],
+              processingMs: 0,
+            },
+          };
+          setConversation(prev => [...prev, summaryTurn]);
+        }
       }
     } catch {
       setActionFeedback({ success: false, message: 'Amal bajarishda tarmoq xatosi.' });

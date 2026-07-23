@@ -138,7 +138,20 @@ export type CopilotActionType =
   | "LOCK_AREA"
   | "DISPATCH_RESOURCE"
   // ── Workflow Automation ───────────────────────────────────────────────────
-  | "EXECUTE_WORKFLOW";
+  | "EXECUTE_WORKFLOW"
+  // ── Person Profile Management ─────────────────────────────────────────────
+  | "VIEW_PERSON_PROFILE"
+  | "UPDATE_PERSON_PROFILE"
+  | "ADD_PERSON_NOTE"
+  | "WATCHLIST_PERSON"
+  | "ARCHIVE_PERSON"
+  | "ENROLL_PERSON"
+  | "GET_PERSON_TIMELINE"
+  | "GET_PERSON_MOVEMENT"
+  | "GET_PERSON_STATISTICS"
+  | "PERSON_PROFILE_REPORT"
+  | "MERGE_PERSONS"
+  | "FIND_PERSON_BY_APPEARANCE";
 
 export interface CopilotContext {
   userRole: string;
@@ -280,6 +293,27 @@ async function collectSystemContext(): Promise<Record<string, unknown>> {
     ctx.evidenceCount = 0;
   }
 
+  // Person profiles — recently seen & currently present
+  try {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const profiles = await personProfileStore.list({ limit: 20 });
+    ctx.recentPersons = profiles.map((p: any) => ({
+      personId: p.personId,
+      fullName: p.fullName ?? "Noma'lum",
+      status: p.status,
+      lastSeen: p.lastSeen,
+      lastCameraId: p.lastCameraId,
+      currentlyPresent: p.currentlyPresent,
+      totalDetections: p.totalDetections,
+    }));
+    ctx.personCount = profiles.length;
+    ctx.presentPersonCount = profiles.filter((p: any) => p.currentlyPresent).length;
+  } catch {
+    ctx.recentPersons = [];
+    ctx.personCount = 0;
+    ctx.presentPersonCount = 0;
+  }
+
   ctx.timestamp = new Date().toISOString();
   ctx.nodeEnv = process.env.NODE_ENV ?? "development";
 
@@ -299,6 +333,7 @@ type CopilotIntent =
   | "INVESTIGATION"
   | "SYSTEM_HEALTH"
   | "PERSON_SEARCH"
+  | "PROFILE_MANAGEMENT"
   | "GLOBAL_SEARCH"
   | "REPORT_GENERATION"
   | "NOTIFICATION"
@@ -324,6 +359,8 @@ function classifyIntent(query: string): CopilotIntent {
     return "EVIDENCE_MANAGEMENT";
   if (/alarm|ogohlantirish|signal|xavf|tahdid|tasdiql|resolve|escalat|arxiv/i.test(q))
     return "ALARM_MANAGEMENT";
+  if (/profil.*yangi|yangi.*profil|profil.*tahrir|tahrir.*profil|izoh qo'sh|eslatma qo'sh|nazorat.*ro'yxat|watchlist|arxivla|ro'yxatdan o'tkaz|enroll|profil.*hisobot|shaxs.*harakat|harakat.*yo'li|birlashtir.*shaxs|merge.*person/i.test(q))
+    return "PROFILE_MANAGEMENT";
   if (/tekshir|investigat|qidir|shaxs|person|kim|who|kuzat|track/i.test(q))
     return "INVESTIGATION";
   if (/tizim|system|health|sog'liq|cpu|ram|disk|server|metric|status/i.test(q))
@@ -473,7 +510,23 @@ NAVIGATION: NAVIGATE_TO_VIEW(view:"cameras"|"analytics"|"investigation"|"event_t
 
 WORKFLOW: EXECUTE_WORKFLOW(workflowId:"FIRE_RESPONSE"|"INTRUSION_RESPONSE"|"UNKNOWN_PERSON"|"MEDICAL_EMERGENCY"|"THEFT_RESPONSE", params?)
 
-HIGH-RISK ACTIONS (requiresConfirmation: true): LOCK_AREA, DISPATCH_RESOURCE, CLOSE_INCIDENT, MERGE_INCIDENTS, STOP_RECORDING, LOCK_EVIDENCE, SHARE_EVIDENCE, EXECUTE_WORKFLOW
+PERSON PROFILE MANAGEMENT:
+VIEW_PERSON_PROFILE(personId) — get full profile, open in UI
+UPDATE_PERSON_PROFILE(personId, fullName?, department?, position?, notes?) — update identity fields
+ADD_PERSON_NOTE(personId, note) — append operator note to profile
+WATCHLIST_PERSON(personId) — flag person for heightened surveillance
+ARCHIVE_PERSON(personId) — GDPR-compliant archive
+ENROLL_PERSON(personId, fullName, department?, position?, notes?) — manually register new identity
+GET_PERSON_TIMELINE(personId, since?, until?) — activity timeline
+GET_PERSON_MOVEMENT(personId, since?, until?) — cross-camera movement journey
+GET_PERSON_STATISTICS(personId) — detections, visits, behavior stats
+PERSON_PROFILE_REPORT(personId, reportType:"MOVEMENT"|"ATTENDANCE"|"INCIDENT"|"INVESTIGATION") — generate report
+MERGE_PERSONS(primaryId, secondaryId) — merge two duplicate identities
+FIND_PERSON_BY_APPEARANCE(color?, clothing?, description?) — appearance-based search
+
+CURRENTLY PRESENT PERSONS: ${JSON.stringify((systemCtx as any).recentPersons ?? [])}
+
+HIGH-RISK ACTIONS (requiresConfirmation: true): LOCK_AREA, DISPATCH_RESOURCE, CLOSE_INCIDENT, MERGE_INCIDENTS, STOP_RECORDING, LOCK_EVIDENCE, SHARE_EVIDENCE, EXECUTE_WORKFLOW, ARCHIVE_PERSON, WATCHLIST_PERSON, MERGE_PERSONS
 
 Respond with a JSON object (no markdown, raw JSON):
 {
@@ -553,6 +606,9 @@ function buildFallbackResponse(
   const evidenceCount = (systemCtx.evidenceCount as number) ?? 0;
   const stats = (systemCtx.incidentStats as any) ?? {};
 
+  const personCount = (systemCtx.personCount as number) ?? 0;
+  const presentCount = (systemCtx.presentPersonCount as number) ?? 0;
+
   const intentAnswers: Record<CopilotIntent, string> = {
     VISUAL_ANALYSIS: "Vizual tahlil uchun Gemini AI modeli kerak. GEMINI_API_KEY ni sozlang.",
     ALARM_MANAGEMENT: `Tizimda ${alarmCount} ta alarm mavjud (${criticalCount} ta kritik). Alarmlar paneliga o'tish uchun quyidagi amalni bajaring.`,
@@ -563,13 +619,14 @@ function buildFallbackResponse(
     EVIDENCE_MANAGEMENT: `Tizimda ${evidenceCount} ta dalil yozuvi mavjud. Dalillar bo'limiga o'ting.`,
     INVESTIGATION: "Tekshiruv markazi: SOC Investigation moduliga o'ting.",
     SYSTEM_HEALTH: `Tizim holati: ${JSON.stringify(systemCtx.systemHealth ?? {})}`,
-    PERSON_SEARCH: "Shaxs qidiruvi: Identity Intelligence moduliga o'ting.",
+    PERSON_SEARCH: `Shaxs qidiruvi: Tizimda ${personCount} ta profil, ${presentCount} ta hozir mavjud.`,
+    PROFILE_MANAGEMENT: `Shaxs profili boshqaruvi: Tizimda ${personCount} ta profil ro'yxatdan o'tgan. Identity Intelligence moduliga o'ting.`,
     GLOBAL_SEARCH: "Global qidiruv uchun qidiruv parametrlarini kiriting.",
     REPORT_GENERATION: "Hisobot yaratish: SOC Reports moduliga o'ting.",
     NOTIFICATION: "Bildirishnoma yuborish uchun mavzu va xabar matnini kiriting.",
     WORKFLOW_AUTOMATION: "Ish jarayonini ishga tushirish uchun jarayon turini tanlang.",
     NAVIGATION: "Kerakli bo'limga o'tish uchun quyidagi tugmani bosing.",
-    GENERAL_INTELLIGENCE: `Sentinel Operations Copilot faol. Tizimda ${alarmCount} ta alarm, ${camCount} ta kamera, ${evidenceCount} ta dalil yozuvi. GEMINI_API_KEY sozlanmagan.`,
+    GENERAL_INTELLIGENCE: `Sentinel Operations Copilot faol. Tizimda ${alarmCount} ta alarm, ${camCount} ta kamera, ${personCount} ta shaxs profili, ${evidenceCount} ta dalil yozuvi. GEMINI_API_KEY sozlanmagan.`,
     ACTION_REQUEST: "Amal bajarish uchun AI modeli kerak. GEMINI_API_KEY ni sozlang.",
   };
 
@@ -640,6 +697,7 @@ function buildDefaultActions(
       break;
     case "INVESTIGATION":
     case "PERSON_SEARCH":
+    case "PROFILE_MANAGEMENT":
     case "GLOBAL_SEARCH":
       actions.push({
         id: "nav_identities", label: "Shaxslar ma'lumotlar bazasini ochish",
@@ -664,7 +722,12 @@ function buildDefaultActions(
 // ─── Action Executor ──────────────────────────────────────────────────────────
 
 const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
-  VIEWER: ["NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS", "SEARCH_INCIDENTS", "SEARCH_TIMELINE", "SEARCH_FACE", "SEARCH_APPEARANCE", "SEARCH_EVIDENCE_DB"],
+  VIEWER: [
+    "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
+    "SEARCH_INCIDENTS", "SEARCH_TIMELINE", "SEARCH_FACE", "SEARCH_APPEARANCE", "SEARCH_EVIDENCE_DB",
+    "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
+    "FIND_PERSON_BY_APPEARANCE",
+  ],
   OPERATOR: [
     "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
     "SEARCH_INCIDENTS", "SEARCH_TIMELINE", "SEARCH_FACE", "SEARCH_APPEARANCE", "SEARCH_EVIDENCE_DB",
@@ -680,6 +743,9 @@ const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
     "TWIN_SHOW_COVERAGE", "TWIN_SHOW_BLIND_SPOTS", "TWIN_REPLAY_MOVEMENT", "TWIN_SWITCH_VIEW", "TWIN_LIVE_TRACKING",
     "ADD_INCIDENT_NOTE", "ATTACH_INCIDENT_EVIDENCE", "UPDATE_INCIDENT",
     "CREATE_EVIDENCE", "SEND_NOTIFICATION", "SEND_ALARM_NOTIFICATION", "SEND_INCIDENT_NOTIFICATION",
+    // Person profile (read + operator-level writes)
+    "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
+    "ADD_PERSON_NOTE", "UPDATE_PERSON_PROFILE", "PERSON_PROFILE_REPORT", "FIND_PERSON_BY_APPEARANCE",
   ],
   SUPERVISOR: [
     "NAVIGATE_TO_VIEW", "SEARCH_PERSONS", "SEARCH_CAMERAS", "SEARCH_VEHICLES", "SEARCH_ALARMS",
@@ -701,6 +767,10 @@ const ROLE_PERMISSIONS: Record<string, CopilotActionType[]> = {
     "SEND_NOTIFICATION", "SEND_ALARM_NOTIFICATION", "SEND_INCIDENT_NOTIFICATION",
     "DISPATCH_RESOURCE", "EXECUTE_WORKFLOW",
     "PTZ_MOVE", "PTZ_PRESET", "PTZ_PATROL", "PTZ_HOME", "PTZ_ZOOM",
+    // Person profile (full management)
+    "VIEW_PERSON_PROFILE", "GET_PERSON_TIMELINE", "GET_PERSON_MOVEMENT", "GET_PERSON_STATISTICS",
+    "ADD_PERSON_NOTE", "UPDATE_PERSON_PROFILE", "WATCHLIST_PERSON", "ARCHIVE_PERSON",
+    "ENROLL_PERSON", "PERSON_PROFILE_REPORT", "MERGE_PERSONS", "FIND_PERSON_BY_APPEARANCE",
   ],
   ADMIN: ["*" as any], // All actions
 };
@@ -1066,6 +1136,116 @@ async function _dispatch(
   // ── Workflow Automation ──────────────────────────────────────────────────────
   if (actionType === "EXECUTE_WORKFLOW") {
     return await executeWorkflow(params.workflowId as string, params, context, opId);
+  }
+
+  // ── Person Profile Management ─────────────────────────────────────────────────
+  if (actionType === "VIEW_PERSON_PROFILE") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const profile = await personProfileStore.get(params.personId as string);
+    if (!profile) return { success: false, message: `Shaxs ${params.personId} topilmadi.` };
+    return {
+      success: true,
+      message: `Shaxs profili: ${profile.fullName ?? "Noma'lum"} (${profile.personId}) — holat: ${profile.status}, oxirgi ko'rinish: ${profile.lastSeen ?? "—"}.`,
+      data: { profile, action: "VIEW_PERSON_PROFILE", personId: profile.personId, view: "identities" },
+    };
+  }
+  if (actionType === "UPDATE_PERSON_PROFILE") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const personId = params.personId as string;
+    const fields: Record<string, unknown> = {};
+    if (params.fullName)    fields.fullName    = params.fullName;
+    if (params.department)  fields.department  = params.department;
+    if (params.position)    fields.position    = params.position;
+    if (params.notes)       fields.notes       = params.notes;
+    await personProfileStore.updateField(personId, fields as any);
+    return { success: true, message: `Profil ${personId} yangilandi: ${Object.keys(fields).join(", ")}.`, data: { personId, fields } };
+  }
+  if (actionType === "ADD_PERSON_NOTE") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const personId = params.personId as string;
+    const note = params.note as string;
+    if (!note) return { success: false, message: "Izoh matni kiritilmagan." };
+    await personProfileStore.addNote(personId, note, context.userName);
+    return { success: true, message: `"${note}" izohi ${personId} profiliga qo'shildi.`, data: { personId, note } };
+  }
+  if (actionType === "WATCHLIST_PERSON") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const personId = params.personId as string;
+    await personProfileStore.addToWatchlist(personId, context.userName);
+    return { success: true, message: `Shaxs ${personId} nazorat ro'yxatiga qo'shildi.`, data: { personId, watchlisted: true } };
+  }
+  if (actionType === "ARCHIVE_PERSON") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const personId = params.personId as string;
+    await personProfileStore.archive(personId, context.userName);
+    return { success: true, message: `Shaxs ${personId} arxivlandi (GDPR).`, data: { personId, archived: true } };
+  }
+  if (actionType === "ENROLL_PERSON") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const now = new Date().toISOString();
+    const personId = (params.personId as string) || `P-${Date.now()}`;
+    const fullName = params.fullName as string;
+    if (!fullName) return { success: false, message: "To'liq ism kiritilishi shart." };
+    const profile = await personProfileStore.upsert({
+      personId, fullName,
+      department: params.department as string,
+      position: params.position as string,
+      notes: params.notes as string ?? "",
+      status: "KNOWN" as any, role: "EMPLOYEE" as any,
+      faceGallery: [], appearanceGallery: [],
+      firstSeen: now, lastSeen: now, lastCameraId: "",
+      currentlyPresent: false, totalDetections: 0, totalRecognitions: 0,
+      cameraHistory: [], visitedZones: [], visitedBuildings: [],
+      totalMovementRecords: 0, customAttributes: {},
+      registrationHistory: [{ eventId: `RE-${Date.now()}`, timestamp: now, operator: context.userName, action: "MANUALLY_ENROLLED" as any, details: `Copilot orqali ro'yxatdan o'tkazildi.` }],
+      profileVersion: 0, createdAt: now, updatedAt: now,
+    } as any);
+    return { success: true, message: `Yangi profil yaratildi: ${fullName} (${personId}).`, data: { profile, personId, view: "identities" } };
+  }
+  if (actionType === "GET_PERSON_TIMELINE") {
+    const { personInvestigationEngine } = await import("../personIntel/PersonInvestigationEngine.js");
+    const personId = params.personId as string;
+    const entries = await personInvestigationEngine.getTimeline(personId, {
+      since: params.since as string, until: params.until as string, limit: 20,
+    });
+    return { success: true, message: `${personId} uchun ${entries.length} ta vaqt chizig'i yozuvi topildi.`, data: { personId, entries, count: entries.length } };
+  }
+  if (actionType === "GET_PERSON_MOVEMENT") {
+    const { personInvestigationEngine } = await import("../personIntel/PersonInvestigationEngine.js");
+    const personId = params.personId as string;
+    const [replay, journey] = await Promise.all([
+      personInvestigationEngine.getMovementReplay(personId, { since: params.since as string, until: params.until as string, limit: 50 }),
+      personInvestigationEngine.getCrossCameraJourney(personId, { since: params.since as string, until: params.until as string }),
+    ]);
+    return { success: true, message: `${personId} harakati: ${replay.length} qadam, ${journey.length} kamera.`, data: { personId, replay, journey, view: "digital_twin" } };
+  }
+  if (actionType === "GET_PERSON_STATISTICS") {
+    const { personReportEngine } = await import("../personIntel/PersonReportEngine.js");
+    const personId = params.personId as string;
+    const stats = await personReportEngine.computeStatistics(personId, 30);
+    return { success: true, message: `${personId} statistikasi tayyorlandi.`, data: { personId, statistics: stats } };
+  }
+  if (actionType === "PERSON_PROFILE_REPORT") {
+    const { personReportEngine } = await import("../personIntel/PersonReportEngine.js");
+    const personId = params.personId as string;
+    const type = (params.reportType as any) ?? "MOVEMENT";
+    const period = (params.period as any) ?? "DAILY";
+    const report = await personReportEngine.generateReport(personId, type, period, context.userName);
+    return { success: true, message: `${personId} uchun ${type} hisoboti tayyorlandi.`, data: { personId, report, downloadUrl: `/api/persons/${personId}/report/${type}` } };
+  }
+  if (actionType === "MERGE_PERSONS") {
+    const { personProfileStore } = await import("../personIntel/PersonProfileStore.js");
+    const primaryId   = params.primaryId   as string;
+    const secondaryId = params.secondaryId as string;
+    if (!primaryId || !secondaryId) return { success: false, message: "primaryId va secondaryId talab qilinadi." };
+    await personProfileStore.merge(primaryId, secondaryId, context.userName);
+    return { success: true, message: `Shaxslar birlashtirildi: ${secondaryId} → ${primaryId}.`, data: { primaryId, secondaryId } };
+  }
+  if (actionType === "FIND_PERSON_BY_APPEARANCE") {
+    const { personInvestigationEngine } = await import("../personIntel/PersonInvestigationEngine.js");
+    const attrs = { color: params.color, clothing: params.clothing, description: params.description };
+    const results = await personInvestigationEngine.findByAppearance(attrs, 0.4);
+    return { success: true, message: `Ko'rinish bo'yicha qidiruv: ${results.length} ta natija topildi.`, data: { results, attrs, view: "identities" } };
   }
 
   return { success: false, message: `Noma'lum amal turi: '${actionType}'.` };
