@@ -2,6 +2,7 @@
 import React from 'react';
 import { X, User as UserIcon, ShieldCheck, Activity, Clock, MapPin, Fingerprint } from 'lucide-react';
 import { UserRole } from '../types';
+import { usePersonProfile } from '../context/PersonProfileContext';
 
 export interface PersonDetails {
     id: string;
@@ -23,6 +24,16 @@ interface PersonInfoModalProps {
 
 export const PersonInfoModal: React.FC<PersonInfoModalProps> = ({ person, onClose, onViewIntelligence }) => {
     if (!person) return null;
+
+    const { openProfile } = usePersonProfile();
+
+    const handleViewProfile = () => {
+        if (person.id) {
+            openProfile(person.id);
+            onClose();
+        }
+        if (onViewIntelligence) onViewIntelligence(person.id);
+    };
 
     const isUnknown = person.name === 'UNKNOWN' || person.status === 'UNKNOWN';
     const roleColor = person.role === UserRole.ADMIN ? 'text-purple-400' : 
@@ -119,13 +130,13 @@ export const PersonInfoModal: React.FC<PersonInfoModalProps> = ({ person, onClos
                      {/* Footer Actions */}
                     <div className="w-full flex gap-3">
                         <button 
-                            onClick={() => onViewIntelligence && onViewIntelligence(person.id)}
-                            className="flex-1 py-2.5 rounded-lg bg-app-surface hover:bg-app-surface text-text-secondary text-sm font-bold transition-colors"
+                            onClick={handleViewProfile}
+                            className="flex-1 py-2.5 rounded-lg bg-app-surface hover:bg-app-panel text-text-secondary hover:text-white text-sm font-bold transition-colors border border-border"
                         >
                             View History
                         </button>
                         <button 
-                            onClick={() => onViewIntelligence && onViewIntelligence(person.id)}
+                            onClick={handleViewProfile}
                             className="flex-1 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition-colors shadow-lg shadow-cyan-900/20"
                         >
                             View Profile
