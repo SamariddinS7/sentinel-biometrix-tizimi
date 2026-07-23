@@ -18,7 +18,7 @@ import {
   Camera, Database, Network, Lock, Play, RefreshCw, Copy, Check,
   AlertCircle, Terminal, TrendingUp, Users, Map,
   Bot, User, Trash2, MessageSquare, Sliders,
-  Mic, MapPin, MapPinned, Globe, Square, Video, Volume2, Workflow
+  Mic, MicOff, MapPin, MapPinned, Globe, Square, Video, Volume2, VolumeX, Workflow
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -32,7 +32,7 @@ import { EnterpriseArchitecturePlatform } from './EnterpriseArchitecturePlatform
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MainTab = 'copilot' | 'chat' | 'tools' | 'platform' | 'architecture';
-type ToolTab = 'audio' | 'maps' | 'media';
+type ToolTab = 'audio' | 'maps' | 'media' | 'voice';
 
 type ReasoningStep = 'Observe' | 'Understand' | 'Reason' | 'Plan' | 'Verify' | 'Execute' | 'Explain' | 'Learn';
 
@@ -242,7 +242,9 @@ const CopilotMessage: React.FC<{
   turn: ConversationTurn;
   onAction: (action: ProposedAction) => Promise<void>;
   executingActionId: string | null;
-}> = ({ turn, onAction, executingActionId }) => {
+  onSpeak?: (text: string) => void;
+  isSpeakingThis?: boolean;
+}> = ({ turn, onAction, executingActionId, onSpeak, isSpeakingThis }) => {
   const [copied, setCopied] = useState(false);
   const copyText = () => {
     navigator.clipboard.writeText(turn.response?.answer ?? turn.text);
@@ -293,9 +295,20 @@ const CopilotMessage: React.FC<{
               <div className="mt-3 pt-2.5 border-t border-white/10">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-white/30 uppercase tracking-wide">Ishonch darajasi</span>
-                  <button onClick={copyText} className="text-white/20 hover:text-white/50 transition-colors">
-                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {onSpeak && (
+                      <button
+                        onClick={() => onSpeak(r.answer)}
+                        className={`transition-colors ${isSpeakingThis ? 'text-cyan-400 animate-pulse' : 'text-white/20 hover:text-cyan-400'}`}
+                        title={isSpeakingThis ? 'To\'xtatish' : 'Ovoz bilan o\'qish'}
+                      >
+                        {isSpeakingThis ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+                      </button>
+                    )}
+                    <button onClick={copyText} className="text-white/20 hover:text-white/50 transition-colors">
+                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  </div>
                 </div>
                 <ConfidenceMeter value={r.confidence} />
               </div>
@@ -430,6 +443,19 @@ export const AICopilot: React.FC<AICopilotProps> = ({
   const [isMediaLoading, setIsMediaLoading] = useState(false);
   const [mediaReport, setMediaReport] = useState<string | null>(null);
 
+  // ── VOICE ASSISTANT ─────────────────────────────────────────────────────────
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [speakingTurnId, setSpeakingTurnId] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const voiceTranscriptRef = useRef('');
+  const isVoiceModeRef = useRef(false);
+  const speakFnRef = useRef<((text: string, turnId?: string) => void) | null>(null);
+  const sendQueryRef = useRef<((queryText?: string) => Promise<void>) | null>(null);
+
   // ── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/copilot/context', {
@@ -471,7 +497,18 @@ export const AICopilot: React.FC<AICopilotProps> = ({
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isRecording]);
 
+  // keep voice refs in sync
+  useEffect(() => { isVoiceModeRef.current = isVoiceMode; }, [isVoiceMode]);
+  useEffect(() => {
+    // pre-load voices list so first speak is instant
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+  }, []);
+
   // ── COPILOT handlers ─────────────────────────────────────────────────────────
+  // keep sendQueryRef current so voice callbacks always get the latest version
   const sendQuery = useCallback(async (queryText?: string) => {
     const text = (queryText ?? copilotInput).trim();
     if ((!text && !attachedImage) || isProcessing) return;
@@ -501,7 +538,16 @@ export const AICopilot: React.FC<AICopilotProps> = ({
         }),
       });
       const data: CopilotResponse = await res.json();
-      setConversation(prev => [...prev, { id: `copilot-${Date.now()}`, role: 'copilot', text: '', timestamp: new Date(), response: data }]);
+      const responseTurnId = `copilot-${Date.now()}`;
+      setConversation(prev => [...prev, { id: responseTurnId, role: 'copilot', text: '', timestamp: new Date(), response: data }]);
+      // auto-speak in Jarvis voice mode
+      if (isVoiceModeRef.current && data.answer) {
+        setVoiceStatus('speaking');
+        setSpeakingTurnId(responseTurnId);
+        speakFnRef.current?.(data.answer, responseTurnId);
+      } else {
+        setVoiceStatus('idle');
+      }
 
       const navAction = data.proposedActions.find(a => a.type === 'NAVIGATE_TO_VIEW' && !a.requiresConfirmation);
       if (navAction && onNavigate) onNavigate(navAction.params.view as string);
@@ -514,6 +560,8 @@ export const AICopilot: React.FC<AICopilotProps> = ({
       setIsProcessing(false);
     }
   }, [copilotInput, attachedImage, isProcessing, conversation, currentView, activeCameraId, activeAlarmId, onNavigate]);
+  // keep ref current so voice callbacks always get the latest sendQuery
+  useEffect(() => { sendQueryRef.current = sendQuery; }, [sendQuery]);
 
   const handleAction = async (action: ProposedAction) => {
     setExecutingActionId(action.id);
@@ -695,6 +743,117 @@ export const AICopilot: React.FC<AICopilotProps> = ({
     }
   };
 
+  // ── VOICE ASSISTANT handlers ─────────────────────────────────────────────────
+
+  const speakText = useCallback((text: string, turnId?: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    // strip markdown symbols for cleaner spoken output
+    const clean = text.replace(/[*#`_~]/g, '').trim().slice(0, 1200);
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = 'uz-UZ';
+    utterance.rate = 1.0;
+    utterance.pitch = 0.9;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.lang.startsWith('uz'))
+      || voices.find(v => v.lang.startsWith('ru'))
+      || voices.find(v => v.lang.startsWith('en'))
+      || voices[0];
+    if (preferred) utterance.voice = preferred;
+    utterance.onstart  = () => { setIsSpeaking(true);  setVoiceStatus('speaking'); if (turnId) setSpeakingTurnId(turnId); };
+    utterance.onend    = () => { setIsSpeaking(false); setVoiceStatus('idle'); setSpeakingTurnId(null); };
+    utterance.onerror  = () => { setIsSpeaking(false); setVoiceStatus('idle'); setSpeakingTurnId(null); };
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  useEffect(() => { speakFnRef.current = speakText; }, [speakText]);
+
+  const stopSpeaking = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setVoiceStatus(v => v === 'speaking' ? 'idle' : v);
+    setSpeakingTurnId(null);
+  }, []);
+
+  const startListening = useCallback(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setSpeakingTurnId(null);
+
+    const recognition = new SR();
+    recognitionRef.current = recognition;
+    recognition.lang = 'uz-UZ';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    voiceTranscriptRef.current = '';
+    setVoiceTranscript('');
+    setVoiceStatus('listening');
+    setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      let text = '';
+      for (let i = 0; i < event.results.length; i++) {
+        text += event.results[i][0].transcript;
+      }
+      voiceTranscriptRef.current = text;
+      setVoiceTranscript(text);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      const transcript = voiceTranscriptRef.current.trim();
+      voiceTranscriptRef.current = '';
+      setVoiceTranscript('');
+      if (transcript) {
+        setVoiceStatus('processing');
+        sendQueryRef.current?.(transcript);
+      } else {
+        setVoiceStatus('idle');
+      }
+    };
+
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'aborted') setVoiceStatus('idle');
+      setIsListening(false);
+    };
+
+    recognition.start();
+  }, []);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+  }, []);
+
+  const toggleVoiceMode = useCallback(() => {
+    setIsVoiceMode(prev => {
+      if (prev) {
+        recognitionRef.current?.stop();
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        setIsListening(false);
+        setIsSpeaking(false);
+        setVoiceStatus('idle');
+        setVoiceTranscript('');
+        setSpeakingTurnId(null);
+      } else {
+        setMainTab('copilot');
+      }
+      return !prev;
+    });
+  }, []);
+
+  const handleSpeakResponse = useCallback((text: string, turnId: string) => {
+    if (isSpeaking && speakingTurnId === turnId) {
+      stopSpeaking();
+    } else {
+      speakText(text, turnId);
+    }
+  }, [isSpeaking, speakingTurnId, stopSpeaking, speakText]);
+
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full bg-[#0d1117] text-white overflow-hidden">
@@ -741,13 +900,28 @@ export const AICopilot: React.FC<AICopilotProps> = ({
                 </span>
               )}
             </div>
-            <button
-              onClick={() => setConversation(prev => [prev[0]])}
-              className="text-white/20 hover:text-white/50 transition-colors p-1.5 rounded-lg hover:bg-white/5"
-              title="Suhbatni tozalash"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={toggleVoiceMode}
+                className={`flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full border transition-all ${
+                  isVoiceMode
+                    ? 'text-cyan-300 bg-cyan-500/15 border-cyan-500/30 shadow shadow-cyan-500/20'
+                    : 'text-white/30 border-white/10 hover:text-white/60 hover:border-white/20'
+                }`}
+                title={isVoiceMode ? "Jarvis rejimini o'chirish" : "Jarvis ovozli boshqaruvni yoqish"}
+              >
+                {isVoiceMode
+                  ? <><Volume2 className="w-3 h-3 animate-pulse" /> Jarvis faol</>
+                  : <><Mic className="w-3 h-3" /> Jarvis</>}
+              </button>
+              <button
+                onClick={() => setConversation(prev => [prev[0]])}
+                className="text-white/20 hover:text-white/50 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+                title="Suhbatni tozalash"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           <AgentStatusBar meta={meta} />
@@ -787,7 +961,16 @@ export const AICopilot: React.FC<AICopilotProps> = ({
 
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5 min-h-0">
             {conversation.map(turn => (
-              <CopilotMessage key={turn.id} turn={turn} onAction={handleAction} executingActionId={executingActionId} />
+              <CopilotMessage
+                key={turn.id}
+                turn={turn}
+                onAction={handleAction}
+                executingActionId={executingActionId}
+                onSpeak={turn.role === 'copilot' && turn.response?.answer
+                  ? (text) => handleSpeakResponse(text, turn.id)
+                  : undefined}
+                isSpeakingThis={speakingTurnId === turn.id}
+              />
             ))}
             <AnimatePresence>
               {isProcessing && (
@@ -808,6 +991,77 @@ export const AICopilot: React.FC<AICopilotProps> = ({
             </AnimatePresence>
             <div ref={copilotBottomRef} />
           </div>
+
+          {/* ── Jarvis voice status overlay ─────────────────────────────── */}
+          <AnimatePresence>
+            {isVoiceMode && voiceStatus !== 'idle' && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                className="shrink-0 mx-4 mb-2 rounded-2xl border border-cyan-500/20 bg-[#070e1a] overflow-hidden"
+              >
+                <div className="flex items-center gap-4 px-4 py-3">
+                  {/* animated Jarvis rings */}
+                  <div className="relative w-12 h-12 shrink-0 flex items-center justify-center">
+                    {voiceStatus === 'listening' && (
+                      <>
+                        <span className="absolute inset-0 rounded-full border-2 border-cyan-500/50 animate-ping" style={{ animationDuration: '1s' }} />
+                        <span className="absolute inset-1.5 rounded-full border border-cyan-400/30 animate-ping" style={{ animationDuration: '1.4s' }} />
+                        <span className="absolute inset-3 rounded-full bg-cyan-500/10 animate-pulse" />
+                      </>
+                    )}
+                    {voiceStatus === 'processing' && (
+                      <>
+                        <span className="absolute inset-0 rounded-full border-2 border-yellow-500/50 animate-ping" style={{ animationDuration: '0.8s' }} />
+                        <span className="absolute inset-2 rounded-full border border-yellow-400/30 animate-pulse" />
+                      </>
+                    )}
+                    {voiceStatus === 'speaking' && (
+                      <>
+                        <span className="absolute inset-0 rounded-full border-2 border-emerald-500/50 animate-ping" style={{ animationDuration: '1.2s' }} />
+                        <span className="absolute inset-1.5 rounded-full border border-emerald-400/30 animate-ping" style={{ animationDuration: '0.9s' }} />
+                        <span className="absolute inset-3 rounded-full bg-emerald-500/10 animate-pulse" />
+                      </>
+                    )}
+                    <div className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center ${
+                      voiceStatus === 'listening'  ? 'bg-cyan-500/25'    :
+                      voiceStatus === 'processing' ? 'bg-yellow-500/20'  : 'bg-emerald-500/20'
+                    }`}>
+                      {voiceStatus === 'listening'  && <Mic      className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />}
+                      {voiceStatus === 'processing' && <Loader2  className="w-3.5 h-3.5 text-yellow-400 animate-spin" />}
+                      {voiceStatus === 'speaking'   && <Volume2  className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-[11px] font-bold uppercase tracking-widest mb-0.5 ${
+                      voiceStatus === 'listening'  ? 'text-cyan-400'    :
+                      voiceStatus === 'processing' ? 'text-yellow-400'  : 'text-emerald-400'
+                    }`}>
+                      {voiceStatus === 'listening'  ? 'Tinglayapman...'        :
+                       voiceStatus === 'processing' ? 'Tahlil qilinmoqda...'  : 'Javob o\'qilmoqda...'}
+                    </p>
+                    {voiceTranscript && (
+                      <p className="text-[12px] text-white/55 truncate">"{voiceTranscript}"</p>
+                    )}
+                    {voiceStatus === 'speaking' && (
+                      <p className="text-[10px] text-emerald-400/50 italic">To'xtatish uchun bosing</p>
+                    )}
+                  </div>
+                  {voiceStatus === 'speaking' && (
+                    <button onClick={stopSpeaking}
+                      className="shrink-0 p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all border border-white/8">
+                      <VolumeX className="w-4 h-4" />
+                    </button>
+                  )}
+                  {voiceStatus === 'listening' && (
+                    <button onClick={stopListening}
+                      className="shrink-0 p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-all border border-red-500/30">
+                      <Square className="w-4 h-4" fill="currentColor" />
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="shrink-0 px-4 pb-4 pt-2 border-t border-white/10 bg-app-panel/30">
             {attachedImage && (
@@ -833,6 +1087,25 @@ export const AICopilot: React.FC<AICopilotProps> = ({
                 className="flex-1 bg-transparent text-[13px] text-white/90 placeholder-white/20 outline-none leading-relaxed"
                 onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 120) + 'px'; }}
               />
+              {/* voice push-to-talk button */}
+              <button
+                onClick={isListening ? stopListening : startListening}
+                disabled={voiceStatus === 'processing' || isProcessing}
+                className={`shrink-0 mb-0.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+                  isListening
+                    ? 'text-red-400 animate-pulse'
+                    : voiceStatus === 'processing'
+                    ? 'text-yellow-400'
+                    : isVoiceMode
+                    ? 'text-cyan-400 hover:text-cyan-300'
+                    : 'text-white/25 hover:text-cyan-400'
+                }`}
+                title={isListening ? "Tinglashni to'xtatish" : "Ovozli buyruq berish"}
+              >
+                {isListening
+                  ? <Square className="w-5 h-5" fill="currentColor" />
+                  : <Mic className="w-5 h-5" />}
+              </button>
               <button
                 onClick={() => sendQuery()}
                 disabled={(!copilotInput.trim() && !attachedImage) || isProcessing}
@@ -979,6 +1252,7 @@ export const AICopilot: React.FC<AICopilotProps> = ({
               { id: 'audio' as ToolTab, label: 'Ovoz Yozish', icon: <Mic size={15} /> },
               { id: 'maps'  as ToolTab, label: 'Xarita Qidiruv', icon: <MapPinned size={15} /> },
               { id: 'media' as ToolTab, label: 'Media Tahlil', icon: <FileText size={15} /> },
+              { id: 'voice' as ToolTab, label: 'Jarvis Ovoz', icon: <Volume2 size={15} /> },
             ] as const).map(tool => (
               <button
                 key={tool.id}
@@ -1179,6 +1453,119 @@ export const AICopilot: React.FC<AICopilotProps> = ({
                     </div>
                     {mediaReport}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* ── 4. JARVIS VOICE CONTROL ────────────────────────────────── */}
+            {activeTool === 'voice' && (
+              <div className="space-y-5 max-w-sm mx-auto">
+                <div>
+                  <h3 className="text-sm font-bold text-white/80 flex items-center gap-2">
+                    <Volume2 className="text-cyan-400" size={16} /> Jarvis Ovozli Boshqaruv
+                  </h3>
+                  <p className="text-[11px] text-white/30 mt-1">
+                    Sentinel tizimini ovoz orqali boshqaring — Jarvis uslubida so'zlashib buyruqlar bering va AI javob o'qib beradi.
+                  </p>
+                </div>
+
+                {/* Big Jarvis activation button */}
+                <div className="flex flex-col items-center py-8 gap-5 border border-dashed border-white/10 rounded-2xl bg-white/2 relative overflow-hidden">
+                  {/* ring animations */}
+                  {isVoiceMode && (
+                    <>
+                      <span className="absolute inset-0 rounded-full pointer-events-none">
+                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-cyan-500/15 animate-ping" style={{ animationDuration: '2s' }} />
+                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-36 h-36 rounded-full border border-cyan-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
+                      </span>
+                    </>
+                  )}
+                  <div className={`relative z-10 flex flex-col items-center gap-3`}>
+                    <button
+                      onClick={toggleVoiceMode}
+                      className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
+                        isVoiceMode
+                          ? 'bg-cyan-500 hover:bg-cyan-400 shadow-cyan-500/40'
+                          : 'bg-white/10 hover:bg-white/15 border border-white/20'
+                      }`}
+                    >
+                      {isVoiceMode
+                        ? <Volume2 size={32} className="text-white animate-pulse" />
+                        : <MicOff size={32} className="text-white/50" />}
+                    </button>
+                    <div className="text-center">
+                      <p className={`text-sm font-bold ${isVoiceMode ? 'text-cyan-400' : 'text-white/40'}`}>
+                        {isVoiceMode ? 'JARVIS FAOL' : 'JARVIS O\'CHIQ'}
+                      </p>
+                      <p className="text-[10px] text-white/25 mt-0.5">
+                        {isVoiceMode ? 'Mikrofon tugmasini bosib gaplashing' : 'Yoqish uchun bosing'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status indicators */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Ovozni eshitish', active: isListening,  color: 'cyan',    icon: <Mic size={14} /> },
+                    { label: 'AI tahlil',        active: voiceStatus === 'processing', color: 'yellow', icon: <Loader2 size={14} className={voiceStatus === 'processing' ? 'animate-spin' : ''} /> },
+                    { label: 'Javob o\'qish',    active: isSpeaking,   color: 'emerald', icon: <Volume2 size={14} /> },
+                  ].map(s => (
+                    <div key={s.label} className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
+                      s.active
+                        ? `bg-${s.color}-500/10 border-${s.color}-500/25`
+                        : 'bg-white/3 border-white/8'
+                    }`}>
+                      <span className={s.active ? `text-${s.color}-400` : 'text-white/25'}>{s.icon}</span>
+                      <span className={`text-[10px] font-semibold text-center leading-tight ${s.active ? `text-${s.color}-400` : 'text-white/25'}`}>{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Mic push-to-talk button */}
+                {isVoiceMode && (
+                  <button
+                    onClick={isListening ? stopListening : startListening}
+                    disabled={voiceStatus === 'processing'}
+                    className={`w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow disabled:opacity-40 disabled:cursor-not-allowed ${
+                      isListening
+                        ? 'bg-red-500 hover:bg-red-400 text-white'
+                        : 'bg-cyan-500 hover:bg-cyan-400 text-white'
+                    }`}
+                  >
+                    {isListening
+                      ? <><Square size={16} fill="currentColor" /> Tinglashni to'xtatish</>
+                      : <><Mic size={16} /> Gapiring...</>}
+                  </button>
+                )}
+
+                {/* How to use */}
+                <div className="bg-white/3 border border-white/8 rounded-xl p-3.5 space-y-2">
+                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Buyruq namunalari:</p>
+                  {[
+                    'Tizim holati qanday?',
+                    'Faol alarmlarni ko\'rsat',
+                    'Shubhali kameralani tekshir',
+                    'Xavfsizlik hisobotini tayyorla',
+                    'Qaysi kameralar oflayn?',
+                  ].map(cmd => (
+                    <button
+                      key={cmd}
+                      onClick={() => { if (isVoiceMode) { setMainTab('copilot'); sendQueryRef.current?.(cmd); } else { setMainTab('copilot'); setCopilotInput(cmd); } }}
+                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-white/5 transition-colors"
+                    >
+                      <span className="text-cyan-400/50 shrink-0">›</span>
+                      <span className="text-[11px] text-white/50">{cmd}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* TTS stop button when speaking */}
+                {isSpeaking && (
+                  <button onClick={stopSpeaking}
+                    className="w-full py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold text-xs flex items-center justify-center gap-2 border border-red-500/25 transition-all">
+                    <VolumeX size={14} /> O'qishni to'xtatish
+                  </button>
                 )}
               </div>
             )}

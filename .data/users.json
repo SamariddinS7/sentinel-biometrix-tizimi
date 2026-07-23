@@ -26,6 +26,15 @@
       "department": "General",
       "role": "OPERATOR",
       "createdAt": "2026-07-22T17:23:05.875Z"
+    },
+    {
+      "id": "27d3907f-127c-4356-acf6-e9d6d67e6215",
+      "fullName": "qwre",
+      "email": "sdrf@dsfgwt",
+      "passwordHash": "$2b$12$mOiJG4GQokC2dQcS9u5vMOhMdA.Y9ydGg9Y/VyMw/88vdkVZ8BpG6",
+      "department": "General",
+      "role": "OPERATOR",
+      "createdAt": "2026-07-23T05:13:43.759Z"
     }
   ]
 }
