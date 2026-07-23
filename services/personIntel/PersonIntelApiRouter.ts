@@ -199,6 +199,98 @@ personIntelApiRouter.post('/merge', async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POST /api/persons/find-or-create
+// Resolves or auto-creates a profile from live detection data.
+// Tries: trackId → fusionId → userId → creates new.
+// Used by PersonInfoModal "View Profile" button.
+// ─────────────────────────────────────────────────────────────────────────────
+personIntelApiRouter.post('/find-or-create', async (req: Request, res: Response) => {
+  const { trackId, fusionId, userId, name, role, department, cameraId, location } = req.body ?? {};
+
+  // 1. Try fusionId (F-XXXXX) directly
+  if (fusionId) {
+    const p = await personProfileStore.getByFusionId(String(fusionId));
+    if (p) return ok(res, { personId: p.personId, profile: p, created: false });
+  }
+
+  // 2. Try trackId resolution
+  if (trackId) {
+    const p = await personProfileStore.getByTrackId(String(trackId));
+    if (p) return ok(res, { personId: p.personId, profile: p, created: false });
+  }
+
+  // 3. Try userId match (scan recent profiles)
+  if (userId) {
+    const all = await personProfileStore.list({ limit: 500 });
+    const matched = all.find(p => p.userId === String(userId));
+    if (matched) return ok(res, { personId: matched.personId, profile: matched, created: false });
+  }
+
+  // 4. Auto-create a new profile for this live detection
+  const isKnown = !!(name && name !== 'UNKNOWN' && userId);
+  const now = new Date().toISOString();
+  // Use userId as base if known, otherwise generate from trackId
+  const personId = isKnown
+    ? `USR-${String(userId).slice(0, 8)}`
+    : `TRK-${String(trackId || Date.now()).slice(-8)}`;
+
+  // Check if personId already exists (race condition guard)
+  const existing = await personProfileStore.get(personId);
+  if (existing) return ok(res, { personId: existing.personId, profile: existing, created: false });
+
+  const profile = await personProfileStore.upsert({
+    personId,
+    fusionId:     fusionId ?? undefined,
+    userId:       userId   ?? undefined,
+    fullName:     (name && name !== 'UNKNOWN') ? String(name) : `Anonymous-${personId.slice(-5)}`,
+    employeeId:   undefined,
+    department:   department ?? undefined,
+    organization: undefined,
+    position:     undefined,
+    status:       isKnown ? 'KNOWN' : 'ANONYMOUS',
+    role:         role ?? 'UNKNOWN',
+    faceGallery:       [],
+    appearanceGallery: [],
+    firstSeen:    now,
+    lastSeen:     now,
+    lastCameraId: cameraId ?? '',
+    currentlyPresent: true,
+    totalDetections:   1,
+    totalRecognitions: isKnown ? 1 : 0,
+    cameraHistory:     cameraId ? [{
+      cameraId:        String(cameraId),
+      cameraName:      String(cameraId),
+      location:        location ?? 'Live Camera Feed',
+      firstSeenAt:     now,
+      lastSeenAt:      now,
+      visitCount:      1,
+      totalDurationMs: 0,
+      recognitionCount: isKnown ? 1 : 0,
+    }] : [],
+    visitedZones:     location ? [String(location)] : [],
+    visitedBuildings: [],
+    totalMovementRecords: 0,
+    notes:            '',
+    customAttributes: {},
+    registrationHistory: [{
+      eventId:   `RE-${Date.now()}`,
+      timestamp: now,
+      operator:  operator(req),
+      action:    'AUTO_CREATED',
+      details:   `Auto-created from live camera detection. TrackId: ${trackId}, Camera: ${cameraId}.`,
+    }],
+    profileVersion: 0,
+    createdAt:     now,
+    updatedAt:     now,
+  });
+
+  // Register trackId → personId for future lookups
+  if (trackId) personProfileStore.registerTrackMapping(String(trackId), personId);
+
+  ok(res, { personId, profile, created: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/persons/by-fusion/:fusionId — look up profile by F-XXXXX fusion ID
 // Used by PersonProfilePanel when a bounding-box click supplies a fusionId.
 // ─────────────────────────────────────────────────────────────────────────────
