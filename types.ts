@@ -92,7 +92,10 @@ export interface SystemStats {
 export enum CameraType {
   USB = 'USB',
   RTSP = 'RTSP',
-  REMOTE = 'REMOTE_LINK'
+  REMOTE = 'REMOTE_LINK',
+  YOUTUBE = 'YOUTUBE',
+  HLS = 'HLS',
+  WEBRTC = 'WEBRTC'
 }
 
 export enum CameraStatus {

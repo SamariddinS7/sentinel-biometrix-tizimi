@@ -501,13 +501,31 @@ const SingleCameraView: React.FC<{
                             ) : (
                                 <div className="w-full h-full relative flex items-center justify-center">
                                     {isOnline ? (
-                                        getYouTubeEmbedUrl(camera.streamUrl) ? (
+                                        // ── YouTube ──────────────────────────────────────
+                                        (camera.type === CameraType.YOUTUBE || getYouTubeEmbedUrl(camera.streamUrl)) ? (
                                             <iframe
                                                 src={getYouTubeEmbedUrl(camera.streamUrl)!}
                                                 className="w-full h-full border-0"
                                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                                 allowFullScreen
                                             />
+                                        // ── HLS ──────────────────────────────────────────
+                                        ) : camera.type === CameraType.HLS ? (
+                                            <video
+                                                key={camera.streamUrl}
+                                                src={camera.streamUrl}
+                                                autoPlay muted playsInline controls
+                                                className={`w-full h-full object-${objectFit}`}
+                                                onError={() => onStreamError(camera.id, 'HLS oqim yuklanmadi')}
+                                            />
+                                        // ── WebRTC ────────────────────────────────────────
+                                        ) : camera.type === CameraType.WEBRTC ? (
+                                            <div className="w-full h-full flex flex-col items-center justify-center bg-indigo-950/30">
+                                                <Globe size={48} className="text-indigo-400 mb-3 animate-pulse" />
+                                                <p className="text-sm font-mono text-indigo-300 font-bold">WebRTC Stream</p>
+                                                <p className="text-xs text-text-muted mt-2 px-6 text-center font-mono break-all">{camera.streamUrl}</p>
+                                            </div>
+                                        // ── RTSP / HTTP / REMOTE ──────────────────────────
                                         ) : (
                                             <>
                                                 {streamMode === 'mjpeg' ? (
@@ -1014,13 +1032,31 @@ const CameraCard: React.FC<{
                 ) : (
                     <div className="w-full h-full absolute inset-0 overflow-hidden">
                         {isOnline ? (
-                            getYouTubeEmbedUrl(camera.streamUrl) ? (
+                            // ── YouTube ──────────────────────────────────────
+                            (camera.type === CameraType.YOUTUBE || getYouTubeEmbedUrl(camera.streamUrl)) ? (
                                 <iframe
                                     src={getYouTubeEmbedUrl(camera.streamUrl)!}
                                     className="w-full h-full border-0 absolute inset-0"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                     allowFullScreen
                                 />
+                            // ── HLS (.m3u8) ──────────────────────────────────
+                            ) : camera.type === CameraType.HLS ? (
+                                <video
+                                    key={camera.streamUrl}
+                                    src={camera.streamUrl}
+                                    autoPlay muted playsInline
+                                    className="w-full h-full object-cover absolute inset-0"
+                                    onError={() => onStreamError(camera.id, 'HLS oqim yuklanmadi')}
+                                />
+                            // ── WebRTC ────────────────────────────────────────
+                            ) : camera.type === CameraType.WEBRTC ? (
+                                <div className="w-full h-full absolute inset-0 flex flex-col items-center justify-center bg-indigo-950/40">
+                                    <Globe size={28} className="text-indigo-400 mb-2 animate-pulse" />
+                                    <p className="text-[10px] font-mono text-indigo-300">WebRTC</p>
+                                    <p className="text-[9px] text-text-muted mt-1 px-3 text-center font-mono break-all">{camera.streamUrl}</p>
+                                </div>
+                            // ── RTSP / HTTP / REMOTE ──────────────────────────
                             ) : (
                                  <>
                                     {streamMode === 'mjpeg' ? (
@@ -1416,12 +1452,18 @@ export const CamerasView: React.FC = () => {
 
     const validateStreamUrl = (type: CameraType, url: string) => {
         if (!url) return false;
-        if (type === CameraType.USB) return /^\d+$/.test(url);
-        // Relax RTSP validation since we build it manually
-        if (type === CameraType.RTSP) return url.startsWith('rtsp://') || url.startsWith('rtsps://');
-        if (type === CameraType.REMOTE) return url.startsWith('http') || url.startsWith('ws');
+        if (type === CameraType.USB)     return /^\d+$/.test(url);
+        if (type === CameraType.RTSP)    return url.startsWith('rtsp://') || url.startsWith('rtsps://');
+        if (type === CameraType.YOUTUBE) return !!(getYouTubeEmbedUrl(url)); // must be a valid YouTube URL
+        if (type === CameraType.HLS)     return url.includes('.m3u8') || url.startsWith('http');
+        if (type === CameraType.WEBRTC)  return url.startsWith('ws') || url.startsWith('http');
+        if (type === CameraType.REMOTE)  return url.startsWith('http') || url.startsWith('ws');
         return true;
     };
+
+    // Types that are rendered purely in the browser — no backend RTSP registry needed
+    const isFrontendOnlyType = (type: CameraType) =>
+        [CameraType.YOUTUBE, CameraType.HLS, CameraType.WEBRTC, CameraType.REMOTE].includes(type);
 
     const openAddModal = () => {
         setNewCam({ 
@@ -1490,9 +1532,11 @@ export const CamerasView: React.FC = () => {
 
         const type = newCam.type || CameraType.RTSP;
         if (!validateStreamUrl(type, finalUrl)) {
-            if (type === CameraType.USB) setFormError("USB indeksi raqam bo'lishi kerak (masalan: 0).");
-            else if (type === CameraType.RTSP) setFormError("Noto'g'ri RTSP konfiguratsiyasi.");
-            else setFormError("Havola to'g'ri URL bo'lishi kerak (http/ws).");
+            if (type === CameraType.USB)     setFormError("USB indeksi raqam bo'lishi kerak (masalan: 0).");
+            else if (type === CameraType.RTSP)    setFormError("Noto'g'ri RTSP konfiguratsiyasi.");
+            else if (type === CameraType.YOUTUBE) setFormError("Noto'g'ri YouTube havola. youtube.com/watch?v=... yoki youtu.be/... formatida kiriting.");
+            else if (type === CameraType.HLS)     setFormError("HLS URL noto'g'ri. .m3u8 bilan tugashi yoki http bilan boshlanishi kerak.");
+            else setFormError("Havola to'g'ri URL bo'lishi kerak (http yoki ws bilan boshlansin).");
             return;
         }
         
@@ -1518,21 +1562,25 @@ export const CamerasView: React.FC = () => {
             // 1. Persist to Firestore
             await cameraService.saveCamera(cam);
 
-            // 2. Tell backend registry to connect (updates status to ONLINE on success)
-            const token = localStorage.getItem('sentinel_token') || '';
-            const connectRes = await fetch(`/api/cameras/${cam.id}/connect`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-            });
-
-            if (connectRes.ok) {
-                // Mark as ONLINE in Firestore
+            // 2. For browser-rendered types (YouTube, HLS, WebRTC, HTTP) — no backend RTSP registry needed.
+            //    Mark ONLINE immediately since the browser handles playback directly.
+            if (isFrontendOnlyType(type)) {
                 await cameraService.saveCamera({ ...cam, status: CameraStatus.ONLINE, lastActive: new Date().toISOString() });
             } else {
-                const errBody = await connectRes.json().catch(() => ({}));
-                const errMsg = errBody.error || `Server javobi: ${connectRes.status}`;
-                // Private-network cameras are expected to fail from the cloud – save with ERROR + message
-                await cameraService.saveCamera({ ...cam, status: CameraStatus.ERROR, errorMsg: errMsg });
+                // 3. RTSP/USB — ask backend registry to open the stream
+                const token = localStorage.getItem('sentinel_token') || '';
+                const connectRes = await fetch(`/api/cameras/${cam.id}/connect`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                });
+
+                if (connectRes.ok) {
+                    await cameraService.saveCamera({ ...cam, status: CameraStatus.ONLINE, lastActive: new Date().toISOString() });
+                } else {
+                    const errBody = await connectRes.json().catch(() => ({}));
+                    const errMsg = errBody.error || `Server javobi: ${connectRes.status}`;
+                    await cameraService.saveCamera({ ...cam, status: CameraStatus.ERROR, errorMsg: errMsg });
+                }
             }
 
             const cameras = await cameraService.getAllCameras();
@@ -1619,9 +1667,12 @@ export const CamerasView: React.FC = () => {
 
     const streamInputProps = (() => {
         switch(newCam.type) {
-            case CameraType.USB: return { label: 'USB Device Index', placeholder: '0 (Default Webcam)' };
-            case CameraType.REMOTE: return { label: 'Secure WebSocket / HTTP Link', placeholder: 'wss://api.sentinel.sys/stream/v8x...' };
-            default: return { label: 'RTSP Connection String', placeholder: 'rtsp://admin:pass@192.168.1.55:554/stream' };
+            case CameraType.USB:     return { label: 'USB qurilma indeksi', placeholder: '0 (Standart veb-kamera)', icon: 'usb' };
+            case CameraType.YOUTUBE: return { label: 'YouTube havola', placeholder: 'https://www.youtube.com/watch?v=XXXXXXXXXXX  yoki  https://youtu.be/...', icon: 'youtube' };
+            case CameraType.HLS:     return { label: 'HLS oqim URL (m3u8)', placeholder: 'https://example.com/live/stream.m3u8', icon: 'globe' };
+            case CameraType.WEBRTC:  return { label: 'WebRTC signal URL', placeholder: 'wss://signal.example.com/stream/cam1', icon: 'globe' };
+            case CameraType.REMOTE:  return { label: 'HTTP/WebSocket havola', placeholder: 'http://192.168.1.100:8080/video  yoki  wss://...', icon: 'globe' };
+            default:                 return { label: 'RTSP ulanish manzili', placeholder: 'rtsp://admin:pass@192.168.1.55:554/stream1', icon: 'globe' };
         }
     })();
 
@@ -2385,11 +2436,14 @@ export const CamerasView: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-medium text-text-secondary mb-1">Manba turi</label>
                                     <select className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary outline-none"
-                                        value={newCam.type} onChange={e => setNewCam({...newCam, type: e.target.value as CameraType})}
+                                        value={newCam.type} onChange={e => setNewCam({...newCam, type: e.target.value as CameraType, streamUrl: ''})}
                                     >
-                                        <option value={CameraType.RTSP}>RTSP oqim</option>
-                                        <option value={CameraType.USB}>USB kamera</option>
-                                        <option value={CameraType.REMOTE}>Masofaviy havola</option>
+                                        <option value={CameraType.RTSP}>📡 RTSP oqim</option>
+                                        <option value={CameraType.USB}>🔌 USB kamera</option>
+                                        <option value={CameraType.YOUTUBE}>▶️ YouTube havola</option>
+                                        <option value={CameraType.HLS}>📺 HLS oqim (m3u8)</option>
+                                        <option value={CameraType.WEBRTC}>🌐 WebRTC</option>
+                                        <option value={CameraType.REMOTE}>🔗 HTTP / WebSocket</option>
                                     </select>
                                 </div>
                                 <div>
@@ -2472,14 +2526,51 @@ export const CamerasView: React.FC = () => {
                                     </div>
                                 </div>
                             ) : (
-                                <div>
-                                    <label className="block text-xs font-medium text-text-secondary mb-1 flex items-center gap-2">
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-medium text-text-secondary flex items-center gap-2">
                                         {newCam.type === CameraType.USB ? <Usb size={12}/> : <Globe size={12}/>}
                                         {streamInputProps.label}
+                                        {newCam.type === CameraType.YOUTUBE && <span className="text-red-400">*</span>}
                                     </label>
-                                    <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none font-mono text-sm" placeholder={streamInputProps.placeholder}
-                                        value={newCam.streamUrl || ''} onChange={e => setNewCam({...newCam, streamUrl: e.target.value})}
+                                    <input
+                                        type="text"
+                                        className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none font-mono text-sm"
+                                        placeholder={streamInputProps.placeholder}
+                                        value={newCam.streamUrl || ''}
+                                        onChange={e => setNewCam({...newCam, streamUrl: e.target.value})}
                                     />
+                                    {/* Type-specific hints */}
+                                    {newCam.type === CameraType.YOUTUBE && (
+                                        <p className="text-[10px] text-cyan-400/70 flex items-center gap-1">
+                                            ▶️ YouTube havola qo'ying — tizim avtomatik embed qiladi. Live va oddiy videolar qo'llab-quvvatlanadi.
+                                        </p>
+                                    )}
+                                    {newCam.type === CameraType.HLS && (
+                                        <p className="text-[10px] text-cyan-400/70 flex items-center gap-1">
+                                            📺 HLS oqim (Apple Safari, iOS da to'liq ishlaydi. Chrome da hls.js kerak).
+                                        </p>
+                                    )}
+                                    {newCam.type === CameraType.WEBRTC && (
+                                        <p className="text-[10px] text-amber-400/70 flex items-center gap-1">
+                                            🌐 WebRTC signal server manzilini kiriting. Barcha zamonaviy brauzerlar qo'llab-quvvatlaydi.
+                                        </p>
+                                    )}
+                                    {newCam.type === CameraType.REMOTE && (
+                                        <p className="text-[10px] text-text-muted flex items-center gap-1">
+                                            🔗 HTTP MJPEG oqim yoki WebSocket video manzilini kiriting.
+                                        </p>
+                                    )}
+                                    {/* YouTube URL preview */}
+                                    {newCam.type === CameraType.YOUTUBE && newCam.streamUrl && getYouTubeEmbedUrl(newCam.streamUrl) && (
+                                        <div className="text-[10px] text-emerald-400 bg-emerald-950/30 border border-emerald-900/40 rounded p-2 font-mono break-all">
+                                            ✓ Haqiqiy YouTube havola aniqlandi — saqlangach avtomatik ulanadi.
+                                        </div>
+                                    )}
+                                    {newCam.type === CameraType.YOUTUBE && newCam.streamUrl && !getYouTubeEmbedUrl(newCam.streamUrl) && (
+                                        <div className="text-[10px] text-amber-400 bg-amber-950/30 border border-amber-900/40 rounded p-2 font-mono">
+                                            ⚠ YouTube havola tanilmadi. To'liq URL kiriting (masalan: https://www.youtube.com/watch?v=...).
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
