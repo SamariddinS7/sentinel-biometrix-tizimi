@@ -1562,23 +1562,46 @@ export const CamerasView: React.FC = () => {
             // 1. Persist to Firestore
             await cameraService.saveCamera(cam);
 
-            // 2. For browser-rendered types (YouTube, HLS, WebRTC, HTTP) — no backend RTSP registry needed.
+            // 2. For browser-rendered types (YouTube, HLS, WebRTC, HTTP) — no backend needed.
             //    Mark ONLINE immediately since the browser handles playback directly.
             if (isFrontendOnlyType(type)) {
                 await cameraService.saveCamera({ ...cam, status: CameraStatus.ONLINE, lastActive: new Date().toISOString() });
             } else {
-                // 3. RTSP/USB — ask backend registry to open the stream
+                // 3. RTSP/USB — ask backend registry to register + open the stream.
+                //    202 = registered but stream unreachable (expected in cloud / remote host).
+                //    5xx = hard server error.
                 const token = localStorage.getItem('sentinel_token') || '';
-                const connectRes = await fetch(`/api/cameras/${cam.id}/connect`, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-                });
+                let connectRes: Response;
+                try {
+                    connectRes = await fetch(`/api/cameras/${cam.id}/connect`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                    });
+                } catch {
+                    // Network-level failure — still save as CONNECTING so user can retry
+                    await cameraService.saveCamera({
+                        ...cam, status: CameraStatus.CONNECTING,
+                        errorMsg: "Server bilan bog'lanib bo'lmadi. RTSP ulanish mahalliy tarmoqda bajariladi.",
+                        lastActive: new Date().toISOString()
+                    });
+                    return;
+                }
 
-                if (connectRes.ok) {
+                const body = await connectRes.json().catch(() => ({})) as any;
+
+                if (connectRes.ok && body.success) {
+                    // Fully connected
                     await cameraService.saveCamera({ ...cam, status: CameraStatus.ONLINE, lastActive: new Date().toISOString() });
+                } else if (connectRes.status === 202 || body.connecting) {
+                    // Registered in backend but physically unreachable (expected for cloud-hosted RTSP)
+                    await cameraService.saveCamera({
+                        ...cam, status: CameraStatus.CONNECTING,
+                        errorMsg: body.hint || "RTSP oqim mahalliy tarmoq orqali ulanmoqda...",
+                        lastActive: new Date().toISOString()
+                    });
                 } else {
-                    const errBody = await connectRes.json().catch(() => ({}));
-                    const errMsg = errBody.error || `Server javobi: ${connectRes.status}`;
+                    // Genuine error (auth failure, 404, etc.)
+                    const errMsg = body.error || `Server javobi: ${connectRes.status}`;
                     await cameraService.saveCamera({ ...cam, status: CameraStatus.ERROR, errorMsg: errMsg });
                 }
             }
@@ -2436,7 +2459,15 @@ export const CamerasView: React.FC = () => {
                                 <div>
                                     <label className="block text-xs font-medium text-text-secondary mb-1">Manba turi</label>
                                     <select className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary outline-none"
-                                        value={newCam.type} onChange={e => setNewCam({...newCam, type: e.target.value as CameraType, streamUrl: ''})}
+                                        value={newCam.type ?? CameraType.RTSP}
+                                        onChange={e => {
+                                            const t = e.target.value as CameraType;
+                                            setNewCam({ ...newCam, type: t, streamUrl: '' });
+                                            // Reset RTSP fields when switching to/from RTSP
+                                            if (t === CameraType.RTSP) {
+                                                setRtspDetails({ ip: '', port: '554', user: '', pass: '', path: '/stream' });
+                                            }
+                                        }}
                                     >
                                         <option value={CameraType.RTSP}>📡 RTSP oqim</option>
                                         <option value={CameraType.USB}>🔌 USB kamera</option>

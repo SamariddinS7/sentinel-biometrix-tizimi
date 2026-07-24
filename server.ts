@@ -1186,13 +1186,50 @@ async function startServer() {
     res.json(stats);
   });
 
-  // Connect a registered camera
+  // Connect a camera — auto-registers from Firestore if not already in the registry
   app.post("/api/cameras/:id/connect", requireRole(["ADMIN", "SUPERVISOR"]), async (req, res) => {
+    const cameraId = String(req.params.id);
     try {
-      await cameraRegistry.connect(String(req.params.id));
-      res.json({ success: true, cameraId: req.params.id });
+      // ── 1. Auto-register from Firestore if missing from in-memory registry ──
+      if (!cameraRegistry.isRegistered(cameraId)) {
+        const snap = await getDoc(doc(db, "cameras", cameraId));
+        if (!snap.exists()) {
+          res.status(404).json({ error: `Kamera topilmadi: ${cameraId}` });
+          return;
+        }
+        const config = { id: snap.id, ...snap.data() } as any;
+        // register() internally calls connect(); catch stream errors separately
+        try {
+          await cameraRegistry.register(config);
+          res.json({ success: true, cameraId, registered: true });
+          return;
+        } catch (regErr: any) {
+          // Registration succeeded (camera is in map) but stream open failed —
+          // this is expected for RTSP cameras on a remote/cloud host.
+          // Return a partial-success so the frontend can mark CONNECTING, not ERROR.
+          res.status(202).json({
+            success: false,
+            connecting: true,
+            cameraId,
+            error: regErr.message,
+            hint: "RTSP ulanish mahalliy tarmoqdan Edge Proxy orqali amalga oshiriladi.",
+          });
+          return;
+        }
+      }
+
+      // ── 2. Already registered — just (re)connect ──
+      await cameraRegistry.connect(cameraId);
+      res.json({ success: true, cameraId });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      // Stream open failed for an already-registered camera — same partial-success pattern
+      res.status(202).json({
+        success: false,
+        connecting: true,
+        cameraId,
+        error: err.message,
+        hint: "RTSP ulanish mahalliy tarmoqdan Edge Proxy orqali amalga oshiriladi.",
+      });
     }
   });
 
