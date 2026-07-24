@@ -1820,114 +1820,135 @@ export const AICopilot: React.FC<AICopilotProps> = ({
               </div>
             )}
 
-            {/* ── 4. JARVIS VOICE CONTROL ────────────────────────────────── */}
+            {/* ── 4. JONLI OVOZLI SUHBAT ─────────────────────────────────── */}
             {activeTool === 'voice' && (
-              <div className="space-y-5 max-w-sm mx-auto">
+              <div className="space-y-4 max-w-sm mx-auto">
+
                 <div>
                   <h3 className="text-sm font-bold text-white/80 flex items-center gap-2">
-                    <Volume2 className="text-cyan-400" size={16} /> Jarvis Ovozli Boshqaruv
+                    <Mic className="text-emerald-400" size={16} /> Jonli Ovozli Suhbat
                   </h3>
-                  <p className="text-[11px] text-white/30 mt-1">
-                    Sentinel tizimini ovoz orqali boshqaring — Jarvis uslubida so'zlashib buyruqlar bering va AI javob o'qib beradi.
+                  <p className="text-[11px] text-white/35 mt-1 leading-relaxed">
+                    Bosing — AI bilan oddiy telefon suhbatidek gaplashing. Javob berishi bilanoq mic qayta ochiladi.
                   </p>
                 </div>
 
-                {/* Big Jarvis activation button */}
-                <div className="flex flex-col items-center py-8 gap-5 border border-dashed border-white/10 rounded-2xl bg-white/2 relative overflow-hidden">
-                  {/* ring animations */}
+                {/* ── Katta boshlash / to'xtatish tugmasi ── */}
+                <div className="relative flex flex-col items-center justify-center py-10 rounded-3xl border border-white/8 bg-gradient-to-b from-white/3 to-transparent overflow-hidden">
+                  {/* Fon halqalari */}
                   {isVoiceMode && (
-                    <>
-                      <span className="absolute inset-0 rounded-full pointer-events-none">
-                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 rounded-full border border-cyan-500/15 animate-ping" style={{ animationDuration: '2s' }} />
-                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-36 h-36 rounded-full border border-cyan-500/20 animate-ping" style={{ animationDuration: '1.5s' }} />
-                      </span>
-                    </>
-                  )}
-                  <div className={`relative z-10 flex flex-col items-center gap-3`}>
-                    <button
-                      onClick={toggleVoiceMode}
-                      className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all active:scale-95 ${
-                        isVoiceMode
-                          ? 'bg-cyan-500 hover:bg-cyan-400 shadow-cyan-500/40'
-                          : 'bg-white/10 hover:bg-white/15 border border-white/20'
-                      }`}
-                    >
-                      {isVoiceMode
-                        ? <Volume2 size={32} className="text-white animate-pulse" />
-                        : <MicOff size={32} className="text-white/50" />}
-                    </button>
-                    <div className="text-center">
-                      <p className={`text-sm font-bold ${isVoiceMode ? 'text-cyan-400' : 'text-white/40'}`}>
-                        {isVoiceMode ? 'JARVIS FAOL' : 'JARVIS O\'CHIQ'}
-                      </p>
-                      <p className="text-[10px] text-white/25 mt-0.5">
-                        {isVoiceMode ? 'Mikrofon tugmasini bosib gaplashing' : 'Yoqish uchun bosing'}
-                      </p>
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className={`absolute w-52 h-52 rounded-full border animate-ping opacity-20 ${
+                        voiceStatus === 'speaking' ? 'border-emerald-400' :
+                        voiceStatus === 'processing' ? 'border-amber-400' : 'border-cyan-400'
+                      }`} style={{ animationDuration: '2s' }} />
+                      <span className={`absolute w-36 h-36 rounded-full border animate-ping opacity-30 ${
+                        voiceStatus === 'speaking' ? 'border-emerald-400' :
+                        voiceStatus === 'processing' ? 'border-amber-400' : 'border-cyan-400'
+                      }`} style={{ animationDuration: '1.4s' }} />
+                      <span className={`absolute w-24 h-24 rounded-full opacity-15 animate-pulse ${
+                        voiceStatus === 'speaking' ? 'bg-emerald-500' :
+                        voiceStatus === 'processing' ? 'bg-amber-500' : 'bg-cyan-500'
+                      }`} />
                     </div>
+                  )}
+
+                  <button
+                    onClick={toggleVoiceMode}
+                    className={`relative z-10 w-24 h-24 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 active:scale-95 ${
+                      isVoiceMode
+                        ? 'bg-red-500/90 hover:bg-red-500 shadow-red-500/30 border-2 border-red-400/50'
+                        : 'bg-gradient-to-br from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-cyan-500/40 border-2 border-cyan-400/30'
+                    }`}
+                  >
+                    {isVoiceMode
+                      ? <Square size={34} className="text-white" fill="white" />
+                      : <Mic size={34} className="text-white" />}
+                  </button>
+
+                  <div className="relative z-10 mt-4 text-center space-y-1">
+                    <p className={`text-sm font-bold tracking-wide ${isVoiceMode ? 'text-red-400' : 'text-white/60'}`}>
+                      {isVoiceMode ? "Suhbat to'xtatilsin" : 'Suhbatni boshlash'}
+                    </p>
+                    <p className="text-[10px] text-white/25">
+                      {isVoiceMode
+                        ? (voiceStatus === 'listening'  ? '● Tinglayapman...'
+                          : voiceStatus === 'processing' ? '◌ O\'ylayapman...'
+                          : voiceStatus === 'speaking'   ? '◉ Gapirmoqdaman...'
+                          : '○ Tayyor')
+                        : 'Bosing va gaplashing — to\'xtamasdan suhbat'}
+                    </p>
                   </div>
                 </div>
 
-                {/* Status indicators */}
-                <div className="grid grid-cols-3 gap-2">
+                {/* ── 3 bosqich indikatori ── */}
+                <div className="grid grid-cols-3 gap-2 text-center">
                   {[
-                    { label: 'Ovozni eshitish', active: isListening,  color: 'cyan',    icon: <Mic size={14} /> },
-                    { label: 'AI tahlil',        active: voiceStatus === 'processing', color: 'yellow', icon: <Loader2 size={14} className={voiceStatus === 'processing' ? 'animate-spin' : ''} /> },
-                    { label: 'Javob o\'qish',    active: isSpeaking,   color: 'emerald', icon: <Volume2 size={14} /> },
+                    { label: 'Tinglash', active: isListening,             icon: <Mic size={13} />,     bg: 'bg-cyan-500/15',    border: 'border-cyan-500/30',    text: 'text-cyan-400'    },
+                    { label: "O'ylash",  active: voiceStatus==='processing', icon: <Loader2 size={13} className={voiceStatus==='processing'?'animate-spin':''} />, bg: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-400' },
+                    { label: 'Javob',    active: isSpeaking,               icon: <Volume2 size={13} />, bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-400' },
                   ].map(s => (
-                    <div key={s.label} className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all ${
-                      s.active
-                        ? `bg-${s.color}-500/10 border-${s.color}-500/25`
-                        : 'bg-white/3 border-white/8'
-                    }`}>
-                      <span className={s.active ? `text-${s.color}-400` : 'text-white/25'}>{s.icon}</span>
-                      <span className={`text-[10px] font-semibold text-center leading-tight ${s.active ? `text-${s.color}-400` : 'text-white/25'}`}>{s.label}</span>
+                    <div key={s.label} className={`flex flex-col items-center gap-1.5 py-3 px-1 rounded-xl border transition-all duration-300 ${s.active ? `${s.bg} ${s.border}` : 'bg-white/3 border-white/8'}`}>
+                      <span className={`transition-colors ${s.active ? s.text : 'text-white/20'}`}>{s.icon}</span>
+                      <span className={`text-[9px] font-bold uppercase tracking-wider transition-colors ${s.active ? s.text : 'text-white/20'}`}>{s.label}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Mic push-to-talk button */}
-                {isVoiceMode && (
-                  <button
-                    onClick={isListening ? stopListening : startListening}
-                    disabled={voiceStatus === 'processing'}
-                    className={`w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow disabled:opacity-40 disabled:cursor-not-allowed ${
-                      isListening
-                        ? 'bg-red-500 hover:bg-red-400 text-white'
-                        : 'bg-cyan-500 hover:bg-cyan-400 text-white'
-                    }`}
-                  >
-                    {isListening
-                      ? <><Square size={16} fill="currentColor" /> Tinglashni to'xtatish</>
-                      : <><Mic size={16} /> Gapiring...</>}
-                  </button>
-                )}
+                {/* ── Qanday ishlaydi ── */}
+                <div className="rounded-2xl bg-white/3 border border-white/8 p-4 space-y-3">
+                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Qanday ishlaydi</p>
+                  {[
+                    { n: '1', color: 'text-cyan-400',    label: 'Yuqoridagi tugmani bosing' },
+                    { n: '2', color: 'text-cyan-400',    label: 'Savolingizni so\'zlab bering' },
+                    { n: '3', color: 'text-amber-400',   label: 'AI tahlil qiladi' },
+                    { n: '4', color: 'text-emerald-400', label: 'AI ovoz bilan javob beradi' },
+                    { n: '5', color: 'text-cyan-400',    label: 'Mic avtomatik ochiladi — davom eting' },
+                  ].map(step => (
+                    <div key={step.n} className="flex items-start gap-3">
+                      <span className={`text-[11px] font-black w-4 shrink-0 mt-0.5 ${step.color}`}>{step.n}</span>
+                      <span className="text-[11px] text-white/50 leading-snug">{step.label}</span>
+                    </div>
+                  ))}
+                </div>
 
-                {/* How to use */}
-                <div className="bg-white/3 border border-white/8 rounded-xl p-3.5 space-y-2">
-                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Buyruq namunalari:</p>
+                {/* ── Tezkor savollar (suhbatni u yerda boshlaydi) ── */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-bold text-white/25 uppercase tracking-widest px-1">Tezkor boshlash:</p>
                   {[
                     'Tizim holati qanday?',
-                    'Faol alarmlarni ko\'rsat',
-                    'Shubhali kameralani tekshir',
-                    'Xavfsizlik hisobotini tayyorla',
+                    'Faol alarmlar bormi?',
+                    'Shubhali faoliyatni tahlil qil',
                     'Qaysi kameralar oflayn?',
                   ].map(cmd => (
                     <button
                       key={cmd}
-                      onClick={() => { if (isVoiceMode) { setMainTab('copilot'); sendQueryRef.current?.(cmd); } else { setMainTab('copilot'); setCopilotInput(cmd); } }}
-                      className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-white/5 transition-colors"
+                      onClick={() => {
+                        setMainTab('copilot');
+                        if (!isVoiceMode) {
+                          // Suhbatni yoqib, keyin savolni jo'nat
+                          setIsVoiceMode(true);
+                          isVoiceModeRef.current = true;
+                          setTimeout(() => sendQueryRef.current?.(cmd), 300);
+                        } else {
+                          sendQueryRef.current?.(cmd);
+                        }
+                      }}
+                      className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/3 hover:bg-white/8 border border-white/6 hover:border-white/15 transition-all group"
                     >
-                      <span className="text-cyan-400/50 shrink-0">›</span>
-                      <span className="text-[11px] text-white/50">{cmd}</span>
+                      <Mic size={12} className="text-cyan-400/50 group-hover:text-cyan-400 transition-colors shrink-0" />
+                      <span className="text-[11px] text-white/50 group-hover:text-white/75 transition-colors">{cmd}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* TTS stop button when speaking */}
+                {/* Speaking paytida to'xtatish */}
                 {isSpeaking && (
-                  <button onClick={stopSpeaking}
-                    className="w-full py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-semibold text-xs flex items-center justify-center gap-2 border border-red-500/25 transition-all">
-                    <VolumeX size={14} /> O'qishni to'xtatish
+                  <button
+                    onClick={() => { stopSpeaking(); setTimeout(() => startListeningRef.current?.(), 200); }}
+                    className="w-full py-2.5 rounded-xl bg-amber-500/12 hover:bg-cyan-500/15 text-amber-300 hover:text-cyan-300 text-xs font-semibold flex items-center justify-center gap-2 border border-amber-500/20 hover:border-cyan-500/25 transition-all"
+                  >
+                    <Mic size={13} /> To'xtat va men gapiraman
                   </button>
                 )}
               </div>
