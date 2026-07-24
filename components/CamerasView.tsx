@@ -1194,6 +1194,7 @@ export const CamerasView: React.FC = () => {
 
     // Validation State
     const [formError, setFormError] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Delete Confirmation Modal State
     const [cameraToDelete, setCameraToDelete] = useState<Camera | null>(null);
@@ -1427,7 +1428,7 @@ export const CamerasView: React.FC = () => {
             type: CameraType.RTSP, fps: 15, resolution: '1280x720', status: CameraStatus.ONLINE,
             focalLength: 2.8, sensorWidth: 4.8, sensorHeight: 3.6 
         });
-        setRtspDetails({ ip: '', port: '554', user: 'admin', pass: '', path: '/stream' });
+        setRtspDetails({ ip: '', port: '554', user: '', pass: '', path: '/stream' });
         setIsEditing(false);
         setFormError(null);
         setIsAddModalOpen(true);
@@ -1469,7 +1470,7 @@ export const CamerasView: React.FC = () => {
     const handleSaveCamera = async () => {
         setFormError(null);
         if (!newCam.name || !newCam.location) {
-            setFormError("Name and Location are required.");
+            setFormError("Kamera nomi va joylashuvi majburiy.");
             return;
         }
         
@@ -1477,42 +1478,71 @@ export const CamerasView: React.FC = () => {
         let finalUrl = newCam.streamUrl || '';
         if (newCam.type === CameraType.RTSP) {
             if (!rtspDetails.ip) {
-                setFormError("IP Address is required for RTSP.");
+                setFormError("RTSP uchun IP manzil kiritilishi shart.");
                 return;
             }
-            const authPart = rtspDetails.user ? `${rtspDetails.user}:${rtspDetails.pass}@` : '';
+            const authPart = rtspDetails.user
+                ? `${rtspDetails.user}${rtspDetails.pass ? `:${rtspDetails.pass}` : ''}@`
+                : '';
             finalUrl = `rtsp://${authPart}${rtspDetails.ip}:${rtspDetails.port}${rtspDetails.path}`;
             newCam.streamUrl = finalUrl;
         }
 
         const type = newCam.type || CameraType.RTSP;
         if (!validateStreamUrl(type, finalUrl)) {
-            if (type === CameraType.USB) setFormError("USB Index must be a number (e.g. 0).");
-            else if (type === CameraType.RTSP) setFormError("Invalid RTSP Configuration.");
-            else setFormError("Remote Link must be a valid URL (http/ws).");
+            if (type === CameraType.USB) setFormError("USB indeksi raqam bo'lishi kerak (masalan: 0).");
+            else if (type === CameraType.RTSP) setFormError("Noto'g'ri RTSP konfiguratsiyasi.");
+            else setFormError("Havola to'g'ri URL bo'lishi kerak (http/ws).");
             return;
         }
         
-        const camId = isEditing && newCam.id ? newCam.id : `CAM-${crypto.randomUUID()}`;
-        const cam: Camera = {
-            id: camId,
-            name: newCam.name || 'New Camera',
-            location: newCam.location || 'Unknown',
-            type: type,
-            streamUrl: finalUrl,
-            fps: newCam.fps || 15,
-            resolution: newCam.resolution || '1280x720',
-            status: isEditing ? (newCam.status || CameraStatus.ONLINE) : CameraStatus.CONNECTING,
-            lastActive: isEditing ? (newCam.lastActive || 'Now') : 'Never',
-            focalLength: newCam.focalLength || 2.8,
-            sensorWidth: newCam.sensorWidth || 4.8,
-            sensorHeight: newCam.sensorHeight || 3.6,
-            errorMsg: newCam.errorMsg
-        };
-        await cameraService.saveCamera(cam);
-        const cameras = await cameraService.getAllCameras();
-        setCameras(cameras || []);
-        setIsAddModalOpen(false);
+        setIsSaving(true);
+        try {
+            const camId = isEditing && newCam.id ? newCam.id : `CAM-${crypto.randomUUID()}`;
+            const cam: Camera = {
+                id: camId,
+                name: newCam.name || 'Yangi kamera',
+                location: newCam.location || 'Noma\'lum',
+                type: type,
+                streamUrl: finalUrl,
+                fps: newCam.fps || 15,
+                resolution: newCam.resolution || '1280x720',
+                status: CameraStatus.CONNECTING,
+                lastActive: isEditing ? (newCam.lastActive || new Date().toISOString()) : new Date().toISOString(),
+                focalLength: newCam.focalLength || 2.8,
+                sensorWidth: newCam.sensorWidth || 4.8,
+                sensorHeight: newCam.sensorHeight || 3.6,
+                errorMsg: undefined
+            };
+
+            // 1. Persist to Firestore
+            await cameraService.saveCamera(cam);
+
+            // 2. Tell backend registry to connect (updates status to ONLINE on success)
+            const token = localStorage.getItem('sentinel_token') || '';
+            const connectRes = await fetch(`/api/cameras/${cam.id}/connect`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+
+            if (connectRes.ok) {
+                // Mark as ONLINE in Firestore
+                await cameraService.saveCamera({ ...cam, status: CameraStatus.ONLINE, lastActive: new Date().toISOString() });
+            } else {
+                const errBody = await connectRes.json().catch(() => ({}));
+                const errMsg = errBody.error || `Server javobi: ${connectRes.status}`;
+                // Private-network cameras are expected to fail from the cloud – save with ERROR + message
+                await cameraService.saveCamera({ ...cam, status: CameraStatus.ERROR, errorMsg: errMsg });
+            }
+
+            const cameras = await cameraService.getAllCameras();
+            setCameras(cameras || []);
+            setIsAddModalOpen(false);
+        } catch (err: any) {
+            setFormError(`Saqlashda xatolik: ${err.message || err}`);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -2323,8 +2353,14 @@ export const CamerasView: React.FC = () => {
             {isAddModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-app-panel border border-border rounded-xl w-full max-w-lg shadow-2xl">
-                        <div className="p-6 border-b border-border">
-                            <h3 className="text-lg font-bold text-white">{isEditing ? 'Edit Camera' : t('cameras.add')}</h3>
+                        <div className="p-6 border-b border-border flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-white">{isEditing ? 'Kamerani tahrirlash' : t('cameras.add')}</h3>
+                            <button
+                                onClick={() => setIsAddModalOpen(false)}
+                                className="text-text-secondary hover:text-white transition-colors p-1.5 rounded-lg hover:bg-white/10"
+                            >
+                                <X size={18} />
+                            </button>
                         </div>
                         <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
                             {formError && (
@@ -2334,74 +2370,74 @@ export const CamerasView: React.FC = () => {
                                 </div>
                             )}
                             <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-1">Camera Name</label>
-                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="e.g. Front Gate"
+                                <label className="block text-xs font-medium text-text-secondary mb-1">Kamera nomi <span className="text-red-400">*</span></label>
+                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="masalan: Kirish eshigi"
                                     value={newCam.name || ''} onChange={e => setNewCam({...newCam, name: e.target.value})}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-medium text-text-secondary mb-1">Location</label>
-                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="e.g. Building A"
+                                <label className="block text-xs font-medium text-text-secondary mb-1">Joylashuv <span className="text-red-400">*</span></label>
+                                <input type="text" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="masalan: A-bino, 1-qavat"
                                     value={newCam.location || ''} onChange={e => setNewCam({...newCam, location: e.target.value})}
                                 />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-xs font-medium text-text-secondary mb-1">Source Type</label>
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Manba turi</label>
                                     <select className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary outline-none"
                                         value={newCam.type} onChange={e => setNewCam({...newCam, type: e.target.value as CameraType})}
                                     >
-                                        <option value={CameraType.RTSP}>RTSP Stream</option>
-                                        <option value={CameraType.USB}>USB Camera</option>
-                                        <option value={CameraType.REMOTE}>Remote Link</option>
+                                        <option value={CameraType.RTSP}>RTSP oqim</option>
+                                        <option value={CameraType.USB}>USB kamera</option>
+                                        <option value={CameraType.REMOTE}>Masofaviy havola</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-text-secondary mb-1">FPS Limit</label>
-                                    <input type="number" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="30"
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">FPS chegarasi</label>
+                                    <input type="number" className="w-full bg-app-primary border border-border rounded-lg p-2.5 text-text-primary focus:border-cyan-500 outline-none" placeholder="15"
                                         value={newCam.fps || ''} onChange={e => setNewCam({...newCam, fps: parseInt(e.target.value)})}
                                     />
                                 </div>
                             </div>
 
-                            {/* Part 1: Real Optical Parameters Input */}
+                            {/* Optik parametrlar */}
                             <div className="bg-app-primary border border-border rounded-lg p-3">
                                 <label className="block text-xs font-bold text-cyan-400 mb-2 flex items-center gap-1">
-                                    <Ruler size={12} /> Optical Parameters (Physical Lens)
+                                    <Ruler size={12} /> Optik parametrlar (fizik linza)
                                 </label>
                                 <div className="grid grid-cols-3 gap-3">
                                     <div>
-                                        <label className="block text-[10px] text-text-primary0 mb-1">Focal Length (mm)</label>
+                                        <label className="block text-[10px] text-text-primary0 mb-1">Fokus uzunligi (mm)</label>
                                         <input type="number" step="0.1" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white"
                                             value={newCam.focalLength} onChange={e => setNewCam({...newCam, focalLength: parseFloat(e.target.value)})}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] text-text-primary0 mb-1">Sensor Width (mm)</label>
+                                        <label className="block text-[10px] text-text-primary0 mb-1">Sensor kengligi (mm)</label>
                                         <input type="number" step="0.1" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white"
                                             value={newCam.sensorWidth} onChange={e => setNewCam({...newCam, sensorWidth: parseFloat(e.target.value)})}
                                         />
                                     </div>
                                     <div className="flex flex-col justify-end">
-                                        <div className="text-[10px] text-text-primary0 mb-1">Calculated H-FOV</div>
+                                        <div className="text-[10px] text-text-primary0 mb-1">H-Ko'rish burchagi</div>
                                         <div className="bg-app-panel border border-border rounded p-2 text-xs text-emerald-400 font-mono text-center">
                                             {calculatedFOV.toFixed(1)}°
                                         </div>
                                     </div>
                                 </div>
                                 <p className="text-[9px] text-text-primary0 mt-2">
-                                    * Standard 1/3" sensor width is ~4.8mm. 2.8mm lens gives ~81° FOV.
+                                    * Standart 1/3" sensor kengligi ~4.8mm. 2.8mm linza ~81° ko'rish burchagini beradi.
                                 </p>
                             </div>
 
                             {newCam.type === CameraType.RTSP ? (
                                 <div className="bg-app-primary border border-border rounded-lg p-3 space-y-3">
                                     <label className="block text-xs font-bold text-cyan-400 flex items-center gap-1">
-                                        <Globe size={12} /> Network Configuration
+                                        <Globe size={12} /> Tarmoq sozlamalari
                                     </label>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="col-span-2">
-                                            <label className="block text-[10px] text-text-primary0 mb-1">IP Address / Host</label>
+                                            <label className="block text-[10px] text-text-primary0 mb-1">IP manzil / Host <span className="text-red-400">*</span></label>
                                             <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="192.168.1.100"
                                                 value={rtspDetails.ip} onChange={e => setRtspDetails({...rtspDetails, ip: e.target.value})}
                                             />
@@ -2413,26 +2449,26 @@ export const CamerasView: React.FC = () => {
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-text-primary0 mb-1">Stream Path</label>
-                                            <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="/stream1"
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Oqim yo'li</label>
+                                            <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="/stream"
                                                 value={rtspDetails.path} onChange={e => setRtspDetails({...rtspDetails, path: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-text-primary0 mb-1">Username</label>
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Foydalanuvchi nomi</label>
                                             <input type="text" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="admin"
                                                 value={rtspDetails.user} onChange={e => setRtspDetails({...rtspDetails, user: e.target.value})}
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] text-text-primary0 mb-1">Password</label>
+                                            <label className="block text-[10px] text-text-primary0 mb-1">Parol</label>
                                             <input type="password" className="w-full bg-app-panel border border-border rounded p-2 text-xs text-white font-mono" placeholder="••••••"
                                                 value={rtspDetails.pass} onChange={e => setRtspDetails({...rtspDetails, pass: e.target.value})}
                                             />
                                         </div>
                                     </div>
                                     <div className="text-[10px] text-text-primary0 font-mono break-all mt-1 p-2 bg-black/20 rounded border border-white/5">
-                                        <span className="text-text-muted">Preview:</span> rtsp://{rtspDetails.user ? `${rtspDetails.user}:***@` : ''}{rtspDetails.ip || '0.0.0.0'}:{rtspDetails.port}{rtspDetails.path}
+                                        <span className="text-text-muted">Ko'rinish:</span> rtsp://{rtspDetails.user ? `${rtspDetails.user}:***@` : ''}{rtspDetails.ip || '0.0.0.0'}:{rtspDetails.port}{rtspDetails.path}
                                     </div>
                                 </div>
                             ) : (
@@ -2448,8 +2484,27 @@ export const CamerasView: React.FC = () => {
                             )}
                         </div>
                         <div className="p-4 border-t border-border flex justify-end gap-3 bg-app-primary rounded-b-xl">
-                            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-text-secondary hover:text-white font-medium">Cancel</button>
-                            <button onClick={handleSaveCamera} className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg shadow-lg shadow-cyan-900/20">{isEditing ? 'Save Changes' : 'Save Camera'}</button>
+                            <button
+                                onClick={() => setIsAddModalOpen(false)}
+                                disabled={isSaving}
+                                className="px-4 py-2 text-text-secondary hover:text-white font-medium disabled:opacity-40 transition-colors"
+                            >
+                                Bekor qilish
+                            </button>
+                            <button
+                                onClick={handleSaveCamera}
+                                disabled={isSaving}
+                                className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-lg shadow-cyan-900/20 flex items-center gap-2 transition-all"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        {isEditing ? 'Saqlanmoqda...' : 'Ulanmoqda...'}
+                                    </>
+                                ) : (
+                                    isEditing ? 'O\'zgarishlarni saqlash' : 'Kamerani saqlash'
+                                )}
+                            </button>
                         </div>
                     </div>
                 </div>
